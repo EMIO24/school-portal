@@ -1,0 +1,1490 @@
+
+🏫
+NIGERIAN SECONDARY SCHOOL
+PORTAL + CBT PLATFORM
+Full Build Prompts  ·  Django + React + CSS  ·  Docker → Railway + Vercel
+
+From django-admin startproject  →  Production Deployment
+Multi-Tenant  ·  CBT Engine  ·  Paystack  ·  Termii SMS  ·  PDF Results
+
+ 
+📋  Table of Contents
+How to Use This Document	3
+PHASE 0  —  Project Initialization (Django + React)	4
+  0.1  Django project bootstrap & folder structure	4
+  0.2  React app bootstrap & folder structure	5
+  0.3  Shared .env, Git, and Makefile setup	5
+PHASE 1  —  Foundation	6
+  1.1  Project context block (paste first every session)	6
+  1.2  Multi-tenant setup & school onboarding	7
+  1.3  Theme system — React CSS variable engine	7
+  1.4  Role-based authentication (JWT)	8
+  1.5  Academic calendar (Session & Term config)	9
+  1.6  Student & Staff enrollment	9
+PHASE 2  —  Core Academic	11
+  2.1  Timetable builder	11
+  2.2  Attendance tracking	12
+  2.3  Gradebook & Nigerian grading system	12
+  2.4  Broadsheet & Result slip PDF generation	13
+  2.5  Scratch card / PIN result checker	14
+PHASE 3  —  CBT Engine	15
+  3.1  Question bank with tagging	15
+  3.2  Exam scheduling & randomization	16
+  3.3  Auto-marking & gradebook score push	17
+PHASE 4  —  Communication & Payments	18
+  4.1  Bulk SMS (Termii) & Email notifications	18
+  4.2  Fee management & Paystack integration	19
+  4.3  Parent portal (mobile-first PWA)	20
+PHASE 5  —  Intelligence & Analytics	21
+  5.1  Analytics dashboards	21
+  5.2  Promotion engine	22
+  5.3  Performance trend reports	22
+PHASE 6  —  Containerization & Deployment	23
+  6.1  Dockerfile — Django backend	23
+  6.2  Dockerfile — React frontend (Nginx)	24
+  6.3  docker-compose for local development	24
+  6.4  Railway deployment — backend	25
+  6.5  Vercel deployment — frontend	25
+  6.6  CI/CD — GitHub Actions pipeline	26
+APPENDIX  —  Utility Prompts	27
+ 
+📖  How to Use This Document
+Each numbered prompt is self-contained. Paste it into Cursor, GitHub Copilot Chat, or Claude. Prompts are sequenced by dependency — earlier prompts create the files that later prompts build on. Always paste the Phase 1 Context Block at the start of every new AI session.
+
+Layer	Technology	Notes
+Backend	Django 4.2 + DRF	REST API, JWT auth, multi-tenant middleware
+Database	PostgreSQL 15	school_id scoping on every table
+Frontend	React 18 + plain CSS	Per-school theming via CSS variables
+Auth	JWT (simplejwt)	Role + school embedded in token payload
+SMS	Termii API	Nigerian-first gateway
+Payments	Paystack	Standard Nigerian payment processor
+Storage	Cloudinary	Profiles, documents, question images
+PDF	WeasyPrint	Result slips & broadsheets
+Container	Docker + Compose	Backend + frontend + postgres + redis
+Backend Host	Railway	Docker-based deploy, Postgres add-on
+Frontend Host	Vercel	Static React build, per-school env vars
+CI/CD	GitHub Actions	Test → build → deploy on push to main
+
+🔑  Rule: Every prompt session must start with the Context Block from Phase 1.1. It primes the AI with your full architecture so it never generates code that breaks multi-tenancy.
+
+ 
+PHASE 0  — Project Initialization — Django + React
+
+This phase has no AI prompts — it is a set of terminal commands you run manually to bootstrap the project before writing any application code. Run every command in order.
+
+0.1 — Bootstrap the Django Backend
+Run these commands in your terminal from your project root folder:
+
+💻  TERMINAL — Django Project Bootstrap
+# 1. Create root project folder
+mkdir school-portal && cd school-portal
+
+# 2. Create and activate a Python virtual environment
+python3 -m venv venv
+source venv/bin/activate          # Linux/Mac
+# venv\Scripts\activate          # Windows
+
+# 3. Install core dependencies
+pip install django djangorestframework djangorestframework-simplejwt
+pip install psycopg2-binary django-cors-headers django-environ
+pip install cloudinary django-cloudinary-storage
+pip install weasyprint celery redis django-redis
+pip install Pillow requests
+pip freeze > backend/requirements.txt
+
+# 4. Start Django project
+mkdir backend && cd backend
+django-admin startproject config .
+
+# 5. Create all apps
+python manage.py startapp tenants
+python manage.py startapp accounts
+python manage.py startapp academics
+python manage.py startapp enrollment
+python manage.py startapp timetable
+python manage.py startapp attendance
+python manage.py startapp gradebook
+python manage.py startapp results
+python manage.py startapp cbt
+python manage.py startapp fees
+python manage.py startapp notifications
+python manage.py startapp analytics
+python manage.py startapp promotion
+
+# 6. Create settings split
+mkdir config/settings
+touch config/settings/__init__.py
+mv config/settings.py config/settings/base.py
+touch config/settings/development.py
+touch config/settings/production.py
+
+# 7. Create .env file
+touch .env
+cd ..
+
+0.2 — Bootstrap the React Frontend
+💻  TERMINAL — React App Bootstrap
+# From the school-portal root folder:
+
+# 1. Create React app (plain, no TypeScript)
+npx create-react-app frontend
+cd frontend
+
+# 2. Install dependencies
+npm install axios react-router-dom
+npm install recharts          # charts for analytics
+npm install react-hot-toast   # notifications
+npm install jspdf html2canvas # client-side PDF fallback
+
+# 3. Clean up default CRA files
+rm src/App.test.js src/logo.svg src/setupTests.js src/reportWebVitals.js
+
+# 4. Create folder structure inside src/
+mkdir -p src/pages/admin src/pages/teacher
+mkdir -p src/pages/student src/pages/parent src/pages/public
+mkdir -p src/components/common src/components/layout
+mkdir -p src/context src/hooks src/services src/styles src/utils
+
+# 5. Create core files
+touch src/context/AuthContext.js
+touch src/context/ThemeContext.js
+touch src/hooks/useAuth.js
+touch src/hooks/useTheme.js
+touch src/services/api.js
+touch src/styles/variables.css
+touch src/styles/global.css
+touch public/manifest.json
+cd ..
+
+0.3 — Shared .env, Git Setup & Makefile
+💻  TERMINAL — Git Init, .env & Makefile
+# From school-portal root:
+
+# 1. Git init
+git init
+touch .gitignore
+
+# Paste into .gitignore:
+# venv/ __pycache__/ *.pyc .env node_modules/
+# frontend/build/ backend/staticfiles/ *.sqlite3
+
+# 2. Root .env structure (backend/  .env)
+# Paste into backend/.env:
+SECRET_KEY=your-secret-key-here
+DEBUG=True
+DB_NAME=school_portal_dev
+DB_USER=postgres
+DB_PASSWORD=yourpassword
+DB_HOST=localhost
+DB_PORT=5432
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+TERMII_API_KEY=
+PAYSTACK_SECRET_KEY=
+PAYSTACK_PUBLIC_KEY=
+REDIS_URL=redis://localhost:6379/0
+FRONTEND_URL=http://localhost:3000
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# 3. Root Makefile for convenience
+touch Makefile
+# Contents:
+# dev-backend:
+#   cd backend && python manage.py runserver
+# dev-frontend:
+#   cd frontend && npm start
+# migrate:
+#   cd backend && python manage.py migrate
+# test:
+#   cd backend && python manage.py test
+
+ 
+PHASE 1  — Foundation
+
+1.1 — Project Context Block (Paste First Every AI Session)
+Copy everything inside the box below and paste it at the very start of any new AI chat before using any prompt from this document. This ensures the AI never writes code that breaks tenant isolation.
+
+📋  CONTEXT BLOCK — Paste before every AI coding session
+I am building a multi-tenant Nigerian secondary school portal + CBT.
+The project lives in: school-portal/backend/ (Django) and school-portal/frontend/ (React).
+
+Tech stack:
+  Backend:   Django 4.2 + DRF + PostgreSQL + Celery/Redis
+  Frontend:  React 18 + plain CSS (NO Tailwind, NO Bootstrap)
+  Auth:      JWT via djangorestframework-simplejwt
+  Storage:   Cloudinary
+  SMS:       Termii API
+  Payments:  Paystack
+  PDF:       WeasyPrint
+  Deploy:    Docker → Railway (backend) + Vercel (frontend)
+
+Multi-tenancy rules (NEVER break these):
+  - Every school maps to a subdomain: slug.myplatform.com
+  - TenantMiddleware resolves School from subdomain → request.tenant
+  - EVERY model (except School itself) has school = FK(School)
+  - EVERY queryset must be scoped: .filter(school=request.tenant)
+  - TenantMixin on all ViewSets handles this automatically
+
+Roles: superadmin | school_admin | teacher | student | parent
+Nigerian academic: 3-term year, WAEC/NECO grades (A1–F9),
+  CA (40%) + Exam (60%), cognitive + affective domain scoring,
+  scratch card result system, admission numbers: SLUG-YYYY-XXXX
+
+All apps are in backend/ — write to the correct app folder.
+Always include: models.py, serializers.py, views.py, urls.py.
+Always write clean, commented, production-ready Django/React code.
+
+1.2 — Multi-Tenant Setup & School Onboarding
+Personal note: The School model has a theme_config JSONField storing brand colors and logo. The React frontend reads this on load and injects CSS variables — one backend serves all schools with zero per-school frontend deployment.
+
+🏗️  PROMPT 1.2 — School Model, TenantMiddleware & TenantMixin
+Working in: backend/tenants/
+
+Create the following:
+
+1. models.py — School model with:
+   name, slug(unique), subdomain(unique), logo(URLField),
+   theme_config(JSONField: primary_color, secondary_color,
+                            accent_color, font_family),
+   address, phone, email, motto, registration_number,
+   is_active(Bool), subscription_plan(free|basic|premium), created_at
+
+2. middleware.py — TenantMiddleware class:
+   - Parse subdomain from request.get_host()
+   - Lookup School.objects.get(subdomain=sub, is_active=True)
+   - Set request.tenant = school
+   - Return 404 JSON if not found
+   - Skip for paths: /superadmin/, /health/, /api/auth/
+
+3. mixins.py — TenantMixin(for DRF ViewSets):
+   - get_queryset() filters by self.request.tenant
+   - perform_create() injects school=self.request.tenant
+
+4. serializers.py — SchoolSerializer (all fields)
+5. views.py — SchoolOnboardingView (SuperAdmin only, POST)
+6. urls.py — /api/schools/ and /api/school/me/
+7. admin.py — Register School
+
+Then update config/settings/base.py:
+  - Add 'tenants' to INSTALLED_APPS
+  - Add TenantMiddleware to MIDDLEWARE (after SecurityMiddleware)
+  - Add 'tenants.middleware.TenantMiddleware' path
+
+Update config/urls.py to include tenants.urls
+
+1.3 — React CSS Variable Theme Engine
+Personal note: This is what makes one React codebase serve 100 different schools each with their own colors and logo. The ThemeProvider fetches school config from the API and writes CSS variables to :root before rendering anything else.
+
+🎨  PROMPT 1.3 — React Theme System (ThemeContext + CSS Variables)
+Working in: frontend/src/
+
+Create the following files:
+
+1. context/ThemeContext.js:
+   - Fetch GET /api/school/me/ on mount
+   - Apply theme: inject CSS variables into document.documentElement:
+     --color-primary, --color-secondary, --color-accent,
+     --font-main, --school-name
+   - Store in localStorage key 'school_theme' for offline load
+   - Export ThemeContext and useTheme() hook
+
+2. components/common/ThemeProvider.jsx:
+   - Wraps children, loads theme on mount
+   - Shows LoadingScreen while fetching
+   - Shows branded error screen if fetch fails
+
+3. components/common/LoadingScreen.jsx + LoadingScreen.css:
+   - Full-page centered loader
+   - Shows school logo (from cached theme) + spinner
+   - Spinner color uses var(--color-primary)
+
+4. styles/variables.css:
+   /* Default fallback values — overridden by ThemeProvider */
+   :root {
+     --color-primary: #1B3A6B;
+     --color-secondary: #2E5DA8;
+     --color-accent: #E07B00;
+     --font-main: 'Segoe UI', sans-serif;
+   }
+
+5. styles/global.css:
+   - CSS reset, body font, box-sizing, scrollbar style
+   - Button base styles using CSS variables
+   - Card, input, and table base styles
+
+6. Update src/index.js to import variables.css and global.css
+7. Update src/App.jsx to wrap everything in <ThemeProvider>
+
+1.4 — Role-Based Authentication (JWT)
+Personal note: One CustomUser model with a role field — no separate Profile models for each role. Store role and school_id inside the JWT payload so every API call carries the user's identity without extra DB lookups.
+
+🔐  PROMPT 1.4A — Django Auth: CustomUser, JWT & Permissions
+Working in: backend/accounts/
+
+1. models.py — CustomUser(AbstractBaseUser, PermissionsMixin):
+   email(unique, USERNAME_FIELD), first_name, last_name,
+   school(FK tenants.School, null=True for superadmin),
+   role(choices: superadmin|school_admin|teacher|student|parent),
+   phone_number, profile_photo(URLField), is_active, date_joined,
+   must_change_password(Bool, default=True)
+   + CustomUserManager
+
+2. permissions.py — DRF permission classes:
+   IsSuperAdmin, IsSchoolAdmin, IsTeacher, IsStudent, IsParent
+   Each checks: request.user.role == '...' AND
+                request.user.school == request.tenant
+
+3. serializers.py:
+   LoginSerializer(email, password → validate + return tokens)
+   UserProfileSerializer(all safe user fields)
+   ChangePasswordSerializer
+
+4. views.py:
+   LoginView(POST /api/auth/login/)
+     - Validates tenant membership
+     - Returns: access, refresh, role, must_change_password, theme
+   MeView(GET /api/auth/me/)
+   ChangePasswordView(POST /api/auth/change-password/)
+   TokenRefreshView (use simplejwt's)
+
+5. Add to config/settings/base.py:
+   AUTH_USER_MODEL = 'accounts.CustomUser'
+   SIMPLE_JWT config: embed role + school_id in token payload
+   INSTALLED_APPS: add 'accounts', 'rest_framework', 'corsheaders'
+   REST_FRAMEWORK: default auth = JWTAuthentication
+
+Run: python manage.py makemigrations accounts && python manage.py migrate
+
+🔐  PROMPT 1.4B — React Auth: Login Page, AuthContext & ProtectedRoute
+Working in: frontend/src/
+
+1. services/api.js:
+   - Create axios instance with baseURL from REACT_APP_API_URL env var
+   - Request interceptor: attach Authorization: Bearer <token>
+   - Response interceptor: on 401, auto-refresh token then retry
+   - Export: api (instance), authAPI, schoolAPI
+
+2. context/AuthContext.js + hooks/useAuth.js:
+   - State: user(id,name,role,email,photo), accessToken, isAuthenticated
+   - login(email,password) → call /api/auth/login/ → store tokens
+   - logout() → clear tokens + redirect /login
+   - loadUser() on app mount from stored token
+
+3. components/common/ProtectedRoute.jsx:
+   Props: allowedRoles={['teacher','school_admin']}
+   - If not authenticated → redirect /login
+   - If wrong role → redirect to user's correct dashboard
+
+4. pages/public/Login.jsx + Login.css:
+   - School logo + name at top (from useTheme)
+   - Email + Password fields, show/hide password toggle
+   - Error display: wrong credentials / inactive account
+   - On success: if must_change_password → /change-password
+     else route by role:
+     school_admin→/admin/dashboard, teacher→/teacher/dashboard,
+     student→/student/dashboard, parent→/parent/dashboard
+
+5. pages/public/ChangePassword.jsx + ChangePassword.css
+
+6. App.jsx — React Router setup with all ProtectedRoutes
+   Include route structure for all 4 role dashboards
+
+1.5 — Academic Calendar (Session & Term Config)
+Personal note: Almost every model in the system FKs back to a Session or Term. Set this up correctly first. Only one session and one term can be 'current' per school at a time — enforce this in the model's save() method, not just the API.
+
+📅  PROMPT 1.5 — Academic Calendar Models & API
+Working in: backend/academics/
+
+1. models.py:
+   AcademicSession: school(FK), name('2024/2025'),
+     start_date, end_date, is_current(Bool)
+     save() override: if is_current → set all others is_current=False
+
+   Term: session(FK), name(first|second|third),
+     start_date, end_date, is_current(Bool), next_term_begins(Date)
+     save() override: same is_current enforcement per school
+
+   Holiday: term(FK), name, start_date, end_date,
+     holiday_type(public|school|exam_break)
+
+2. serializers.py — full serializers for all 3 models
+3. views.py — ViewSets with TenantMixin:
+   SessionViewSet + custom action: POST set-current/
+   TermViewSet + custom action: POST set-current/
+   HolidayViewSet
+   GET /api/calendar/current/ → returns active session+term
+4. urls.py with router
+
+Frontend (Admin settings page):
+5. pages/admin/CalendarSettings.jsx:
+   - Session list: name, dates, 'Set as Current' button
+   - Term list under each session
+   - Create Session / Create Term modals
+   - Visual timeline bar showing term spans within session
+6. CalendarSettings.css — clean admin settings layout
+
+1.6 — Student & Staff Enrollment
+Personal note: Auto-generate admission numbers as SLUG-YYYY-XXXX (e.g. GHS-2024-0042). Staff get IDs as STAFF-XXXX. Support CSV bulk import for schools migrating from Excel — return a per-row error report on failed rows.
+
+👨‍🎓  PROMPT 1.6A — Student Enrollment (Models, API & Bulk Import)
+Working in: backend/enrollment/
+
+1. models.py:
+   ClassLevel: school(FK), name(JSS1..SS3), order_index
+   ClassArm: school(FK), class_level(FK), name(A/B/C),
+             class_teacher(FK accounts.CustomUser)
+   Subject: school(FK), name, code(ENG/MTH), class_levels(M2M),
+            category(core|elective|vocational),
+            max_ca_score(default 40), max_exam_score(default 60)
+   StudentProfile: user(O2O), school(FK),
+     admission_number(auto: SLUG-YYYY-XXXX),
+     dob, gender, state_of_origin, religion,
+     guardian_name, guardian_phone, guardian_email,
+     guardian_relationship, current_class(FK ClassArm),
+     admission_date, status(active|graduated|withdrawn|suspended)
+
+2. utils.py — generate_admission_number(school) function
+3. serializers.py — StudentProfileSerializer, ClassArmSerializer
+4. views.py — StudentViewSet(TenantMixin):
+   list, create, retrieve, partial_update
+   @action POST bulk-import/ — accepts CSV file:
+     columns: first_name,last_name,email,gender,dob,class_level,
+              guardian_name,guardian_phone
+     returns: {success_count, errors:[{row, reason}]}
+   @action POST {id}/assign-class/
+   GET by-class/{class_arm_id}/
+5. urls.py
+
+Frontend:
+6. pages/admin/Students.jsx — student list with filters + search
+7. pages/admin/StudentForm.jsx — register/edit student form
+8. components/admin/BulkImport.jsx — drag-drop CSV + preview table
+9. pages/admin/StudentProfile.jsx — full profile card with photo
+
+👨‍🏫  PROMPT 1.6B — Staff Enrollment & Subject Assignment
+Working in: backend/enrollment/ (extend existing app)
+
+1. models.py — add to enrollment/models.py:
+   StaffProfile: user(O2O), school(FK),
+     employee_id(auto: STAFF-XXXX), qualification,
+     employment_type(full_time|part_time|contract),
+     date_joined_school
+   SubjectAssignment: teacher(FK), subject(FK), class_arm(FK),
+     session(FK), term(FK), school(FK)
+     unique_together: (teacher, subject, class_arm, term)
+
+2. serializers.py — StaffProfileSerializer, SubjectAssignmentSerializer
+3. views.py — StaffViewSet, SubjectViewSet, SubjectAssignmentViewSet
+   @action on StaffViewSet: POST {id}/assign-subjects/
+     body: [{subject_id, class_arm_id, term_id}]
+   GET /api/subjects/by-class/{class_arm_id}/
+4. urls.py
+
+Frontend:
+5. pages/admin/Staff.jsx — staff list + registration form
+6. pages/admin/SubjectManager.jsx — create/edit/delete subjects
+7. pages/admin/SubjectAssignment.jsx:
+   - Select teacher → see their assignments
+   - Assign: class arm + subject checkboxes
+   - Visual grid: classes (rows) × subjects (cols), teacher names in cells
+
+ 
+PHASE 2  — Core Academic
+
+2.1 — Timetable Builder
+Personal note: Build the timetable as a Day×Period grid. Conflict detection (teacher double-booked) must fire on save. Color-code subjects by category. The student and teacher views are read-only versions of the same data.
+
+📆  PROMPT 2.1 — Timetable Builder (Backend + Frontend Grid)
+Working in: backend/timetable/ and frontend/src/pages/
+
+Backend:
+1. models.py:
+   Period: school(FK), name('Period 1'), start_time, end_time,
+           order_index, is_break(Bool)
+   TimetableEntry: school(FK), term(FK), class_arm(FK),
+     subject(FK), teacher(FK), day_of_week(MON|TUE|WED|THU|FRI),
+     period(FK)
+     unique_together: (class_arm, day_of_week, period, term)
+
+2. serializers.py with validation:
+   - Block if teacher already assigned same day+period+term
+   - Warning if teacher has >5 periods in one day
+
+3. views.py — TimetableEntryViewSet(TenantMixin):
+   GET by-class/{class_arm_id}/?term=
+   GET by-teacher/{teacher_id}/?term=
+   GET my-timetable/  (for logged-in teacher)
+   PeriodViewSet — CRUD for period config
+
+Frontend:
+4. pages/admin/TimetableBuilder.jsx:
+   - Class selector + Term selector at top
+   - Grid: rows=periods(inc. break rows), cols=Mon-Fri
+   - Each cell shows subject + teacher name
+   - Click empty cell → modal: select subject + teacher
+   - Click filled cell → edit or delete
+   - Cells color-coded by subject category
+5. pages/teacher/MyTimetable.jsx — read-only + current period highlight
+6. pages/student/Timetable.jsx — read-only student view
+7. TimetableGrid.css — grid layout, cell styles, responsive
+
+2.2 — Attendance Tracking
+Personal note: Give Admin a setting to choose daily vs per-period attendance mode. Calculate attendance % per term — flag below 75% on the broadsheet. Teachers finalize (lock) attendance after submission.
+
+📋  PROMPT 2.2 — Attendance Marking & Reporting
+Working in: backend/attendance/ and frontend/src/pages/
+
+Backend:
+1. models.py:
+   AttendanceSession: school(FK), class_arm(FK), teacher(FK),
+     term(FK), date, period(FK nullable), mode(daily|per_period),
+     is_finalized(Bool)
+   AttendanceRecord: attendance_session(FK), student(FK),
+     status(present|absent|late|excused), remark(optional)
+
+2. views.py:
+   POST start/ — body:{class_arm,date,period?}
+     Returns session + pre-populated student list
+   PATCH {id}/submit/ — body:[{student_id,status,remark}]
+   PATCH {id}/finalize/
+   GET report/?student=&term=
+   GET class-report/?class_arm=&term=
+   GET low-attendance/?term=&threshold=75
+
+3. Computed on StudentProfile:
+   attendance_percentage(term_id), days_absent(term_id)
+
+Frontend:
+4. pages/teacher/TakeAttendance.jsx:
+   - Student list with P/A/L/E toggle buttons per row
+   - Bulk mark all present button
+   - Submit + lock workflow
+5. pages/admin/AttendanceOverview.jsx:
+   - Class selector → calendar heatmap (green/red/amber by day)
+   - Low attendance panel (badge count + student list)
+   - CSV export button
+6. pages/student/MyAttendance.jsx:
+   - Mini calendar dots + attendance % badge
+
+2.3 — Gradebook & Nigerian Grading System
+Personal note: Nigerian schools use CA (40%) + Exam (60%). CA itself has sub-components: 1st Test, 2nd Test, Assignment, Project. Also include Affective Domain (traits 1–5) and Psychomotor Domain. Grades follow the official WAEC A1–F9 scale.
+
+📊  PROMPT 2.3A — Gradebook Models, Grading Logic & API
+Working in: backend/gradebook/
+
+1. models.py:
+   GradeScale: school(FK), min_score, max_score,
+     grade(A1|B2|B3|C4|C5|C6|D7|E8|F9),
+     remark(Excellent|Very Good|Good|Credit|Credit|Credit|Pass|Pass|Fail)
+     Seed default Nigerian scale on school creation via signal
+
+   ScoreEntry: student(FK), subject(FK), class_arm(FK),
+     session(FK), term(FK), teacher(FK), school(FK)
+     first_test, second_test, assignment, project, practical (all decimal)
+     ca_total (computed property), exam_score, total_score(computed)
+     grade(auto from GradeScale), remark(auto)
+     is_published(Bool)
+
+   AffectiveDomain: student(FK), class_arm(FK), term(FK), school(FK)
+     punctuality, neatness, honesty, attentiveness,
+     relationship_with_others, leadership, creativity,
+     sport_games, handling_of_tools  (all IntegerField 1-5)
+
+   PsychomotorDomain: student(FK), class_arm(FK), term(FK), school(FK)
+     handwriting, drawing, verbal_fluency, musical_skills (1-5)
+
+2. views.py:
+   GET /api/gradebook/?class_arm=&subject=&term=
+   POST /api/gradebook/bulk-update/ — [{student_id, scores...}]
+   POST /api/gradebook/publish/?class_arm=&subject=&term=
+   GET/PUT /api/gradebook/affective/{student_id}/{term_id}/
+   GET/PUT /api/gradebook/psychomotor/{student_id}/{term_id}/
+
+📊  PROMPT 2.3B — Gradebook Frontend: Spreadsheet Score Entry UI
+Working in: frontend/src/pages/teacher/
+
+1. pages/teacher/ScoreEntry.jsx:
+   - Selectors: class arm + subject + term
+   - Spreadsheet-style table:
+     S/N | Student Name | 1st Test | 2nd Test | Assign | Project
+     | CA Total | Exam | Total | Grade | Remark
+   - Inline editable cells: click to edit, Tab moves to next cell
+   - CA Total and Grade/Remark auto-calculate as user types
+   - Color rows: green(A1/B) amber(C/D) red(E/F)
+   - Validate: CA components must not exceed max_ca_score
+   - Two buttons: 'Save Draft' vs 'Publish to Students'
+   - Unsaved changes indicator (dot on tab title)
+
+2. pages/teacher/AffinityDomain.jsx:
+   - Same class+term selectors
+   - Table: student rows × trait columns
+   - Each cell: dropdown 1–5
+   - 'Bulk set column' — set all students to same value for one trait
+
+3. components/teacher/GradeCell.jsx:
+   - Reusable editable cell component
+   - Shows grade badge (color by grade)
+
+4. ScoreEntry.css — spreadsheet layout, sticky header row, hover states
+
+2.4 — Broadsheet & Result Slip PDF Generation
+Personal note: The broadsheet is the master class sheet — all students × all subjects on one landscape page. The result slip is the individual student report card. Compute class positions server-side before generating PDFs. Add editable principal and class teacher remarks.
+
+📄  PROMPT 2.4 — PDF Generation: Result Slip & Broadsheet (WeasyPrint)
+Working in: backend/results/
+
+1. models.py:
+   ResultRemark: student(FK), term(FK), school(FK),
+     class_teacher_remark, principal_remark, computed_position(Int)
+
+2. pdf_templates/  — Create HTML templates for WeasyPrint:
+   result_slip.html — sections:
+     a) Header: school logo, name, address, term, session
+     b) Student: photo, name, admission no., class, age, gender
+     c) Score table: Subject | 1stTest | 2ndTest | Assign | CA | Exam | Total | Grade
+     d) Summary: Total, Average, Position, No. of subjects, Out of
+     e) Affective domain table (traits + 1–5 rating + descriptor)
+     f) Psychomotor domain table
+     g) Attendance: Days Present / Total / Percentage
+     h) Remarks: Class Teacher remark + Principal remark
+     i) Footer: Next term begins, stamp area, signature lines
+   broadsheet.html — landscape A4:
+     Header row: S/N | Name | Adm No | [each subject col] | Total | Avg | Position
+     Sorted by position asc; top 3 rows highlighted gold/silver/bronze
+
+3. views.py:
+   GET /api/results/slip/{student_id}/?term= → PDF response
+   GET /api/results/broadsheet/{class_arm_id}/?term= → PDF
+   POST /api/results/positions/compute/?class_arm=&term=
+   PATCH /api/results/remarks/{student_id}/?term=
+   GET /api/results/slip-data/{student_id}/?term= → JSON (for browser preview)
+
+Frontend (Admin):
+4. pages/admin/ResultManagement.jsx:
+   - Class + Term selector
+   - Student table: position | name | average | remark status
+   - 'Compute Positions' button
+   - Inline remarks editor
+   - 'Download All Slips (ZIP)' + 'Download Broadsheet' buttons
+5. pages/student/MyResult.jsx — browser-rendered result card
+
+2.5 — Scratch Card / PIN Result Checker
+Personal note: This is a Nigerian school hallmark. Admins generate batches of PINs, export them as CSV for physical card printing. Parents/students enter admission number + serial + PIN on a public page (no login) to view and print results. Cards are single-use.
+
+🪙  PROMPT 2.5 — Scratch Card PIN System (Backend + Public Page)
+Working in: backend/results/ (extend) and frontend/src/pages/public/
+
+Backend:
+1. models.py — add to results/:
+   ScratchCard: school(FK), serial_number(unique, auto: SC-XXXX-XXXX),
+     pin_hash(hashed 10-digit PIN), term(FK nullable),
+     is_used(Bool), used_at(DateTime), used_by_student(FK nullable),
+     batch_name, generated_by(FK), price(Decimal)
+
+2. views.py:
+   POST /api/scratch-cards/generate/  (Admin only)
+     body:{quantity, batch_name, term_id?, price}
+     Returns CSV download: serial_number,plain_pin per row
+     Stores hashed PIN in DB (make_password())
+
+   POST /api/results/check/  (PUBLIC — no auth, no tenant middleware)
+     body:{admission_number, serial_number, pin}
+     Logic:
+       1. Find school from serial prefix
+       2. Find card, verify pin (check_password())
+       3. If used → 403 'This card has already been used'
+       4. Mark used, return full result JSON
+
+   GET /api/scratch-cards/  (Admin) — list with usage stats
+   GET /api/scratch-cards/batch-stats/
+
+Frontend:
+3. pages/public/CheckResult.jsx:
+   - School-branded header (read school from URL param or subdomain)
+   - 3 fields: Admission Number, Serial Number, PIN
+   - On success: render full result slip in browser (printable view)
+   - On error: per-case messages (wrong PIN / used card / student not found)
+   - 'Print Result' button (window.print())
+4. CheckResult.css — clean public-facing styles, print stylesheet
+
+5. pages/admin/ScratchCards.jsx:
+   - Generate batch form
+   - Batch table: name | total | used | unused | generated date
+   - 'Download Unused PINs (CSV)' per batch
+
+ 
+PHASE 3  — CBT Engine
+
+3.1 — Question Bank with Tagging
+Personal note: Tag every question by subject, topic, class level, difficulty, and Bloom's taxonomy cognitive level. This makes randomization meaningful later (e.g. '10 medium Application questions on Algebra for SS2') and powers per-topic analytics.
+
+❓  PROMPT 3.1 — Question Bank (Models, API & Question Editor UI)
+Working in: backend/cbt/ and frontend/src/pages/
+
+Backend:
+1. models.py:
+   Topic: school(FK), subject(FK), class_level(FK), name
+   Question: school(FK), subject(FK), topic(FK), class_level(FK),
+     question_text(TextField), question_image(URLField nullable),
+     question_type(mcq|true_false|fill_blank),
+     difficulty(easy|medium|hard),
+     cognitive_level(knowledge|comprehension|application|
+                     analysis|synthesis|evaluation),
+     options(JSONField):[{id:'A',text:'...',image_url:null},...],
+     correct_answer(CharField: 'A'|'B'|'C'|'D'),
+     explanation(TextField, shown in review),
+     created_by(FK), is_active(Bool)
+
+2. views.py:
+   QuestionViewSet(TenantMixin): CRUD
+   GET filter/?subject=&topic=&difficulty=&class_level=
+   POST bulk-import/ — accepts JSON array of questions
+   GET stats/ — count by subject/difficulty breakdown
+   TopicViewSet: CRUD
+
+Frontend:
+3. pages/admin/QuestionBank.jsx:
+   - Filter sidebar: subject, topic, class, difficulty
+   - Question list cards with edit/delete
+   - 'Add Question' button → QuestionEditor modal
+4. components/cbt/QuestionEditor.jsx:
+   - Question text textarea
+   - Optional image upload (Cloudinary)
+   - 4 option inputs + radio to mark correct answer
+   - Tag dropdowns: subject, topic, class, difficulty, cognitive level
+   - Explanation textarea
+   - Preview pane (shows question as student sees it)
+5. QuestionBank.css, QuestionEditor.css
+
+3.2 — Exam Scheduling, Randomization & CBT Delivery
+Personal note: Each student gets a unique question order AND unique option order per question — store their specific snapshot at exam start. Countdown timer auto-submits. Tab-switch detection logs events and shows a warning overlay.
+
+🖥️  PROMPT 3.2 — CBT Exam Engine (Scheduling + Student Exam UI)
+Working in: backend/cbt/ and frontend/src/pages/student/
+
+Backend:
+1. models.py — add:
+   CBTExam: school(FK), title, subject(FK), class_arms(M2M),
+     term(FK), session(FK), created_by(FK),
+     start_datetime, end_datetime, duration_minutes,
+     instructions, selection_mode(manual|random_from_bank),
+     manual_questions(M2M Question),
+     random_config(JSONField):[{topic_id,count,difficulty?}],
+     randomize_questions(Bool), randomize_options(Bool),
+     allow_review(Bool), show_score_immediately(Bool),
+     status(draft|published|ongoing|completed)
+
+   StudentExamSession: exam(FK), student(FK),
+     question_order(JSONField), option_maps(JSONField),
+     started_at, submitted_at, time_remaining_seconds,
+     status(not_started|in_progress|submitted|timed_out),
+     score, tab_switch_count, ip_address
+
+   StudentAnswer: exam_session(FK), question(FK),
+     selected_option, is_correct, time_spent_seconds
+
+2. views.py:
+   POST /api/cbt/exams/{id}/start/
+     Creates StudentExamSession, shuffles questions+options,
+     Returns questions WITHOUT correct_answer field
+   POST /api/cbt/exams/{id}/save-answer/
+     body:{question_id, selected_option} — auto-save on select
+   POST /api/cbt/exams/{id}/submit/
+     Marks answers, computes score, updates session status
+   GET  /api/cbt/exams/{id}/status/ — time_remaining, saved_answers
+   GET  /api/cbt/exams/available/ — exams for logged-in student
+
+Frontend:
+3. pages/student/ExamList.jsx — upcoming/available exams
+4. pages/student/ExamRoom.jsx (full-screen mode):
+   - Countdown timer (red <5 min), auto-submit on expiry
+   - Question display with option radio buttons
+   - Question navigator grid (green=answered, white=unanswered)
+   - Auto-save on option select (debounced API call)
+   - Tab-switch detection: log + show warning overlay
+   - 'Submit Exam' button with confirmation modal
+5. ExamRoom.css — full-screen layout, no scrollbars, mobile-friendly
+
+3.3 — Auto-Marking, Score Push & Review Mode
+✅  PROMPT 3.3 — Auto-Marking, Gradebook Push & Exam Review
+Working in: backend/cbt/ and frontend/src/pages/
+
+Backend:
+1. services.py — auto_mark(exam_session):
+   - Compare each StudentAnswer.selected_option to Question.correct_answer
+   - Set is_correct, compute score and percentage
+   - Called by submit view
+
+2. views.py — add:
+   POST /api/cbt/exams/{id}/push-to-gradebook/ (Teacher/Admin)
+     For each completed session:
+       Scale CBT score to subject's max_exam_score
+       Create or update ScoreEntry.exam_score
+     Returns:{updated_count, skipped_count}
+
+   GET /api/cbt/exams/{id}/review/ (student, after submission only)
+     Returns: questions + student answers + correct answers + explanations
+
+   GET /api/cbt/exams/{id}/results/ (admin/teacher)
+     Returns: per-student {name, score, %, time_taken, tab_switches}
+
+   GET /api/cbt/exams/{id}/question-analysis/ (admin)
+     Returns: per-question {text, % correct, most_chosen_wrong_option}
+
+Frontend:
+3. pages/student/ExamReview.jsx (if allow_review=true):
+   - Each question: student answer (blue) + correct answer (green)
+   - Explanation shown below each question
+   - Score summary card at top
+
+4. pages/admin/ExamResults.jsx:
+   - Exam selector → class performance table
+   - Score distribution bar chart (Recharts)
+   - Per-question analysis table
+   - 'Push to Gradebook' button with confirmation
+   - Tab-switch audit column
+
+5. pages/admin/ExamManager.jsx:
+   - Create/edit/publish CBT exams
+   - Manual question selector OR random config builder
+   - Exam settings toggles (randomize, allow_review, etc.)
+
+ 
+PHASE 4  — Communication & Payments
+
+4.1 — Bulk SMS (Termii) & Email Notifications
+Personal note: Termii is the best Nigerian SMS API — cheap, reliable, supports sender IDs. Build a reusable NotificationTemplate system with variable substitution ({student_name}, {school_name}, etc.) so admins can customize messages without editing code.
+
+📱  PROMPT 4.1 — Notification System: Termii SMS + Django Email
+Working in: backend/notifications/ and frontend/src/pages/admin/
+
+Backend:
+1. models.py:
+   NotificationTemplate: school(FK), name, type(sms|email|both),
+     subject(email only), body(TextField with {variables}),
+     category(result|fee|attendance|exam|general)
+   NotificationLog: school(FK), template(FK nullable), channel,
+     recipient_phone, recipient_email, student(FK nullable),
+     message_body, status(sent|failed|pending), sent_at, error_message
+
+2. services/termii.py — TermiiService:
+   send_sms(phone, message, sender_id=school.slug[:11])
+   API: POST https://api.ng.termii.com/api/sms/send
+   Always log attempt to NotificationLog
+
+3. services/email.py — send_email(to, subject, body, school)
+   Uses Django send_mail with school name as sender
+
+4. utils.py — render_template(template_body, context_dict):
+   Simple str.format_map() substitution
+
+5. views.py:
+   POST /api/notifications/send/
+     body:{channel, recipient_type(all_parents|class|individual),
+           class_arm_id?, student_ids?[], template_id OR message,subject?}
+   GET  /api/notifications/logs/?status=&channel=
+   CRUD /api/notifications/templates/
+
+Frontend:
+6. pages/admin/Notifications.jsx:
+   - Compose: recipient type selector, template picker or custom message
+   - Variable hint panel showing {student_name} etc.
+   - SMS character counter (160 limit)
+   - Preview card with variables filled from sample student
+   - Send history table with status badges
+7. pages/admin/NotificationTemplates.jsx — CRUD template manager
+
+4.2 — Fee Management & Paystack Integration
+Personal note: Schools charge multiple fee types per term (tuition, development levy, exam fee, PTA levy). Generate PDF receipts on payment. Track debtors per class. Use Paystack's initialize_transaction endpoint to generate a payment URL — verify via webhook.
+
+💳  PROMPT 4.2 — Fee Management + Paystack Payments
+Working in: backend/fees/ and frontend/src/pages/
+
+Backend:
+1. models.py:
+   FeeCategory: school(FK), name(Tuition/Dev Levy/etc.),
+     description, is_compulsory
+   FeeSchedule: school(FK), term(FK), class_level(FK),
+     fee_category(FK), amount, due_date
+     unique_together:(term,class_level,fee_category)
+   FeePayment: school(FK), student(FK), fee_schedule(FK),
+     amount_paid, payment_date, method(cash|paystack|bank_transfer),
+     paystack_reference(nullable), paystack_status,
+     receipt_number(auto: REC-YYYY-XXXX),
+     recorded_by(FK admin)
+
+2. services/paystack.py — PaystackService:
+   initialize(email, amount_kobo, reference, callback_url)
+   verify(reference) → confirm & return payment data
+   Use PAYSTACK_SECRET_KEY from env
+
+3. views.py:
+   GET  /api/fees/schedule/?term=&class_level=
+   POST /api/fees/schedule/  — bulk create for a term
+   GET  /api/fees/student/{id}/?term= — outstanding + paid fees
+   POST /api/fees/pay/initiate/
+     body:{student_id, fee_schedule_ids:[]}
+     Returns Paystack payment URL
+   GET  /api/fees/pay/verify/?reference= — Paystack callback
+   POST /api/fees/pay/manual/ — Admin records cash payment
+   GET  /api/fees/receipts/{payment_id}/ → PDF receipt
+   GET  /api/fees/outstanding/?term=&class_arm=
+
+Frontend:
+4. pages/admin/FeeSetup.jsx — term+class fee config grid
+5. pages/admin/FeeCollection.jsx:
+   - Class selector → student payment status table
+   - Green=paid, Amber=partial, Red=unpaid
+   - Manual payment recording form
+   - CSV debtors export
+6. pages/student/Fees.jsx and pages/parent/Fees.jsx:
+   - Fees due this term with amounts
+   - 'Pay Online' → Paystack redirect
+   - Payment history with receipt PDF download
+
+4.3 — Parent Portal (Mobile-First PWA)
+Personal note: Nigerian parents are almost entirely on phones. Design the parent portal mobile-first with large touch targets, card-based layout, and minimal navigation. One parent account can link to multiple children. Support OTP login via Termii for parents who don't remember passwords.
+
+👨‍👩‍👧  PROMPT 4.3 — Parent Portal + PWA Setup
+Working in: backend/accounts/ (extend) and frontend/src/pages/parent/
+
+Backend:
+1. models.py — add to accounts/:
+   ParentStudentLink: parent(FK CustomUser), student(FK StudentProfile),
+     relationship(father|mother|guardian), school(FK)
+
+2. views.py:
+   POST /api/auth/parent/otp-request/ — sends OTP via Termii
+   POST /api/auth/parent/otp-verify/ — returns JWT on success
+   GET  /api/parent/children/ — list of linked students
+   GET  /api/parent/dashboard/{student_id}/
+     One call returns: result_summary, attendance_summary,
+     fee_status, timetable_today, recent_notifications
+
+Frontend — Mobile-first layout (max-width: 480px primary):
+3. pages/parent/ParentDashboard.jsx:
+   a) Ward selector: swipeable student cards at top
+   b) Result card: term average, position, grade badge, 'View Full'
+   c) Attendance card: % + last 7 days dot calendar + warning if <75%
+   d) Fee card: outstanding balance + 'Pay Now' button
+   e) Today's timetable: current/next period highlight
+   f) Notification bell + recent message list
+
+4. pages/parent/ParentLogin.jsx:
+   - Phone number entry → OTP input → login
+   - Or email/password toggle
+
+PWA:
+5. public/manifest.json:
+   name, short_name, theme_color (from school config),
+   icons, display: standalone, start_url: /parent/dashboard
+6. src/serviceWorker.js:
+   Cache last-viewed result data for offline access
+   'Add to Home Screen' prompt after 2nd visit
+7. ParentDashboard.css — mobile-first card layout
+
+ 
+PHASE 5  — Intelligence & Analytics
+
+5.1 — Analytics Dashboards
+Personal note: Pre-compute analytics nightly with Celery — never run heavy aggregation queries live. Cache results in Redis. Use Recharts in React for all charts. Keep the admin dashboard to 4 meaningful KPI cards + 3 charts maximum.
+
+📈  PROMPT 5.1 — Analytics Dashboards (Pre-computed + Recharts)
+Working in: backend/analytics/ and frontend/src/pages/
+
+Backend:
+1. models.py:
+   AnalyticsSnapshot: school(FK), term(FK), computed_at,
+     data(JSONField) — stores all metrics
+
+2. tasks.py (Celery):
+   @shared_task compute_school_analytics(school_id, term_id):
+   Computes and stores in AnalyticsSnapshot.data:
+     - total_students, total_teachers, total_subjects
+     - overall_pass_rate (average>=50), school_average
+     - subject_averages: [{subject, avg, pass_rate}] sorted asc
+     - class_averages: [{class_arm, avg}]
+     - grade_distribution: {A1:n, B2:n, ... F9:n}
+     - attendance_school_avg
+     - fee_collection_rate (paid / expected * 100)
+     - top_students: [{name, class, average, position}] top 10
+   Schedule: django-celery-beat, run nightly at 11pm
+
+3. views.py:
+   GET /api/analytics/overview/?term= — returns cached snapshot
+   GET /api/analytics/class/{class_arm_id}/?term=
+   GET /api/analytics/student/{student_id}/trends/ — multi-term
+   POST /api/analytics/refresh/?term= — manual recompute (Admin only)
+
+Frontend:
+4. pages/admin/Dashboard.jsx:
+   Row 1: 4 KPI cards (Total Students, School Average, Pass Rate, Fee Collection%)
+   Row 2: BarChart (subject performance) + PieChart (grade distribution)
+   Row 3: LineChart (school avg last 4 terms) + BarChart (class comparison)
+   Row 4: Top 5 students leaderboard + Low attendance alert panel
+   All charts use Recharts with school primary color
+5. pages/teacher/TeacherDashboard.jsx:
+   - My classes avg + score distribution histogram
+   - Students needing attention (<40 in my subject)
+6. Dashboard.css — responsive grid, KPI card styles
+
+5.2 — Student Promotion Engine
+Personal note: The promotion engine evaluates each student against configurable school criteria (min subjects passed, min average, min attendance) and generates a recommendation. Admin reviews and approves in bulk — SS3 graduates are handled separately.
+
+⬆️  PROMPT 5.2 — Promotion Engine (End-of-Session Workflow)
+Working in: backend/promotion/ and frontend/src/pages/admin/
+
+Backend:
+1. models.py:
+   PromotionCriteria: school(FK), class_level(FK),
+     min_subjects_to_pass, min_average_score, min_attendance_pct,
+     auto_promote_if_met(Bool)
+   PromotionRecord: student(FK), from_session(FK), to_session(FK),
+     from_class(FK), to_class(FK nullable),
+     decision(promoted|repeated|graduated|withdrawn),
+     criteria_met(Bool), decided_by(FK), notes, decided_at
+
+2. services.py — evaluate_student(student, session, criteria):
+   - Count subjects where avg across 3 terms >= 50
+   - Compute session average (mean of 3 terms)
+   - Compute attendance % for session
+   - Check against criteria → return evaluation dict
+
+3. views.py:
+   POST /api/promotion/evaluate/?session=&class_level=
+     Returns list of {student, criteria_met, subjects_passed,
+     session_avg, attendance_pct, recommended_decision}
+   POST /api/promotion/execute/
+     body:[{student_id, decision, to_class_id?, notes}]
+     Bulk-executes: updates StudentProfile.current_class
+     SS3 graduates: status='graduated'
+     Sends SMS to parents via Termii after completion
+
+Frontend:
+4. pages/admin/Promotion.jsx:
+   - Session selector → class-by-class tabs
+   - Table: name | avg | subjects passed | attendance | criteria | recommended
+   - Override dropdown per student (Admin final say)
+   - Bulk 'Apply All Recommendations' button
+   - Preview modal: 'X promoted, Y repeat, Z graduate' before execute
+   - Confirmation prompt before execute
+
+5.3 — Performance Trend Reports
+📉  PROMPT 5.3 — Multi-Term Trends & Cumulative Transcript PDF
+Working in: backend/analytics/ (extend) and frontend/src/pages/
+
+Backend:
+1. views.py — add:
+   GET /api/trends/student/{student_id}/?terms=4
+     Returns per term: {term_name, average, position, subjects[],
+     attendance_pct, fees_paid}
+   GET /api/trends/class/{class_arm_id}/?sessions=3
+     Returns: term-by-term avg, top student, most_improved student
+
+2. pdf_templates/cumulative_transcript.html — WeasyPrint:
+   - Header: school + student info
+   - Multi-term table: term | [subjects+grades] | average | position
+   - Trend arrows (↑↓→) comparing to previous term
+   - Attendance record per term
+   - Promotion history section
+   GET /api/reports/transcript/{student_id}/ → PDF
+
+Frontend:
+3. pages/student/MyPerformance.jsx:
+   - Line chart: score per term per subject (Recharts, multi-line)
+   - Radar chart: subject-by-subject for current term
+   - Best subject badge, most improved subject badge
+
+4. pages/admin/StudentReportCard.jsx (Admin student profile view):
+   - Full trend analysis for any student
+   - 'Download Cumulative Transcript' PDF button
+   - 'Students at Risk' panel: consistently below 45 avg
+   - 'Academic Excellence' panel: consistently above 70
+
+ 
+PHASE 6  — Containerization & Deployment — Docker → Railway + Vercel
+
+Phase 6 is hands-on terminal and config work. Each prompt generates a specific file. Paste the prompt, get the file content, create the file in your project, then move to the next prompt in order.
+
+6.1 — Dockerfile: Django Backend
+Create this file at: backend/Dockerfile
+
+🐳  PROMPT 6.1 — Generate backend/Dockerfile for Django + WeasyPrint
+Generate a production-ready Dockerfile for the Django backend.
+File location: backend/Dockerfile
+
+Requirements:
+  - Base image: python:3.11-slim
+  - Install system packages for WeasyPrint PDF generation:
+      libpango-1.0-0 libpangoft2-1.0-0 libpangocairo-1.0-0
+      libgdk-pixbuf2.0-0 libffi-dev libcairo2 libxml2 libxslt1.1
+  - Install packages for psycopg2:
+      libpq-dev gcc
+  - Set PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+  - WORKDIR /app
+  - Copy requirements.txt and pip install first (Docker layer cache)
+  - Copy project files
+  - Collect static files: python manage.py collectstatic --noinput
+  - Use gunicorn as the WSGI server:
+      CMD ["gunicorn", "config.wsgi:application",
+           "--bind", "0.0.0.0:8000",
+           "--workers", "2", "--timeout", "120"]
+  - EXPOSE 8000
+  - Add a non-root user 'appuser' and switch to it (security)
+  - Add HEALTHCHECK: curl --fail http://localhost:8000/health/ || exit 1
+
+Also generate: backend/.dockerignore
+  Exclude: __pycache__ *.pyc .env venv/ *.sqlite3
+           media/ staticfiles/ .git/ tests/
+
+6.2 — Dockerfile: React Frontend (Multi-Stage + Nginx)
+Create this file at: frontend/Dockerfile
+
+🐳  PROMPT 6.2 — Generate frontend/Dockerfile (Multi-Stage React Build)
+Generate a multi-stage Dockerfile for the React frontend.
+File location: frontend/Dockerfile
+
+Stage 1 — Build:
+  FROM node:18-alpine AS builder
+  WORKDIR /app
+  Copy package.json + package-lock.json first (layer cache)
+  RUN npm ci --only=production=false
+  Copy all source files
+  ARG REACT_APP_API_URL (build-time env var for API base URL)
+  RUN npm run build
+
+Stage 2 — Serve:
+  FROM nginx:alpine
+  Copy built files from builder stage: /app/build → /usr/share/nginx/html
+  Copy custom nginx.conf (generate this too):
+    - server block on port 80
+    - try_files for React Router (fallback to index.html)
+    - gzip compression for js/css/html
+    - cache headers: 1 year for /static/, no-cache for index.html
+    - proxy /api/ requests to backend service (for docker-compose)
+  EXPOSE 80
+  HEALTHCHECK: wget -q --spider http://localhost/ || exit 1
+
+Also generate: frontend/.dockerignore
+  Exclude: node_modules/ build/ .env .git/
+
+6.3 — docker-compose.yml for Local Full-Stack Development
+Create this file at: docker-compose.yml (project root)
+
+🐳  PROMPT 6.3 — Generate docker-compose.yml (Local Dev Stack)
+Generate a docker-compose.yml at the project root for local development.
+
+Services:
+
+1. db (PostgreSQL):
+   image: postgres:15-alpine
+   environment: POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD from .env
+   volumes: postgres_data:/var/lib/postgresql/data
+   healthcheck: pg_isready
+   ports: 5432:5432
+
+2. redis:
+   image: redis:7-alpine
+   ports: 6379:6379
+   healthcheck: redis-cli ping
+
+3. backend:
+   build: ./backend
+   command: >
+     sh -c 'python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000'
+   volumes: ./backend:/app (for hot reload in dev)
+   env_file: ./backend/.env
+   environment:
+     DB_HOST: db
+     REDIS_URL: redis://redis:6379/0
+   ports: 8000:8000
+   depends_on: db(healthy), redis(healthy)
+
+4. celery:
+   build: ./backend
+   command: celery -A config worker --loglevel=info
+   volumes: ./backend:/app
+   env_file: ./backend/.env
+   environment: DB_HOST:db, REDIS_URL:redis://redis:6379/0
+   depends_on: db, redis, backend
+
+5. frontend:
+   build:
+     context: ./frontend
+     args: REACT_APP_API_URL=http://localhost:8000
+   ports: 3000:80
+   depends_on: backend
+
+volumes: postgres_data
+
+Also generate: docker-compose.override.yml for dev overrides
+  (backend command becomes runserver, volumes mounted for hot reload)
+
+Include a Makefile target:
+  docker-dev: docker-compose up --build
+  docker-down: docker-compose down -v
+
+6.4 — Railway Deployment: Django Backend
+Railway is the recommended backend host. It supports Docker deploys natively, has a managed PostgreSQL add-on, and supports environment variables per service. Free tier is enough for a pilot school.
+
+🚂  PROMPT 6.4 — Railway Backend Deployment Config & Production Settings
+Generate all Railway deployment config and production Django settings.
+
+1. backend/config/settings/production.py (extends base.py):
+   - Read all secrets from environment using os.environ.get()
+   - SECRET_KEY from env
+   - DEBUG = False
+   - ALLOWED_HOSTS: parse from ALLOWED_HOSTS env var
+     Must include: *.up.railway.app AND *.yourplatform.com
+   - DATABASES: parse DATABASE_URL using dj-database-url
+   - CORS_ALLOWED_ORIGIN_REGEXES:
+       r'^https://.*\.vercel\.app$'
+       r'^https://.*\.yourplatform\.com$'
+   - STATIC_ROOT = BASE_DIR / 'staticfiles'
+   - STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+   - Add whitenoise to MIDDLEWARE (after SecurityMiddleware)
+   - SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+   - SESSION_COOKIE_SECURE = True, CSRF_COOKIE_SECURE = True
+
+2. backend/railway.json (Railway config):
+   {
+     'build': { 'builder': 'DOCKERFILE', 'dockerfilePath': 'Dockerfile' },
+     'deploy': {
+       'startCommand': 'gunicorn config.wsgi:application --bind 0.0.0.0:$PORT',
+       'healthcheckPath': '/health/',
+       'restartPolicyType': 'ON_FAILURE'
+     }
+   }
+
+3. backend/Procfile (Railway fallback):
+   release: python manage.py migrate
+   web: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2
+
+4. GET /health/ endpoint (add to config/urls.py):
+   Returns: {status:'ok', version:'1.0'} — used by Railway healthcheck
+
+5. Step-by-step Railway deploy instructions as code comments:
+   # 1. Create account at railway.app
+   # 2. New Project → Deploy from GitHub repo → select school-portal
+   # 3. Add service: PostgreSQL (Railway add-on)
+   # 4. In backend service → Settings → Root Directory: /backend
+   # 5. Variables tab → add all .env vars + DATABASE_URL (auto from PG add-on)
+   # 6. Add custom domain: api.yourplatform.com → DNS CNAME to railway
+   # 7. Deploy → check logs
+
+6.5 — Vercel Deployment: React Frontend
+Vercel deploys React apps from GitHub in seconds. Each school gets its own Vercel project pointing to the same GitHub repo but with a different REACT_APP_API_URL environment variable — that's all you need to customize per school.
+
+▲  PROMPT 6.5 — Vercel Frontend Deployment Config
+Generate all Vercel deployment config for the React frontend.
+
+1. frontend/vercel.json:
+   {
+     'buildCommand': 'npm run build',
+     'outputDirectory': 'build',
+     'installCommand': 'npm ci',
+     'framework': 'create-react-app',
+     'rewrites': [
+       { 'source': '/(.*)', 'destination': '/index.html' }
+     ],
+     'headers': [
+       {
+         'source': '/static/(.*)',
+         'headers': [{ 'key': 'Cache-Control', 'value': 'max-age=31536000' }]
+       }
+     ]
+   }
+
+2. frontend/.env.example (document required env vars):
+   REACT_APP_API_URL=https://api.yourplatform.com
+   REACT_APP_PAYSTACK_PUBLIC_KEY=pk_live_xxxx
+
+3. Step-by-step Vercel deploy instructions as code comments:
+   # 1. vercel.com → New Project → Import GitHub repo
+   # 2. Root Directory: frontend
+   # 3. Framework: Create React App
+   # 4. Environment Variables:
+   #    REACT_APP_API_URL = https://api.yourplatform.com
+   #    REACT_APP_PAYSTACK_PUBLIC_KEY = pk_live_...
+   # 5. Deploy
+   # 6. Settings → Domains → Add custom domain: app.schoolname.com
+
+4. Multi-school Vercel strategy (document as README section):
+   One Vercel project per school OR one project + env per deployment
+   Option A (recommended): Duplicate Vercel project per school
+     - Same GitHub repo, different env vars per project
+     - school_a.vercel.app + school_b.vercel.app
+     - REACT_APP_SCHOOL_SUBDOMAIN tells ThemeProvider which school to load
+   Option B: Wildcard subdomain (requires Vercel Pro)
+     - *.yourplatform.com all point to one Vercel deployment
+     - ThemeProvider reads window.location.hostname to detect school
+
+5. Update ThemeContext.js to read school slug from env var as fallback:
+   const subdomain = window.location.hostname.split('.')[0]
+     || process.env.REACT_APP_SCHOOL_SUBDOMAIN
+
+6.6 — CI/CD: GitHub Actions Pipeline
+Personal note: The GitHub Actions workflow runs on every push to main. It tests the Django backend, builds the Docker image, pushes it to GitHub Container Registry (GHCR), and then triggers a Railway redeploy via webhook. The frontend redeploys automatically via Vercel's GitHub integration.
+
+⚙️  PROMPT 6.6 — GitHub Actions CI/CD Pipeline
+Generate .github/workflows/deploy.yml
+
+Trigger: push to main branch
+
+Jobs:
+
+Job 1 — test (runs first):
+  runs-on: ubuntu-latest
+  services:
+    postgres: image postgres:15, env POSTGRES_* vars, health check
+  steps:
+    1. Checkout code
+    2. Set up Python 3.11
+    3. pip install -r backend/requirements.txt
+    4. Copy backend/.env.example → backend/.env (test values)
+    5. Run: cd backend && python manage.py migrate
+    6. Run: cd backend && python manage.py test --verbosity=2
+
+Job 2 — build-and-push (needs: test):
+  runs-on: ubuntu-latest
+  steps:
+    1. Checkout
+    2. Log in to GitHub Container Registry (GHCR):
+       registry: ghcr.io
+       username: ${{ github.actor }}
+       password: ${{ secrets.GITHUB_TOKEN }}
+    3. Build Docker image:
+       docker build -t ghcr.io/${{ github.repository }}/backend:latest ./backend
+    4. Push image to GHCR
+
+Job 3 — deploy-railway (needs: build-and-push):
+  steps:
+    1. Trigger Railway redeploy via webhook:
+       curl -X POST ${{ secrets.RAILWAY_DEPLOY_WEBHOOK_URL }}
+    2. Wait 30s then hit /health/ endpoint to verify deploy succeeded
+
+Also generate .github/workflows/pr-check.yml:
+  Trigger: pull_request to main
+  Run only: test job (no deploy)
+  Add Django linting: flake8 backend/ --max-line-length=120
+
+Document: How to add secrets to GitHub repo:
+  # Settings → Secrets → Actions → New repository secret
+  # RAILWAY_DEPLOY_WEBHOOK_URL: from Railway service → Settings → Deploy Hooks
+
+ 
+📎  Appendix — Utility Prompts
+
+A.1 — Production Checklist Prompt
+✅  PROMPT A.1 — Pre-Launch Production Checklist
+Generate a pre-launch checklist for the school portal.
+Cover each category below and give specific steps:
+
+Security:
+  - SECRET_KEY is random and not in Git
+  - DEBUG=False in production
+  - All ALLOWED_HOSTS locked down
+  - CORS only allows known frontend domains
+  - All admin endpoints require IsSchoolAdmin/IsSuperAdmin
+  - Rate limiting on /api/auth/login/ (django-ratelimit)
+  - Scratch card PIN endpoints rate-limited
+
+Database:
+  - All migrations applied: python manage.py showmigrations
+  - Database backups scheduled (Railway auto-backup or pg_dump cron)
+  - No test data in production DB
+
+Multi-tenancy:
+  - Spot-check: create 2 schools, ensure data is isolated
+  - TenantMiddleware returns 404 for unknown subdomains
+
+Performance:
+  - select_related / prefetch_related on all list views
+  - Analytics use cached snapshots, not live queries
+  - Static files served via Whitenoise + CDN headers
+
+Payments:
+  - Paystack webhook signature verification implemented
+  - Test a full payment flow on Paystack test mode first
+
+SMS:
+  - Termii sender ID registered and approved
+  - Test SMS delivery to Nigerian number before launch
+
+Deployment:
+  - Railway health check passes
+  - Vercel deploy successful on all school domains
+  - GitHub Actions all-green on main branch
+
+A.2 — Seed Data Prompt
+🌱  PROMPT A.2 — Generate Management Command: Seed Demo School
+Create a Django management command: python manage.py seed_demo_school
+File: backend/tenants/management/commands/seed_demo_school.py
+
+The command should create:
+
+1. One demo School:
+   name='Greenfield Academy', slug='greenfield',
+   subdomain='greenfield',
+   theme_config={primary:'#1B6B3A', secondary:'#2E8A52', accent:'#F4A823'}
+
+2. One AcademicSession: 2024/2025 (is_current=True)
+   Three Terms: First, Second, Third
+
+3. ClassLevels: JSS1-JSS3, SS1-SS3
+   ClassArms: A and B for each level
+
+4. Subjects: English Language, Mathematics, Basic Science,
+   Civic Education, Agricultural Science, Computer Studies
+   (Assign to appropriate class levels)
+
+5. One SuperAdmin user
+6. One SchoolAdmin user for Greenfield
+7. Three Teacher users with subject assignments
+8. Ten Student users with profiles + class assignments
+9. Two Parent users linked to students
+
+10. GradeScale: seed default Nigerian A1-F9 scale
+
+Print a summary table of everything created.
+Idempotent: skip if school with slug 'greenfield' already exists.
+
+A.3 — Core Test Suite Prompt
+🧪  PROMPT A.3 — Write Critical Test Cases
+Write Django test cases for these critical paths.
+File: backend/tests/ (one file per category)
+
+1. tests/test_tenant_isolation.py:
+   Create School A and School B with students in each
+   Simulate request to School A subdomain with School B student token
+   Assert: returns 403 or empty data — never cross-tenant data
+
+2. tests/test_result_publication.py:
+   Create score entries for a student (is_published=False)
+   GET /api/results/slip/{id}/?term= as student → assert 403
+   POST /api/gradebook/publish/ as teacher
+   GET again as student → assert 200 with score data
+
+3. tests/test_scratch_card.py:
+   POST /api/scratch-cards/generate/ quantity=1
+   POST /api/results/check/ with correct pin → assert result returned
+   POST /api/results/check/ same pin again → assert 403 'already used'
+   POST /api/results/check/ wrong pin → assert 400
+
+4. tests/test_cbt_flow.py:
+   Create exam with 5 questions, assign to class
+   Student starts exam → assert question_order has 5 items
+   Student submits 4 correct, 1 wrong
+   Assert: score = 80%, StudentAnswer.is_correct correct
+   Assert: correct_answer NOT returned in start response
+
+5. tests/test_paystack_webhook.py:
+   Create FeePayment in 'pending' status
+   POST /api/fees/pay/verify/ with mock Paystack payload
+   Assert: FeePayment.status = 'paid'
+   Use unittest.mock to mock paystack_service.verify()
+
+Use DRF APIClient for all requests. Mock Termii and Paystack.
+
