@@ -1,0 +1,316 @@
+# School Portal Memory
+
+This file is the working memory for future edits in `c:\Users\user\school-portal`.
+It reflects the repository as it exists now, not just the original prompt intent.
+
+## Repo Shape
+
+- Root folders:
+  - `backend/` Django + DRF API
+  - `frontend/` Create React App frontend
+  - `prompts` original build-spec document
+  - `smart.py` local utility script
+- Root support files:
+  - `Makefile`
+  - `.gitignore`
+  - this `Memory` file
+
+## Backend Status
+
+- Django project lives under `backend/config/`.
+- Settings are split into:
+  - `backend/config/settings/base.py`
+  - `backend/config/settings/development.py`
+  - `backend/config/settings/production.py`
+- `backend/manage.py`, `backend/config/asgi.py`, and `backend/config/wsgi.py` now default to:
+  - `config.settings.development`
+  - unless `DJANGO_SETTINGS_MODULE` is explicitly set
+
+### Backend Apps With Real Implementation
+
+- `tenants`
+  - `School` model exists
+  - `TenantMiddleware` exists
+  - `TenantMixin` exists in `backend/tenants/mixins.py`
+  - serializers/views/urls are implemented
+- `accounts`
+  - custom user model exists: `accounts.CustomUser`
+  - JWT login/profile/change-password flow exists
+  - role + tenant permission classes exist
+- `academics`
+  - sessions/terms/holidays models, serializers, routes, and viewsets exist
+- `enrollment`
+  - class levels, class arms, subjects, student profiles, staff profiles, subject assignments exist
+  - multiple view modules are used:
+    - `views.py`
+    - `staff_views.py`
+    - `assignment_views.py`
+  - router is assembled in `backend/enrollment/urls.py`
+
+### Backend Apps That Are Mostly Scaffolds
+
+These apps exist structurally, but their current models/views are still boilerplate or near-empty:
+
+- `analytics`
+- `attendance`
+- `cbt`
+- `fees`
+- `gradebook`
+- `notifications`
+- `promotion`
+- `results`
+- `timetable`
+
+Typical scaffold signs:
+
+- `models.py` contains only `from django.db import models`
+- `views.py` contains only `from django.shortcuts import render`
+
+Do not assume these apps are feature-complete just because they are in `INSTALLED_APPS`.
+
+## Backend Routing
+
+Root URL config: `backend/config/urls.py`
+
+Currently included route groups:
+
+- `/superadmin/` Django admin
+- `/health/` health endpoint
+- `/api/auth/` accounts routes
+- `/api/` tenants routes
+- `/api/` academics routes
+- `/api/` enrollment routes
+
+Important implication:
+
+- Many future apps are installed but not yet wired into `config/urls.py`
+- if a feature appears “implemented” in a later app but cannot be reached, check whether its URLs are actually included
+
+## Multi-Tenancy Rules In Code
+
+- `School` is the root tenant model in `backend/tenants/models.py`
+- `TenantMiddleware` sets `request.tenant`
+- `TenantMixin` scopes queryset/create/update behavior
+- Most real multi-tenant API work depends on:
+  - `request.tenant`
+  - school foreign keys on models
+  - role/tenant-aware permissions in `accounts/permissions.py`
+
+Important route behavior:
+
+- `/api/auth/` is exempt from tenant middleware
+- tenant validation for login is handled inside auth logic rather than middleware
+
+## Settings / Runtime Notes
+
+- Local development uses PostgreSQL, configured in `backend/config/settings/development.py`
+- Current dev DB defaults are:
+  - database: `school_portal`
+  - user: `postgres`
+  - password: `postgres`
+  - host: `localhost`
+  - port: `5432`
+- `python manage.py check` currently passes
+- `python manage.py runserver --noreload` starts successfully with the fixed settings entrypoint
+
+Future caution:
+
+- if runserver breaks again with confusing defaults, check `DJANGO_SETTINGS_MODULE` first
+- if server starts but requests fail, check PostgreSQL availability next
+
+## Frontend Status
+
+- Frontend is CRA-based
+- main entry files:
+  - `frontend/src/index.js`
+  - `frontend/src/App.js`
+- providers in active use:
+  - `ThemeProvider`
+  - `AuthProvider`
+  - `ProtectedRoute`
+
+### Frontend Areas With Real Implementation
+
+- authentication flow
+  - `context/AuthContext.js`
+  - `hooks/useAuth.js`
+  - `services/api.js`
+  - `pages/public/Login.jsx`
+  - `pages/public/ChangePassword.jsx`
+- theme system
+  - `context/ThemeContext.js`
+  - `components/common/ThemeProvider.jsx`
+  - `components/common/LoadingScreen.jsx`
+  - `styles/variables.css`
+  - `styles/global.css`
+- admin pages with meaningful implementation:
+  - `pages/admin/CalendarSettings.jsx`
+  - `pages/admin/Staff.jsx`
+  - `pages/admin/StaffForm.jsx`
+  - `pages/admin/StaffProfilePage.jsx`
+  - `pages/admin/SubjectManager.jsx`
+  - `pages/admin/SubjectAssignment.jsx`
+  - `pages/admin/BulkImportPage.jsx`
+  - `components/admin/BulkImport.jsx`
+
+### Frontend Placeholder / Stub Pages
+
+These currently exist mostly to satisfy imports and routing:
+
+- `pages/admin/AdminDashboard.jsx`
+- `pages/admin/Students.jsx`
+- `pages/admin/StudentForm.jsx`
+- `pages/teacher/TeacherDashboard.jsx`
+- `pages/student/StudentDashboard.jsx`
+- `pages/parent/ParentDashboard.jsx`
+
+These are intentionally minimal and should not be treated as finished features.
+
+### Frontend Routing Notes
+
+`frontend/src/App.js` currently exposes:
+
+- public:
+  - `/login`
+  - `/change-password`
+- admin:
+  - `/admin/dashboard`
+  - `/admin/calendar`
+  - `/admin/students`
+  - `/admin/students/new`
+  - `/admin/students/import`
+  - `/admin/students/:id`
+  - `/admin/students/:id/edit`
+  - `/admin/staff`
+  - `/admin/staff/new`
+  - `/admin/staff/import`
+  - `/admin/staff/:id`
+  - `/admin/staff/:id/edit`
+- teacher:
+  - `/teacher/dashboard`
+- student:
+  - `/student/dashboard`
+- parent:
+  - `/parent/dashboard`
+
+Important caveat:
+
+- some routes point to placeholder pages even though the backend already has richer APIs
+
+## Dependency State
+
+### Backend
+
+`backend/requirements.txt` currently includes the core Django/DRF/Postgres/auth stack.
+
+### Frontend
+
+`frontend/package.json` currently includes:
+
+- `axios`
+- `react`
+- `react-dom`
+- `react-router-dom`
+- CRA testing packages
+
+Not currently present, despite the original prompt document mentioning them:
+
+- `recharts`
+- `react-hot-toast`
+- `jspdf`
+- `html2canvas`
+- `moment`
+- `jwt-decode`
+
+Do not assume those packages are available unless they are explicitly installed later.
+
+## Important Drift From The Old Memory
+
+The previous `Memory` file was no longer reliable because it overstated completion in several areas.
+
+Most important corrections:
+
+- `backend/tenants/mixings.py` is no longer the canonical tenant mixin path
+  - use `backend/tenants/mixins.py`
+- several frontend pages previously described as implemented are actually placeholders now
+  - especially `Students.jsx`, `StudentForm.jsx`, and the role dashboards
+- several backend “future apps” are still scaffold-only
+- `frontend/package.json` does not include all libraries referenced by the prompt document
+
+## Known Architectural Hotspots
+
+- `backend/enrollment/urls.py` mutates base classes at runtime:
+  - `StaffViewSet.__bases__ = ...`
+  - `SubjectViewSet.__bases__ = ...`
+- this is unusual and should be handled carefully during refactors
+- if subject/staff assignment behavior gets weird, inspect:
+  - `backend/enrollment/assignment_views.py`
+  - `backend/enrollment/staff_views.py`
+  - `backend/enrollment/urls.py`
+
+- `frontend/src/pages/admin/BulkImport.jsx` is now only a re-export shim
+  - real implementation lives in `frontend/src/components/admin/BulkImport.jsx`
+
+- `ThemeContext` and `AuthContext` both influence app startup behavior
+  - if the frontend appears “stuck on loading”, inspect those before route components
+
+## Safe Starting Points For Future Changes
+
+When editing future features, start from these files:
+
+- auth problems:
+  - `backend/accounts/views.py`
+  - `backend/accounts/serializers.py`
+  - `frontend/src/context/AuthContext.js`
+  - `frontend/src/services/api.js`
+
+- tenant / school branding problems:
+  - `backend/tenants/middleware.py`
+  - `backend/tenants/views.py`
+  - `frontend/src/context/ThemeContext.js`
+
+- student data problems:
+  - `backend/enrollment/models.py`
+  - `backend/enrollment/serializers.py`
+  - `backend/enrollment/views.py`
+  - `frontend/src/pages/admin/Students.jsx`
+  - `frontend/src/pages/admin/StudentForm.jsx`
+  - `frontend/src/pages/admin/StudentProfile.jsx`
+
+- staff + subject assignment problems:
+  - `backend/enrollment/staff_views.py`
+  - `backend/enrollment/assignment_views.py`
+  - `frontend/src/pages/admin/Staff.jsx`
+  - `frontend/src/pages/admin/StaffForm.jsx`
+  - `frontend/src/pages/admin/SubjectManager.jsx`
+  - `frontend/src/pages/admin/SubjectAssignment.jsx`
+
+- startup / runserver issues:
+  - `backend/manage.py`
+  - `backend/config/settings/development.py`
+  - `backend/config/settings/base.py`
+  - `backend/config/wsgi.py`
+  - `backend/config/asgi.py`
+
+## Practical Rules For Future Work
+
+- Trust the repository more than the `prompts` document.
+- Treat prompt text as design intent, not current truth.
+- Before building a new page, check whether the backend API already exists.
+- Before assuming a frontend page is usable, open it and confirm it is not a placeholder.
+- Before adding a dependency, verify whether it is already in `package.json` or `requirements.txt`.
+- If a route 404s, check both:
+  - app-level `urls.py`
+  - inclusion in `backend/config/urls.py`
+- If a tenant-scoped endpoint leaks or misses data, inspect `TenantMixin` and the model’s `school` FK first.
+
+## Current Best Summary
+
+This repo is in a hybrid state:
+
+- backend foundation for tenancy/auth/academics/enrollment is fairly real
+- frontend auth/theme/staff/calendar flows are partly real
+- several frontend student/dashboard pages are still placeholders
+- several backend future apps are still scaffolds
+
+For future edits, assume selective completeness rather than whole-project completeness.

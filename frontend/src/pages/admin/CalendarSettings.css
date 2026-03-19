@@ -1,0 +1,569 @@
+/* pages/admin/CalendarSettings.css */
+
+/* ── Root ─────────────────────────────────────────────────────────────────── */
+
+.cs-root {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+  font-family: var(--font-main);
+  position: relative;
+}
+
+/* ── Loading ──────────────────────────────────────────────────────────────── */
+
+.cs-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 240px;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.cs-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  animation: cs-spin 0.7s linear infinite;
+}
+
+@keyframes cs-spin { to { transform: rotate(360deg); } }
+
+/* ── Toast ────────────────────────────────────────────────────────────────── */
+
+.cs-toast {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  z-index: var(--z-toast);
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  animation: cs-toast-in 0.3s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+.cs-toast--success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border: 1px solid color-mix(in srgb, var(--color-success) 25%, transparent);
+}
+
+.cs-toast--error {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 25%, transparent);
+}
+
+@keyframes cs-toast-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* ── Page header ──────────────────────────────────────────────────────────── */
+
+.cs-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.cs-page-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--color-text);
+  margin: 0 0 var(--space-1);
+  letter-spacing: -0.03em;
+}
+
+.cs-page-sub {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* ── Status banner ────────────────────────────────────────────────────────── */
+
+.cs-status-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.cs-status-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.cs-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.cs-status-dot--term {
+  background: var(--color-accent);
+}
+
+.cs-status-label {
+  color: var(--color-text-muted);
+}
+
+.cs-status-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--color-border);
+}
+
+/* ── Session card ─────────────────────────────────────────────────────────── */
+
+.cs-sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cs-session-card {
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.cs-session-card--current {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.cs-session-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  cursor: pointer;
+  user-select: none;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.cs-session-header:hover {
+  background: var(--color-surface-2);
+}
+
+.cs-session-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.cs-session-chevron {
+  font-size: 1.2rem;
+  color: var(--color-text-muted);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.cs-session-chevron--open {
+  transform: rotate(90deg);
+}
+
+.cs-session-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0 0 2px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.cs-session-dates {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cs-session-terms-count {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 1px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.cs-session-header-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.cs-session-body {
+  border-top: 1px solid var(--color-border-soft);
+  padding: var(--space-4) var(--space-5);
+  background: color-mix(in srgb, var(--color-surface-2) 50%, transparent);
+}
+
+/* ── Badges ───────────────────────────────────────────────────────────────── */
+
+.cs-badge-current {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border-radius: var(--radius-full);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cs-badge-current--session {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+}
+
+/* ── Timeline ─────────────────────────────────────────────────────────────── */
+
+.cs-timeline-wrap {
+  margin-bottom: var(--space-4);
+}
+
+.cs-timeline-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--color-text-faint);
+  margin-bottom: var(--space-1);
+  padding: 0 2px;
+}
+
+.cs-timeline-bar {
+  position: relative;
+  height: 36px;
+  background: var(--color-border-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.cs-timeline-segment {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  border-radius: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  gap: 6px;
+  transition: filter 0.15s;
+  overflow: hidden;
+  min-width: 40px;
+}
+
+.cs-timeline-segment:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.cs-timeline-segment:last-child  { border-radius: 0 var(--radius) var(--radius) 0; }
+
+.cs-timeline-segment.is-current {
+  outline: 2px solid rgba(255,255,255,0.5);
+  outline-offset: -2px;
+}
+
+.cs-tl-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cs-tl-weeks { opacity: 0.75; font-size: 0.68rem; flex-shrink: 0; }
+
+/* ── Terms list ───────────────────────────────────────────────────────────── */
+
+.cs-terms-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cs-term-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius);
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  transition: border-color 0.15s;
+}
+
+.cs-term-row--current {
+  border-color: var(--color-success);
+  background: var(--color-success-bg);
+}
+
+.cs-term-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.cs-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cs-dot--1 { background: var(--color-primary); }
+.cs-dot--2 { background: var(--color-secondary); }
+.cs-dot--3 { background: var(--color-accent); }
+
+.cs-term-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.cs-term-dates {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  margin-top: 1px;
+}
+
+.cs-term-weeks {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 0 6px;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.cs-term-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.cs-delete-btn {
+  color: var(--color-text-faint) !important;
+}
+.cs-delete-btn:hover {
+  color: var(--color-danger) !important;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+
+.cs-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 4rem 2rem;
+  gap: var(--space-3);
+}
+
+.cs-empty-icon {
+  font-size: 3.5rem;
+  line-height: 1;
+  margin-bottom: var(--space-2);
+}
+
+.cs-empty-state h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.cs-empty-state p {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  max-width: 320px;
+}
+
+.cs-empty-msg {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--space-4) 0;
+}
+
+/* ── Modal ────────────────────────────────────────────────────────────────── */
+
+.cs-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(3px);
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: cs-fade-in 0.2s ease;
+}
+
+@keyframes cs-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.cs-modal {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 500px;
+  box-shadow: var(--shadow-lg);
+  animation: cs-modal-up 0.3s cubic-bezier(0.16,1,0.3,1) both;
+  overflow: hidden;
+}
+
+@keyframes cs-modal-up {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.cs-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.cs-modal-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.cs-modal-close {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+}
+
+.cs-modal-close:hover {
+  color: var(--color-text);
+  background: var(--color-surface-2);
+}
+
+.cs-modal-body {
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+
+/* ── Form ─────────────────────────────────────────────────────────────────── */
+
+.cs-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cs-form-hint {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.cs-form-row { display: flex; flex-direction: column; }
+
+.cs-form-row--2col {
+  flex-direction: row;
+  gap: var(--space-4);
+}
+
+.cs-form-row--2col .cs-form-field {
+  flex: 1;
+}
+
+.cs-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cs-form-field label {
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.cs-optional {
+  font-weight: 400;
+  color: var(--color-text-faint);
+  font-size: 0.75rem;
+}
+
+.cs-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.cs-error-banner {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 25%, transparent);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  font-size: 0.875rem;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+  .cs-root { padding: var(--space-5) var(--space-4); }
+  .cs-page-header { flex-direction: column; }
+  .cs-status-banner { flex-direction: column; gap: var(--space-3); }
+  .cs-status-divider { display: none; }
+  .cs-form-row--2col { flex-direction: column; }
+  .cs-session-header { flex-direction: column; align-items: flex-start; }
+  .cs-session-header-actions { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-modal, .cs-modal-overlay, .cs-toast { animation: none; }
+}

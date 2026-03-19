@@ -1,0 +1,38 @@
+/* pages/admin/StaffForm.css */
+.stf-root { max-width: 900px; margin: 0 auto; padding: var(--space-8) var(--space-6); font-family: var(--font-main); position: relative; }
+.stf-page-header { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-6); }
+.stf-page-title { font-size: 1.5rem; font-weight: 800; color: var(--color-text); letter-spacing: -0.03em; margin: 0; }
+.stf-api-error { background: var(--color-danger-bg); color: var(--color-danger); border: 1px solid color-mix(in srgb, var(--color-danger) 25%, transparent); border-left: 3px solid var(--color-danger); border-radius: var(--radius); padding: var(--space-3) var(--space-4); font-size: 0.875rem; margin-bottom: var(--space-5); }
+.stf-form { display: flex; flex-direction: column; gap: var(--space-6); }
+.stf-section { background: var(--color-surface); border: 1px solid var(--color-border-soft); border-radius: var(--radius-md); padding: var(--space-5) var(--space-6); }
+.stf-section-title { font-size: 0.95rem; font-weight: 700; color: var(--color-text); margin: 0 0 var(--space-1); }
+.stf-section-sub { font-size: 0.8rem; color: var(--color-text-muted); margin: 0 0 var(--space-4); }
+.stf-grid { display: grid; gap: var(--space-4); margin-top: var(--space-4); }
+.stf-grid--3 { grid-template-columns: repeat(3, 1fr); }
+.stf-grid--1 { grid-template-columns: 1fr; }
+.stf-field { display: flex; flex-direction: column; gap: var(--space-2); }
+.stf-field label { font-size: 0.825rem; font-weight: 600; color: var(--color-text); }
+.stf-hint { font-weight: 400; color: var(--color-text-faint); font-size: 0.75rem; }
+
+/* ── Multi-picker ─────────────────────────────────────────────────────── */
+.stf-assignments-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); margin-top: var(--space-4); }
+.stf-picker-heading { font-size: 0.825rem; font-weight: 700; color: var(--color-text); margin: 0 0 var(--space-2); }
+.stf-multi-picker { display: flex; flex-direction: column; gap: var(--space-1); max-height: 280px; overflow-y: auto; border: 1.5px solid var(--color-border); border-radius: var(--radius); padding: var(--space-2); background: var(--color-surface); }
+.stf-picker-item { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); cursor: pointer; transition: background 0.12s; font-size: 0.85rem; color: var(--color-text); user-select: none; }
+.stf-picker-item:hover { background: var(--color-surface-2); }
+.stf-picker-item--on { background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
+.stf-picker-item--on:hover { background: color-mix(in srgb, var(--color-primary) 14%, transparent); }
+.stf-picker-checkbox { width: 15px; height: 15px; accent-color: var(--color-primary); cursor: pointer; flex-shrink: 0; }
+.stf-picker-label { display: flex; align-items: center; gap: var(--space-2); }
+.stf-picker-badge { font-size: 0.7rem; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 1px 5px; font-family: monospace; color: var(--color-text-muted); }
+.stf-picker-empty { font-size: 0.8rem; color: var(--color-text-faint); text-align: center; padding: var(--space-4) 0; margin: 0; }
+
+.stf-form-actions { display: flex; justify-content: flex-end; gap: var(--space-3); }
+.stf-btn-spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff; animation: stf-spin 0.65s linear infinite; display: inline-block; }
+@keyframes stf-spin { to { transform: rotate(360deg); } }
+.stf-loading { display: flex; justify-content: center; padding: 4rem; }
+.stf-spinner { width: 32px; height: 32px; border-radius: 50%; border: 3px solid var(--color-border); border-top-color: var(--color-primary); animation: stf-spin 0.7s linear infinite; }
+.stf-toast { position: fixed; bottom: 2rem; right: 2rem; z-index: var(--z-toast); padding: 0.75rem 1.25rem; border-radius: var(--radius); font-size: 0.875rem; font-weight: 600; box-shadow: var(--shadow-md); background: var(--color-success-bg); color: var(--color-success); border: 1px solid color-mix(in srgb, var(--color-success) 25%, transparent); }
+.stf-toast--error { background: var(--color-danger-bg); color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 25%, transparent); }
+@media (max-width: 700px) { .stf-root { padding: var(--space-5) var(--space-4); } .stf-grid--3 { grid-template-columns: 1fr 1fr; } .stf-assignments-grid { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .stf-grid--3 { grid-template-columns: 1fr; } }

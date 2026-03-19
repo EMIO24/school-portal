@@ -55,7 +55,7 @@ except ImportError as e:
 # -------------------------------------------------------------------------
 # 🔑 PASTE YOUR API KEY BELOW TO SKIP MANUAL ENTRY
 # Example: HARDCODED_API_KEY = "AIzaSy..."
-HARDCODED_API_KEY = "AIzaSyAHRV_DuAd60VeOugeis43z3An1k1saYRY" 
+HARDCODED_API_KEY = "AIzaSyCwWwv-nZY4z6dKWu1h3HwTXvBgNGlopNA" 
 # -------------------------------------------------------------------------
 
 API_KEY_ENV_VAR = "GEMINI_API_KEY"

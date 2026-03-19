@@ -1,0 +1,84 @@
+/* components/common/ThemeProvider.css */
+
+/* ── Branded Error Screen ──────────────────────────────────────────────────── */
+
+.theme-error-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f6fa;
+  padding: 2rem;
+}
+
+.theme-error-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 3rem 2.5rem;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.07),
+    0 10px 30px -5px rgba(0, 0, 0, 0.1);
+}
+
+.theme-error-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  color: #e07b00; /* accent fallback — CSS var not yet guaranteed here */
+  color: var(--color-accent, #e07b00);
+}
+
+.theme-error-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin: 0 0 0.75rem;
+  letter-spacing: -0.02em;
+}
+
+.theme-error-message {
+  font-size: 0.925rem;
+  color: #555;
+  line-height: 1.6;
+  margin: 0 0 1.75rem;
+}
+
+.theme-error-retry {
+  display: inline-block;
+  padding: 0.7rem 2rem;
+  background: var(--color-primary, #1b3a6b);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.15s ease;
+  margin-bottom: 1.25rem;
+}
+
+.theme-error-retry:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.theme-error-retry:active {
+  transform: translateY(0);
+}
+
+.theme-error-support {
+  font-size: 0.8rem;
+  color: #888;
+  margin: 0;
+}
+
+.theme-error-support a {
+  color: var(--color-secondary, #2e5da8);
+  text-decoration: none;
+}
+
+.theme-error-support a:hover {
+  text-decoration: underline;
+}

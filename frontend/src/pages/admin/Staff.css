@@ -1,0 +1,30 @@
+/* pages/admin/Staff.css */
+.staff-root { max-width: 1100px; margin: 0 auto; padding: var(--space-8) var(--space-6); font-family: var(--font-main); }
+.staff-page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--space-6); gap: var(--space-4); flex-wrap: wrap; }
+.staff-page-title { font-size: 1.5rem; font-weight: 800; color: var(--color-text); margin: 0 0 var(--space-1); letter-spacing: -0.03em; }
+.staff-page-sub { font-size: 0.85rem; color: var(--color-text-muted); margin: 0; }
+.staff-header-actions { display: flex; gap: var(--space-3); }
+.staff-filters { display: flex; gap: var(--space-3); margin-bottom: var(--space-5); flex-wrap: wrap; align-items: center; }
+.staff-search-wrap { position: relative; flex: 1; min-width: 220px; }
+.staff-search-icon { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); font-size: 0.85rem; pointer-events: none; }
+.staff-search { width: 100%; padding: 0.6rem 0.875rem 0.6rem 2.25rem; font-family: var(--font-main); font-size: 0.875rem; border: 1.5px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); color: var(--color-text); outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
+.staff-search:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent); }
+.staff-filter-select { min-width: 130px; padding: 0.6rem 2rem 0.6rem 0.875rem; font-family: var(--font-main); font-size: 0.875rem; border: 1.5px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236B7280' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.75rem center; outline: none; color: var(--color-text); }
+.staff-name-cell { display: flex; align-items: center; gap: var(--space-3); }
+.staff-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.staff-avatar--initials { display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--color-secondary) 15%, transparent); color: var(--color-secondary); font-size: 0.75rem; font-weight: 700; border-radius: 50%; }
+.staff-name { font-weight: 600; font-size: 0.875rem; color: var(--color-text); }
+.staff-email { font-size: 0.75rem; color: var(--color-text-muted); }
+.staff-id-badge { font-size: 0.78rem; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 2px 6px; font-family: "Courier New", monospace; }
+.staff-row-actions { display: flex; gap: var(--space-2); }
+.staff-loading { display: flex; justify-content: center; padding: 4rem; }
+.staff-spinner { width: 32px; height: 32px; border-radius: 50%; border: 3px solid var(--color-border); border-top-color: var(--color-primary); animation: staff-spin 0.7s linear infinite; }
+@keyframes staff-spin { to { transform: rotate(360deg); } }
+.staff-error { background: var(--color-danger-bg); color: var(--color-danger); border: 1px solid color-mix(in srgb, var(--color-danger) 25%, transparent); border-radius: var(--radius); padding: var(--space-4); font-size: 0.875rem; }
+.staff-empty { display: flex; flex-direction: column; align-items: center; padding: 4rem 2rem; gap: var(--space-3); text-align: center; }
+.staff-empty-icon { font-size: 3rem; }
+.staff-empty h3 { margin: 0; font-size: 1.1rem; color: var(--color-text); }
+.staff-empty p { margin: 0; font-size: 0.875rem; color: var(--color-text-muted); }
+.staff-pagination { display: flex; align-items: center; justify-content: center; gap: var(--space-4); margin-top: var(--space-5); }
+.staff-page-info { font-size: 0.875rem; color: var(--color-text-muted); }
+@media (max-width: 640px) { .staff-root { padding: var(--space-5) var(--space-4); } .staff-filters { flex-direction: column; } .staff-page-header { flex-direction: column; } }
