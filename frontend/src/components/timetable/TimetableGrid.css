@@ -1,0 +1,577 @@
+/*
+  TimetableGrid.css
+  ─────────────────────────────────────────────────────────────────────────────
+  Design direction: "Academic Ledger" — the look of a well-kept register book.
+  Sharp ink-on-paper contrast, warm off-white backgrounds, inky header band,
+  handsome serif numerals from the Google Font "Libre Baskerville", status
+  indicators in vivid accent greens. Feels institutional but alive.
+
+  Color palette:
+    --ink       #13120e   deep ink black
+    --paper     #faf8f4   warm off-white paper
+    --rule      #e3dfd7   ruled-line colour
+    --cream     #f3efe7   slightly darker cream
+    --accent    #1a7a4a   rich forest green (primary accent)
+    --amber     #c97a1a   warm amber (warnings)
+    --crimson   #b92b2b   error / conflict
+
+  Subject category palette: bold, saturated chips.
+  ─────────────────────────────────────────────────────────────────────────────
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap');
+
+/* ── Root tokens ─────────────────────────────────────────────────────────── */
+:root {
+  --ink:           #13120e;
+  --ink-muted:     #5a5750;
+  --paper:         #faf8f4;
+  --paper-hover:   #f0ece3;
+  --cream:         #f0ece4;
+  --rule:          #dedad2;
+  --shadow-soft:   0 2px 8px rgba(19,18,14,.07), 0 8px 32px rgba(19,18,14,.05);
+  --shadow-float:  0 12px 40px rgba(19,18,14,.18);
+
+  --accent:        #1a7a4a;
+  --accent-light:  #e8f5ee;
+  --accent-ring:   0 0 0 3px rgba(26,122,74,.25);
+  --amber:         #c97a1a;
+  --amber-light:   #fef4e3;
+  --crimson:       #b92b2b;
+  --crimson-light: #fdf0f0;
+
+  /* Grid geometry */
+  --period-col:    130px;
+  --cell-min-h:    76px;
+  --radius-card:   8px;
+  --radius-outer:  12px;
+
+  /* Fonts */
+  --font-body:     'Sora', system-ui, sans-serif;
+  --font-serif:    'Libre Baskerville', Georgia, serif;
+  --font-mono:     'DM Mono', monospace;
+
+  /* Subject category chips */
+  --cat-sciences-bg:   #d1fae5; --cat-sciences-fg:   #065f46;
+  --cat-arts-bg:       #fef3c7; --cat-arts-fg:       #78350f;
+  --cat-languages-bg:  #dbeafe; --cat-languages-fg:  #1e3a8a;
+  --cat-social-bg:     #fce7f3; --cat-social-fg:     #831843;
+  --cat-tech-bg:       #ede9fe; --cat-tech-fg:       #3730a3;
+  --cat-pe-bg:         #ffedd5; --cat-pe-fg:         #9a3412;
+  --cat-math-bg:       #cffafe; --cat-math-fg:       #164e63;
+  --cat-default-bg:    #f1f5f9; --cat-default-fg:    #334155;
+}
+
+/* ── Page wrapper ────────────────────────────────────────────────────────── */
+.tt-page {
+  font-family: var(--font-body);
+  background:  var(--paper);
+  min-height:  100vh;
+  padding:     32px 28px 60px;
+  color:       var(--ink);
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.tt-toolbar {
+  display:       flex;
+  align-items:   center;
+  flex-wrap:     wrap;
+  gap:           16px;
+  margin-bottom: 28px;
+}
+
+.tt-toolbar__title {
+  font-family:   var(--font-serif);
+  font-size:     1.65rem;
+  font-weight:   700;
+  color:         var(--ink);
+  letter-spacing: -.01em;
+  margin:        0;
+  flex:          1 1 auto;
+  line-height:   1.15;
+}
+
+.tt-toolbar__title small {
+  display:    block;
+  font-family: var(--font-body);
+  font-size:  .72rem;
+  font-weight: 500;
+  color:      var(--ink-muted);
+  margin-top: 2px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.tt-selector-group {
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+}
+
+.tt-selector-group label {
+  font-size:     .72rem;
+  font-weight:   600;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color:         var(--ink-muted);
+  white-space:   nowrap;
+}
+
+.tt-select {
+  padding:       8px 14px 8px 10px;
+  border:        1.5px solid var(--rule);
+  border-radius: 6px;
+  background:    #fff;
+  font-family:   var(--font-body);
+  font-size:     .88rem;
+  color:         var(--ink);
+  cursor:        pointer;
+  outline:       none;
+  appearance:    none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23777' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+  transition:    border-color .15s, box-shadow .15s;
+}
+.tt-select:focus {
+  border-color: var(--accent);
+  box-shadow:   var(--accent-ring);
+}
+
+/* ── Grid container ──────────────────────────────────────────────────────── */
+.tt-grid-wrap {
+  background:    #fff;
+  border:        1.5px solid var(--rule);
+  border-radius: var(--radius-outer);
+  box-shadow:    var(--shadow-soft);
+  overflow:      auto;
+  position:      relative;
+}
+
+/* CSS grid: period column + 5 day columns */
+.tt-grid {
+  display:               grid;
+  grid-template-columns: var(--period-col) repeat(5, 1fr);
+  min-width:             680px;
+}
+
+/* ── Header row ──────────────────────────────────────────────────────────── */
+.tt-day-header {
+  background:    var(--ink);
+  color:         #faf8f4;
+  padding:       13px 16px;
+  font-size:     .75rem;
+  font-weight:   600;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  display:       flex;
+  flex-direction: column;
+  align-items:   center;
+  justify-content: center;
+  gap:           2px;
+  position:      sticky;
+  top:           0;
+  z-index:       10;
+}
+
+.tt-day-header:first-child {
+  align-items: flex-start;
+  border-radius: calc(var(--radius-outer) - 1px) 0 0 0;
+}
+.tt-day-header:last-child {
+  border-radius: 0 calc(var(--radius-outer) - 1px) 0 0;
+}
+
+/* TODAY column highlight in header */
+.tt-day-header.is-today {
+  background:    var(--accent);
+}
+.tt-day-header.is-today::after {
+  content:       '• TODAY';
+  font-size:     .6rem;
+  opacity:       .7;
+  letter-spacing: .12em;
+}
+
+.tt-day-header .day-abbr {
+  font-size: .65rem;
+  opacity:   .5;
+}
+
+/* ── Period label cells ──────────────────────────────────────────────────── */
+.tt-period-label {
+  background:    var(--cream);
+  border-right:  1.5px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  padding:       10px 14px;
+  display:       flex;
+  flex-direction: column;
+  justify-content: center;
+  gap:           3px;
+}
+
+.tt-period-label .p-name {
+  font-size:   .82rem;
+  font-weight: 600;
+  color:       var(--ink);
+}
+
+.tt-period-label .p-time {
+  font-family: var(--font-mono);
+  font-size:   .68rem;
+  color:       var(--ink-muted);
+}
+
+.tt-period-label.is-break {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--cream) 0px, var(--cream) 6px,
+    var(--rule)  6px, var(--rule)  7px
+  );
+}
+.tt-period-label.is-break .p-name {
+  color:      var(--ink-muted);
+  font-style: italic;
+  font-size:  .75rem;
+}
+
+/* ── Lesson cells ────────────────────────────────────────────────────────── */
+.tt-cell {
+  border-right:  1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  min-height:    var(--cell-min-h);
+  padding:       5px;
+  position:      relative;
+  transition:    background .12s;
+}
+
+/* Last row — no bottom border bleed */
+.tt-cell:last-of-type { border-bottom: none; }
+
+/* TODAY column */
+.tt-cell.is-today-col {
+  background: linear-gradient(180deg, rgba(26,122,74,.04) 0%, transparent 100%);
+}
+
+/* BREAK row */
+.tt-cell.is-break {
+  background:     var(--cream);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0px, transparent 8px,
+    rgba(0,0,0,.025) 8px, rgba(0,0,0,.025) 9px
+  );
+  pointer-events: none;
+}
+
+/* EMPTY interactive cell */
+.tt-cell.is-empty:not(.is-break) {
+  cursor: pointer;
+}
+.tt-cell.is-empty:not(.is-break):hover {
+  background: var(--accent-light);
+}
+.tt-cell.is-empty:not(.is-break):hover .tt-add-hint {
+  opacity: 1;
+}
+.tt-add-hint {
+  opacity:    0;
+  transition: opacity .15s;
+  position:   absolute;
+  inset:      0;
+  display:    flex;
+  align-items: center;
+  justify-content: center;
+  font-size:  1.4rem;
+  color:      var(--accent);
+  pointer-events: none;
+}
+
+/* CURRENT PERIOD highlight (teacher view) */
+.tt-cell.is-current-period .tt-lesson-card {
+  outline: 2.5px solid var(--accent);
+  animation: period-pulse 2.5s ease-in-out infinite;
+}
+@keyframes period-pulse {
+  0%, 100% { outline-color: var(--accent); }
+  50%       { outline-color: rgba(26,122,74,.35); }
+}
+
+/* ── Lesson card ─────────────────────────────────────────────────────────── */
+.tt-lesson-card {
+  border-radius: var(--radius-card);
+  padding:       9px 10px 8px;
+  height:        calc(100% - 0px);
+  min-height:    calc(var(--cell-min-h) - 12px);
+  display:       flex;
+  flex-direction: column;
+  gap:           5px;
+  cursor:        pointer;
+  position:      relative;
+  transition:    transform .12s, filter .12s;
+  border:        1px solid transparent;
+}
+.tt-lesson-card:hover {
+  transform: translateY(-1px) scale(1.005);
+  filter:    brightness(.97);
+  border-color: rgba(0,0,0,.08);
+}
+
+.tt-lesson-card .lc-subject {
+  font-size:   .83rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.tt-lesson-card .lc-teacher {
+  font-size:   .72rem;
+  opacity:     .7;
+  margin-top:  auto;
+  display:     flex;
+  align-items: center;
+  gap:         4px;
+}
+.tt-lesson-card .lc-teacher::before { content: '↳'; font-size: .65rem; }
+
+/* Category colour variants via data-cat attribute */
+.tt-lesson-card[data-cat="Sciences"]   { background: var(--cat-sciences-bg);   color: var(--cat-sciences-fg); }
+.tt-lesson-card[data-cat="Arts"]       { background: var(--cat-arts-bg);       color: var(--cat-arts-fg); }
+.tt-lesson-card[data-cat="Languages"]  { background: var(--cat-languages-bg);  color: var(--cat-languages-fg); }
+.tt-lesson-card[data-cat="Social"]     { background: var(--cat-social-bg);     color: var(--cat-social-fg); }
+.tt-lesson-card[data-cat="Technology"] { background: var(--cat-tech-bg);       color: var(--cat-tech-fg); }
+.tt-lesson-card[data-cat="PE"]         { background: var(--cat-pe-bg);         color: var(--cat-pe-fg); }
+.tt-lesson-card[data-cat="Mathematics"]{ background: var(--cat-math-bg);       color: var(--cat-math-fg); }
+/* Default fallback (no category / unknown) */
+.tt-lesson-card                        { background: var(--cat-default-bg);    color: var(--cat-default-fg); }
+
+/* ── Legend ──────────────────────────────────────────────────────────────── */
+.tt-legend {
+  display:    flex;
+  flex-wrap:  wrap;
+  gap:        10px 18px;
+  margin-top: 20px;
+  padding:    0 2px;
+}
+
+.tt-legend-item {
+  display:     flex;
+  align-items: center;
+  gap:         7px;
+  font-size:   .75rem;
+  color:       var(--ink-muted);
+}
+
+.tt-legend-pip {
+  width:         11px;
+  height:        11px;
+  border-radius: 3px;
+  flex-shrink:   0;
+}
+
+/* ── Modal ───────────────────────────────────────────────────────────────── */
+.tt-modal-backdrop {
+  position:        fixed;
+  inset:           0;
+  background:      rgba(19,18,14,.5);
+  backdrop-filter: blur(3px);
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  z-index:         1000;
+  animation:       bd-in .15s ease;
+}
+@keyframes bd-in { from { opacity: 0 } to { opacity: 1 } }
+
+.tt-modal {
+  background:    #fff;
+  border-radius: 14px;
+  padding:       30px;
+  width:         min(480px, 94vw);
+  box-shadow:    var(--shadow-float);
+  animation:     modal-up .18s cubic-bezier(.22,1,.36,1);
+}
+@keyframes modal-up {
+  from { opacity: 0; transform: translateY(18px) scale(.98) }
+  to   { opacity: 1; transform: translateY(0) scale(1) }
+}
+
+.tt-modal__header {
+  display:       flex;
+  align-items:   flex-start;
+  justify-content: space-between;
+  gap:           12px;
+  margin-bottom: 6px;
+}
+
+.tt-modal__title {
+  font-family:  var(--font-serif);
+  font-size:    1.1rem;
+  font-weight:  700;
+  color:        var(--ink);
+  margin:       0;
+}
+
+.tt-modal__close {
+  background: none;
+  border:     none;
+  font-size:  1.2rem;
+  cursor:     pointer;
+  color:      var(--ink-muted);
+  padding:    2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.tt-modal__close:hover { background: var(--cream); }
+
+.tt-modal__meta {
+  font-size:     .78rem;
+  color:         var(--ink-muted);
+  background:    var(--cream);
+  border-radius: 6px;
+  padding:       7px 12px;
+  margin-bottom: 22px;
+  border-left:   3px solid var(--accent);
+}
+
+.tt-modal__warning {
+  background:    var(--amber-light);
+  border:        1px solid #f6d090;
+  border-radius: 8px;
+  padding:       10px 13px;
+  font-size:     .8rem;
+  color:         #7a4a0a;
+  margin-bottom: 16px;
+  display:       flex;
+  gap:           8px;
+  align-items:   flex-start;
+}
+
+.tt-modal__error {
+  background:    var(--crimson-light);
+  border:        1px solid #f8a9a9;
+  border-radius: 8px;
+  padding:       10px 13px;
+  font-size:     .8rem;
+  color:         var(--crimson);
+  margin-bottom: 16px;
+}
+
+/* Form fields */
+.tt-field {
+  display:       flex;
+  flex-direction: column;
+  gap:           6px;
+  margin-bottom: 16px;
+}
+
+.tt-field label {
+  font-size:     .72rem;
+  font-weight:   600;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color:         var(--ink-muted);
+}
+
+.tt-field select {
+  padding:       10px 12px;
+  border:        1.5px solid var(--rule);
+  border-radius: 8px;
+  font-family:   var(--font-body);
+  font-size:     .9rem;
+  color:         var(--ink);
+  background:    #fff;
+  outline:       none;
+  transition:    border-color .15s, box-shadow .15s;
+  width:         100%;
+}
+.tt-field select:focus {
+  border-color: var(--accent);
+  box-shadow:   var(--accent-ring);
+}
+
+/* Action buttons */
+.tt-modal__actions {
+  display:         flex;
+  justify-content: flex-end;
+  gap:             10px;
+  margin-top:      26px;
+  padding-top:     20px;
+  border-top:      1px solid var(--rule);
+}
+
+.tt-btn {
+  padding:       9px 20px;
+  border-radius: 7px;
+  font-family:   var(--font-body);
+  font-size:     .86rem;
+  font-weight:   600;
+  cursor:        pointer;
+  border:        none;
+  transition:    background .14s, transform .1s, box-shadow .14s;
+  line-height:   1;
+}
+.tt-btn:active { transform: scale(.97); }
+.tt-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.tt-btn--ghost {
+  background: transparent;
+  color:      var(--ink-muted);
+  border:     1.5px solid var(--rule);
+}
+.tt-btn--ghost:hover:not(:disabled) { background: var(--cream); }
+
+.tt-btn--primary {
+  background: var(--ink);
+  color:      #faf8f4;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+}
+.tt-btn--primary:hover:not(:disabled) { background: #2a2925; }
+
+.tt-btn--danger {
+  background: var(--crimson-light);
+  color:      var(--crimson);
+  border:     1.5px solid #f8a9a9;
+}
+.tt-btn--danger:hover:not(:disabled) { background: #fee2e2; }
+
+/* ── Skeleton loader ─────────────────────────────────────────────────────── */
+.tt-skeleton {
+  background:      linear-gradient(90deg, #ede9e0 25%, #e3dfd7 50%, #ede9e0 75%);
+  background-size: 300% 100%;
+  animation:       shimmer 1.6s infinite;
+  border-radius:   6px;
+}
+@keyframes shimmer {
+  0%   { background-position: 100% 0 }
+  100% { background-position:   0% 0 }
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.tt-empty-state {
+  padding:    80px 20px;
+  text-align: center;
+  color:      var(--ink-muted);
+  font-size:  .92rem;
+}
+
+.tt-empty-state strong {
+  display:     block;
+  font-family: var(--font-serif);
+  font-size:   1.15rem;
+  color:       var(--ink);
+  margin-bottom: 8px;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  :root { --period-col: 92px; }
+  .tt-lesson-card .lc-teacher { display: none; }
+}
+
+@media (max-width: 600px) {
+  .tt-page { padding: 16px 12px 48px; }
+  .tt-toolbar { gap: 10px; }
+  .tt-toolbar__title { font-size: 1.3rem; }
+  .tt-selector-group { flex-wrap: wrap; }
+}
