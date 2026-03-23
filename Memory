@@ -46,20 +46,37 @@ It reflects the repository as it exists now, not just the original prompt intent
     - `staff_views.py`
     - `assignment_views.py`
   - router is assembled in `backend/enrollment/urls.py`
+- `attendance`
+  - attendance session and attendance record models are implemented
+  - serializers, admin, views, and urls are implemented
+  - current model references use:
+    - `tenants.School`
+    - `enrollment.ClassArm`
+    - `settings.AUTH_USER_MODEL`
+- `timetable`
+  - period and timetable entry models are implemented
+  - serializers, admin, views, and urls are implemented
+  - current model references use:
+    - `tenants.School`
+    - `enrollment.ClassArm`
+    - `enrollment.Subject`
+    - `settings.AUTH_USER_MODEL`
+- `enrollment/utils.py`
+  - now exists and provides:
+    - `generate_admission_number`
+    - `generate_staff_id`
 
 ### Backend Apps That Are Mostly Scaffolds
 
 These apps exist structurally, but their current models/views are still boilerplate or near-empty:
 
 - `analytics`
-- `attendance`
 - `cbt`
 - `fees`
 - `gradebook`
 - `notifications`
 - `promotion`
 - `results`
-- `timetable`
 
 Typical scaffold signs:
 
@@ -80,6 +97,8 @@ Currently included route groups:
 - `/api/` tenants routes
 - `/api/` academics routes
 - `/api/` enrollment routes
+- `/api/attendance/` attendance routes
+- `/api/timetable/` timetable routes
 
 Important implication:
 
@@ -112,6 +131,7 @@ Important route behavior:
   - port: `5432`
 - `python manage.py check` currently passes
 - `python manage.py runserver --noreload` starts successfully with the fixed settings entrypoint
+- backend import and model-reference sweep is currently clean
 
 Future caution:
 
@@ -196,6 +216,15 @@ These are intentionally minimal and should not be treated as finished features.
 Important caveat:
 
 - some routes point to placeholder pages even though the backend already has richer APIs
+- some implemented frontend pages still exist but are not wired into `App.js`
+  - `pages/admin/AttendanceOverview.jsx`
+  - `pages/admin/SubjectAssignment.jsx`
+  - `pages/admin/SubjectManager.jsx`
+  - `pages/admin/TimetableBuilder.jsx`
+  - `pages/student/MyAttendance.jsx`
+  - `pages/student/Timetable.jsx`
+  - `pages/teacher/MyTimetable.jsx`
+  - `pages/teacher/TakeAttendance.jsx`
 
 ## Dependency State
 
@@ -309,8 +338,32 @@ When editing future features, start from these files:
 This repo is in a hybrid state:
 
 - backend foundation for tenancy/auth/academics/enrollment is fairly real
+- attendance and timetable backend modules are now implemented and validated by `python manage.py check`
 - frontend auth/theme/staff/calendar flows are partly real
 - several frontend student/dashboard pages are still placeholders
+- several frontend attendance/timetable/subject pages exist but are still unwired in `App.js`
 - several backend future apps are still scaffolds
 
 For future edits, assume selective completeness rather than whole-project completeness.
+
+## Latest Update
+
+- Timestamp: `2026-03-23 11:15:19 +01:00`
+- Full frontend/backend local import sweep completed successfully
+- Current verification status:
+  - `python manage.py check` passes
+  - frontend local missing imports: `0`
+  - backend local missing module imports: `0`
+  - backend syntax errors in sweep: `0`
+- Current unreferenced frontend files from the sweep:
+  - `frontend/src/App.css`
+  - `frontend/src/index.css`
+  - `frontend/src/hooks/useTheme.js`
+  - `frontend/src/pages/admin/AttendanceOverview.jsx`
+  - `frontend/src/pages/admin/SubjectAssignment.jsx`
+  - `frontend/src/pages/admin/SubjectManager.jsx`
+  - `frontend/src/pages/admin/TimetableBuilder.jsx`
+  - `frontend/src/pages/student/MyAttendance.jsx`
+  - `frontend/src/pages/student/Timetable.jsx`
+  - `frontend/src/pages/teacher/MyTimetable.jsx`
+  - `frontend/src/pages/teacher/TakeAttendance.jsx`
