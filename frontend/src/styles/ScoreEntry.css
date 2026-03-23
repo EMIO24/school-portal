@@ -1,0 +1,547 @@
+/*
+  ScoreEntry.css
+  ─────────────────────────────────────────────────────────────────────────────
+  Design direction: "Examination Hall" — the austere authority of official
+  Nigerian exam result sheets. Stark white tables with deep navy headers,
+  monospaced score numerals, grade badges that punch hard in colour.
+  Every pixel earns its place — this is data-dense, not decorative.
+
+  Typography: "Playfair Display" (headers) + "JetBrains Mono" (scores/grades)
+              + "Nunito" (UI labels/names)
+  ─────────────────────────────────────────────────────────────────────────────
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=JetBrains+Mono:wght@400;500;600&family=Nunito:wght@400;500;600;700&display=swap');
+
+/* ── Tokens ──────────────────────────────────────────────────────────────── */
+:root {
+  --gb-navy:        #0f1e3c;
+  --gb-navy-mid:    #1e3560;
+  --gb-navy-pale:   #eef1f8;
+  --gb-paper:       #fdfcfa;
+  --gb-rule:        #e2ddd6;
+  --gb-ink:         #14120d;
+  --gb-ink-mid:     #4a4640;
+  --gb-ink-light:   #9a9590;
+
+  /* Grade badge colours — keyed to WAEC bands */
+  --grade-A1:       #166534; --grade-A1-bg: #dcfce7;
+  --grade-B2:       #1e40af; --grade-B2-bg: #dbeafe;
+  --grade-B3:       #1d4ed8; --grade-B3-bg: #e0e7ff;
+  --grade-C4:       #6d28d9; --grade-C4-bg: #ede9fe;
+  --grade-C5:       #7c3aed; --grade-C5-bg: #f5f3ff;
+  --grade-C6:       #9a3412; --grade-C6-bg: #ffedd5;
+  --grade-D7:       #c97a1a; --grade-D7-bg: #fef9c3;
+  --grade-E8:       #b45309; --grade-E8-bg: #fef3c7;
+  --grade-F9:       #991b1b; --grade-F9-bg: #fee2e2;
+
+  /* Row tint by result band */
+  --row-pass-bg:    #f0fdf4;   /* A1/B/C */
+  --row-warn-bg:    #fffbeb;   /* D7/E8  */
+  --row-fail-bg:    #fff1f2;   /* F9     */
+
+  --shadow-card:    0 2px 8px rgba(15,30,60,.07), 0 8px 32px rgba(15,30,60,.05);
+  --shadow-float:   0 12px 40px rgba(15,30,60,.16);
+
+  --radius-sm:      5px;
+  --radius-md:      9px;
+  --radius-lg:      13px;
+
+  --font-display:   'Playfair Display', Georgia, serif;
+  --font-mono:      'JetBrains Mono', monospace;
+  --font-ui:        'Nunito', system-ui, sans-serif;
+
+  /* Table geometry */
+  --col-sn:         44px;
+  --col-name:       200px;
+  --col-score:      72px;
+  --col-ca:         72px;
+  --col-exam:       72px;
+  --col-total:      72px;
+  --col-grade:      58px;
+  --col-remark:     110px;
+  --row-height:     44px;
+  --header-height:  42px;
+}
+
+/* ── Page ────────────────────────────────────────────────────────────────── */
+.gb-page {
+  font-family: var(--font-ui);
+  background:  var(--gb-paper);
+  min-height:  100vh;
+  padding:     28px 24px 72px;
+  color:       var(--gb-ink);
+}
+
+/* ── Page header ─────────────────────────────────────────────────────────── */
+.gb-header {
+  display:       flex;
+  align-items:   flex-start;
+  flex-wrap:     wrap;
+  gap:           16px;
+  margin-bottom: 26px;
+}
+
+.gb-header__title {
+  font-family:   var(--font-display);
+  font-size:     1.7rem;
+  font-weight:   700;
+  color:         var(--gb-navy);
+  margin:        0;
+  flex:          1 1 auto;
+  line-height:   1.1;
+}
+
+.gb-header__sub {
+  display:       block;
+  font-family:   var(--font-ui);
+  font-size:     .73rem;
+  font-weight:   500;
+  color:         var(--gb-ink-light);
+  margin-top:    4px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+
+/* Unsaved indicator dot */
+.gb-unsaved-dot {
+  display:       inline-block;
+  width:         8px;
+  height:        8px;
+  border-radius: 50%;
+  background:    #f59e0b;
+  margin-left:   8px;
+  animation:     dot-pulse 1.4s ease-in-out infinite;
+  vertical-align: middle;
+}
+@keyframes dot-pulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .5; transform: scale(.7); }
+}
+
+/* ── Controls ────────────────────────────────────────────────────────────── */
+.gb-controls {
+  display:       flex;
+  flex-wrap:     wrap;
+  gap:           12px;
+  margin-bottom: 20px;
+  align-items:   flex-end;
+}
+
+.gb-field-group {
+  display:       flex;
+  flex-direction: column;
+  gap:           5px;
+}
+
+.gb-field-group label {
+  font-size:     .7rem;
+  font-weight:   700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color:         var(--gb-ink-mid);
+}
+
+.gb-select {
+  padding:       8px 12px;
+  border:        1.5px solid var(--gb-rule);
+  border-radius: var(--radius-sm);
+  font-family:   var(--font-ui);
+  font-size:     .88rem;
+  color:         var(--gb-ink);
+  background:    #fff;
+  outline:       none;
+  min-width:     150px;
+  transition:    border-color .14s, box-shadow .14s;
+}
+.gb-select:focus {
+  border-color: var(--gb-navy-mid);
+  box-shadow:   0 0 0 3px rgba(30,53,96,.15);
+}
+
+/* ── Action buttons ──────────────────────────────────────────────────────── */
+.gb-btn {
+  padding:       9px 20px;
+  border-radius: var(--radius-sm);
+  font-family:   var(--font-ui);
+  font-size:     .86rem;
+  font-weight:   700;
+  cursor:        pointer;
+  border:        none;
+  transition:    background .13s, transform .1s;
+  line-height:   1;
+}
+.gb-btn:active   { transform: scale(.97); }
+.gb-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.gb-btn--draft {
+  background: #fff;
+  color:      var(--gb-navy);
+  border:     1.5px solid var(--gb-rule);
+}
+.gb-btn--draft:hover:not(:disabled) { background: var(--gb-navy-pale); }
+
+.gb-btn--publish {
+  background: var(--gb-navy);
+  color:      #fff;
+  box-shadow: 0 2px 8px rgba(15,30,60,.25);
+}
+.gb-btn--publish:hover:not(:disabled) { background: var(--gb-navy-mid); }
+
+/* ── Stats chips ─────────────────────────────────────────────────────────── */
+.gb-stats-strip {
+  display:       flex;
+  flex-wrap:     wrap;
+  gap:           10px;
+  margin-bottom: 18px;
+}
+
+.gb-stat-chip {
+  background:    #fff;
+  border:        1.5px solid var(--gb-rule);
+  border-radius: var(--radius-md);
+  padding:       10px 16px;
+  display:       flex;
+  align-items:   center;
+  gap:           10px;
+}
+.gb-stat-chip__num {
+  font-family: var(--font-mono);
+  font-size:   1.4rem;
+  font-weight: 600;
+  color:       var(--gb-navy);
+  line-height: 1;
+}
+.gb-stat-chip__label {
+  font-size:   .7rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color:       var(--gb-ink-light);
+}
+
+/* ── Spreadsheet table wrapper ───────────────────────────────────────────── */
+.gb-table-wrap {
+  background:    #fff;
+  border:        1.5px solid var(--gb-rule);
+  border-radius: var(--radius-lg);
+  box-shadow:    var(--shadow-card);
+  overflow:      auto;
+  max-height:    70vh;
+}
+
+/* ── Table ───────────────────────────────────────────────────────────────── */
+.gb-table {
+  width:           100%;
+  border-collapse: separate;
+  border-spacing:  0;
+  font-size:       .86rem;
+}
+
+/* ── Sticky column headers ───────────────────────────────────────────────── */
+.gb-table thead th {
+  position:    sticky;
+  top:         0;
+  z-index:     20;
+  background:  var(--gb-navy);
+  color:       #e8eef8;
+  padding:     0 10px;
+  height:      var(--header-height);
+  font-family: var(--font-ui);
+  font-size:   .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  white-space: nowrap;
+  border-right: 1px solid rgba(255,255,255,.1);
+  vertical-align: middle;
+}
+.gb-table thead th:last-child { border-right: none; }
+
+/* Sub-header row (CA breakdown label) */
+.gb-table thead tr.gb-sub-header th {
+  background:    var(--gb-navy-mid);
+  font-size:     .65rem;
+  height:        28px;
+  color:         rgba(232,238,248,.7);
+  letter-spacing: .05em;
+}
+
+/* Sticky name + SN columns */
+.gb-table th.col-sn,
+.gb-table td.col-sn {
+  position:  sticky;
+  left:      0;
+  z-index:   15;
+  width:     var(--col-sn);
+  min-width: var(--col-sn);
+  text-align: center;
+}
+.gb-table th.col-name,
+.gb-table td.col-name {
+  position:  sticky;
+  left:      var(--col-sn);
+  z-index:   15;
+  width:     var(--col-name);
+  min-width: var(--col-name);
+  text-align: left;
+}
+.gb-table td.col-sn,
+.gb-table td.col-name {
+  background: inherit; /* inherits row bg so sticky looks right */
+}
+.gb-table th.col-sn,
+.gb-table th.col-name {
+  z-index: 25; /* above body sticky cells */
+}
+
+/* ── Body rows ───────────────────────────────────────────────────────────── */
+.gb-table tbody tr {
+  height:     var(--row-height);
+  transition: background .1s;
+}
+.gb-table tbody tr:hover { filter: brightness(.97); }
+
+/* Result-band row tints */
+.gb-table tbody tr.row-pass { background: var(--row-pass-bg); }
+.gb-table tbody tr.row-warn { background: var(--row-warn-bg); }
+.gb-table tbody tr.row-fail { background: var(--row-fail-bg); }
+.gb-table tbody tr:not(.row-pass):not(.row-warn):not(.row-fail) {
+  background: #fff;
+}
+
+/* ── Body cells ──────────────────────────────────────────────────────────── */
+.gb-table tbody td {
+  padding:     0 8px;
+  height:      var(--row-height);
+  border-bottom: 1px solid var(--gb-rule);
+  border-right:  1px solid var(--gb-rule);
+  vertical-align: middle;
+  white-space:   nowrap;
+}
+.gb-table tbody td:last-child { border-right: none; }
+
+.gb-table tbody td.col-name {
+  font-weight: 600;
+  font-size:   .88rem;
+  padding-left: 14px;
+  border-right: 2px solid var(--gb-rule);
+}
+
+.gb-table tbody td.col-sn {
+  font-family: var(--font-mono);
+  font-size:   .72rem;
+  color:       var(--gb-ink-light);
+  text-align:  center;
+  border-right: 2px solid var(--gb-rule);
+}
+
+/* Computed cells (CA total, total, grade, remark) */
+.gb-table tbody td.col-computed {
+  background: rgba(15,30,60,.025);
+  font-weight: 600;
+}
+
+/* ── Grade Cell ──────────────────────────────────────────────────────────── */
+.gb-grade-badge {
+  display:        inline-flex;
+  align-items:    center;
+  justify-content: center;
+  min-width:      34px;
+  padding:        3px 7px;
+  border-radius:  4px;
+  font-family:    var(--font-mono);
+  font-size:      .8rem;
+  font-weight:    600;
+  white-space:    nowrap;
+}
+.gb-grade-badge.A1 { background: var(--grade-A1-bg); color: var(--grade-A1); }
+.gb-grade-badge.B2 { background: var(--grade-B2-bg); color: var(--grade-B2); }
+.gb-grade-badge.B3 { background: var(--grade-B3-bg); color: var(--grade-B3); }
+.gb-grade-badge.C4 { background: var(--grade-C4-bg); color: var(--grade-C4); }
+.gb-grade-badge.C5 { background: var(--grade-C5-bg); color: var(--grade-C5); }
+.gb-grade-badge.C6 { background: var(--grade-C6-bg); color: var(--grade-C6); }
+.gb-grade-badge.D7 { background: var(--grade-D7-bg); color: var(--grade-D7); }
+.gb-grade-badge.E8 { background: var(--grade-E8-bg); color: var(--grade-E8); }
+.gb-grade-badge.F9 { background: var(--grade-F9-bg); color: var(--grade-F9); }
+
+/* ── Editable score cell ─────────────────────────────────────────────────── */
+.gb-score-cell {
+  position: relative;
+  width:    var(--col-score);
+}
+
+.gb-score-input {
+  width:       100%;
+  height:      calc(var(--row-height) - 4px);
+  border:      2px solid transparent;
+  border-radius: var(--radius-sm);
+  background:  transparent;
+  font-family: var(--font-mono);
+  font-size:   .88rem;
+  font-weight: 500;
+  text-align:  center;
+  color:       var(--gb-ink);
+  outline:     none;
+  padding:     0 4px;
+  transition:  border-color .12s, background .12s;
+  cursor:      text;
+  -moz-appearance: textfield;
+}
+.gb-score-input::-webkit-outer-spin-button,
+.gb-score-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+.gb-score-input:focus {
+  border-color: var(--gb-navy-mid);
+  background:   #fff;
+  box-shadow:   0 0 0 3px rgba(30,53,96,.12);
+  z-index:      5;
+  position:     relative;
+}
+
+.gb-score-input.has-error {
+  border-color: #ef4444;
+  background:   #fff1f2;
+}
+
+/* Max-score tooltip */
+.gb-score-max {
+  position:    absolute;
+  top:         -18px;
+  left:        50%;
+  transform:   translateX(-50%);
+  font-size:   .62rem;
+  color:       var(--gb-ink-light);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity:     0;
+  transition:  opacity .12s;
+}
+.gb-score-cell:focus-within .gb-score-max { opacity: 1; }
+
+/* Computed value display (non-editable) */
+.gb-computed-val {
+  font-family: var(--font-mono);
+  font-size:   .88rem;
+  font-weight: 600;
+  text-align:  center;
+  display:     block;
+  color:       var(--gb-navy);
+}
+
+/* ── Domain table (affective/psychomotor) ────────────────────────────────── */
+.gb-domain-table {
+  width:           100%;
+  border-collapse: separate;
+  border-spacing:  0;
+  font-size:       .84rem;
+}
+
+.gb-domain-table thead th {
+  background:    var(--gb-navy);
+  color:         #e8eef8;
+  padding:       10px 12px;
+  font-size:     .68rem;
+  font-weight:   700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  border-right:  1px solid rgba(255,255,255,.1);
+  white-space:   nowrap;
+  vertical-align: middle;
+  position:      sticky;
+  top:           0;
+}
+
+.gb-domain-table tbody td {
+  padding:     0 8px;
+  height:      40px;
+  border-bottom: 1px solid var(--gb-rule);
+  border-right:  1px solid var(--gb-rule);
+  vertical-align: middle;
+}
+
+/* Rating dropdown in domain table */
+.gb-rating-select {
+  width:         52px;
+  height:        30px;
+  border:        1.5px solid var(--gb-rule);
+  border-radius: 4px;
+  font-family:   var(--font-mono);
+  font-size:     .85rem;
+  font-weight:   500;
+  text-align:    center;
+  color:         var(--gb-ink);
+  background:    #fff;
+  outline:       none;
+  cursor:        pointer;
+  transition:    border-color .12s;
+}
+.gb-rating-select:focus { border-color: var(--gb-navy-mid); }
+
+/* Rating colour coding */
+.gb-rating-1 { color: #991b1b; }
+.gb-rating-2 { color: #b45309; }
+.gb-rating-3 { color: #1e40af; }
+.gb-rating-4 { color: #166534; }
+.gb-rating-5 { color: #166534; font-weight: 700; }
+
+/* Bulk-set column button */
+.gb-bulk-btn {
+  padding:       3px 8px;
+  border:        1px solid var(--gb-rule);
+  border-radius: 4px;
+  font-size:     .68rem;
+  font-family:   var(--font-ui);
+  font-weight:   600;
+  cursor:        pointer;
+  background:    var(--gb-navy-pale);
+  color:         var(--gb-navy);
+  white-space:   nowrap;
+  transition:    background .12s;
+}
+.gb-bulk-btn:hover { background: #d8e0f0; }
+
+/* ── Alert / banner ──────────────────────────────────────────────────────── */
+.gb-alert {
+  padding:       10px 14px;
+  border-radius: var(--radius-sm);
+  font-size:     .83rem;
+  margin-bottom: 14px;
+  display:       flex;
+  gap:           10px;
+  align-items:   flex-start;
+}
+.gb-alert--error { background: #fff1f2; color: #991b1b; border: 1px solid #fca5a5; }
+.gb-alert--success { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.gb-alert--info   { background: var(--gb-navy-pale); color: var(--gb-navy); border: 1px solid #a5b4d4; }
+
+/* ── Skeleton ────────────────────────────────────────────────────────────── */
+.gb-skeleton {
+  background:      linear-gradient(90deg, #ede9e0 25%, #e3dfd7 50%, #ede9e0 75%);
+  background-size: 300% 100%;
+  animation:       shimmer 1.5s infinite;
+  border-radius:   4px;
+}
+@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.gb-empty {
+  text-align:  center;
+  padding:     60px 20px;
+  color:       var(--gb-ink-light);
+}
+.gb-empty strong {
+  display:      block;
+  font-family:  var(--font-display);
+  font-size:    1.1rem;
+  color:        var(--gb-ink-mid);
+  margin-bottom: 6px;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  :root {
+    --col-name:   140px;
+    --col-score:  60px;
+  }
+  .gb-table thead th { font-size: .62rem; padding: 0 6px; }
+}
