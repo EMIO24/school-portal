@@ -1,0 +1,635 @@
+/*
+  Attendance.css
+  ─────────────────────────────────────────────────────────────────────────────
+  Design direction: "Field Register" — clinical precision meets the warmth of
+  a physical register book. Dark forest green as the dominant authority colour,
+  cream paper, stark black for data density, amber for warnings, crimson for
+  absent. The heatmap calendar is the centrepiece visual.
+
+  Typography: "Instrument Serif" (display) + "IBM Plex Mono" (data) + "Outfit" (UI)
+  ─────────────────────────────────────────────────────────────────────────────
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap');
+
+/* ── Tokens ──────────────────────────────────────────────────────────────── */
+:root {
+  --att-forest:      #0f4c2a;
+  --att-forest-mid:  #1a7a4a;
+  --att-forest-pale: #e6f5ed;
+  --att-forest-dim:  #d1ead9;
+
+  --att-paper:       #faf8f4;
+  --att-cream:       #f2ede4;
+  --att-rule:        #ddd8cf;
+  --att-ink:         #14120d;
+  --att-ink-mid:     #4a4640;
+  --att-ink-light:   #8a8580;
+
+  --att-amber:       #d97706;
+  --att-amber-pale:  #fef3c7;
+  --att-crimson:     #b91c1c;
+  --att-crimson-pale:#fee2e2;
+  --att-late-bg:     #fef9c3;
+  --att-late-fg:     #78350f;
+
+  /* Status chip colours */
+  --status-P-bg: var(--att-forest-pale);  --status-P-fg: var(--att-forest);
+  --status-A-bg: var(--att-crimson-pale); --status-A-fg: var(--att-crimson);
+  --status-L-bg: var(--att-late-bg);      --status-L-fg: var(--att-late-fg);
+  --status-E-bg: #ede9fe;                 --status-E-fg: #4c1d95;
+
+  /* Heatmap */
+  --heat-0:   #f0ede8;   /* no data */
+  --heat-low: #fca5a5;   /* < 60% */
+  --heat-mid: #fde68a;   /* 60–85% */
+  --heat-ok:  #6ee7b7;   /* 85–95% */
+  --heat-hi:  #059669;   /* ≥ 95% */
+
+  --shadow-card: 0 2px 8px rgba(14,12,8,.07), 0 8px 28px rgba(14,12,8,.05);
+  --shadow-lift: 0 8px 32px rgba(14,12,8,.14);
+
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+
+  --font-ui:   'Outfit', system-ui, sans-serif;
+  --font-serif:'Instrument Serif', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
+
+/* ── Page wrapper ────────────────────────────────────────────────────────── */
+.att-page {
+  font-family: var(--font-ui);
+  background:  var(--att-paper);
+  min-height:  100vh;
+  padding:     32px 28px 72px;
+  color:       var(--att-ink);
+}
+
+/* ── Page header ─────────────────────────────────────────────────────────── */
+.att-header {
+  display:       flex;
+  align-items:   flex-start;
+  flex-wrap:     wrap;
+  gap:           16px;
+  margin-bottom: 30px;
+}
+
+.att-header__title {
+  font-family:   var(--font-serif);
+  font-size:     1.8rem;
+  font-weight:   normal;
+  font-style:    italic;
+  letter-spacing: -.01em;
+  color:         var(--att-ink);
+  margin:        0;
+  flex:          1 1 auto;
+  line-height:   1.1;
+}
+
+.att-header__sub {
+  font-family:   var(--font-ui);
+  font-size:     .75rem;
+  font-style:    normal;
+  font-weight:   500;
+  color:         var(--att-ink-light);
+  display:       block;
+  margin-top:    4px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+
+/* ── Controls bar ────────────────────────────────────────────────────────── */
+.att-controls {
+  display:       flex;
+  flex-wrap:     wrap;
+  gap:           12px;
+  margin-bottom: 24px;
+  align-items:   flex-end;
+}
+
+.att-field-group {
+  display:       flex;
+  flex-direction: column;
+  gap:           5px;
+}
+
+.att-field-group label {
+  font-size:     .7rem;
+  font-weight:   600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color:         var(--att-ink-mid);
+}
+
+.att-select,
+.att-input {
+  padding:       8px 12px;
+  border:        1.5px solid var(--att-rule);
+  border-radius: var(--radius-sm);
+  font-family:   var(--font-ui);
+  font-size:     .88rem;
+  color:         var(--att-ink);
+  background:    #fff;
+  outline:       none;
+  transition:    border-color .14s, box-shadow .14s;
+  min-width:     160px;
+}
+.att-select:focus,
+.att-input:focus {
+  border-color: var(--att-forest-mid);
+  box-shadow:   0 0 0 3px rgba(26,122,74,.2);
+}
+
+/* ── Cards ───────────────────────────────────────────────────────────────── */
+.att-card {
+  background:    #fff;
+  border:        1.5px solid var(--att-rule);
+  border-radius: var(--radius-lg);
+  box-shadow:    var(--shadow-card);
+  overflow:      hidden;
+}
+
+.att-card__head {
+  padding:        16px 22px 14px;
+  border-bottom:  1px solid var(--att-rule);
+  display:        flex;
+  align-items:    center;
+  justify-content: space-between;
+  gap:            12px;
+  background:     var(--att-cream);
+}
+
+.att-card__title {
+  font-size:   .9rem;
+  font-weight: 700;
+  color:       var(--att-forest);
+  margin:      0;
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+}
+
+.att-card__body {
+  padding: 20px 22px;
+}
+
+/* ── Status toggle buttons (P/A/L/E) ──────────────────────────────────────── */
+.att-status-btn {
+  display:       inline-flex;
+  align-items:   center;
+  justify-content: center;
+  width:         38px;
+  height:        32px;
+  border-radius: 5px;
+  border:        1.5px solid transparent;
+  font-family:   var(--font-mono);
+  font-size:     .8rem;
+  font-weight:   500;
+  cursor:        pointer;
+  transition:    background .1s, border-color .1s, transform .1s;
+  background:    var(--att-cream);
+  color:         var(--att-ink-mid);
+}
+.att-status-btn:active { transform: scale(.93); }
+
+.att-status-btn.is-P.active { background: var(--status-P-bg); color: var(--status-P-fg); border-color: var(--att-forest-mid); }
+.att-status-btn.is-A.active { background: var(--status-A-bg); color: var(--status-A-fg); border-color: var(--att-crimson); }
+.att-status-btn.is-L.active { background: var(--status-L-bg); color: var(--status-L-fg); border-color: var(--att-amber); }
+.att-status-btn.is-E.active { background: var(--status-E-bg); color: var(--status-E-fg); border-color: #7c3aed; }
+
+/* ── Student row ─────────────────────────────────────────────────────────── */
+.att-student-list {
+  list-style:  none;
+  margin:      0;
+  padding:     0;
+  display:     flex;
+  flex-direction: column;
+  gap:         2px;
+}
+
+.att-student-row {
+  display:       grid;
+  grid-template-columns: 28px 1fr auto auto;
+  align-items:   center;
+  gap:           12px;
+  padding:       10px 14px;
+  border-radius: var(--radius-sm);
+  transition:    background .1s;
+}
+.att-student-row:hover { background: var(--att-cream); }
+
+.att-student-row__num {
+  font-family: var(--font-mono);
+  font-size:   .72rem;
+  color:       var(--att-ink-light);
+  text-align:  right;
+}
+
+.att-student-row__name {
+  font-size:   .9rem;
+  font-weight: 500;
+  color:       var(--att-ink);
+}
+
+.att-student-row__adm {
+  font-family: var(--font-mono);
+  font-size:   .72rem;
+  color:       var(--att-ink-light);
+}
+
+.att-status-group {
+  display: flex;
+  gap:     4px;
+}
+
+/* Remark input appears when A or L is selected */
+.att-remark-input {
+  grid-column:   2 / -1;
+  padding:       5px 9px;
+  border:        1px solid var(--att-rule);
+  border-radius: 4px;
+  font-family:   var(--font-ui);
+  font-size:     .8rem;
+  color:         var(--att-ink);
+  background:    var(--att-paper);
+  outline:       none;
+  transition:    border-color .14s;
+  animation:     slide-down .15s ease;
+}
+.att-remark-input:focus { border-color: var(--att-forest-mid); }
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Bulk actions bar ────────────────────────────────────────────────────── */
+.att-bulk-bar {
+  display:     flex;
+  align-items: center;
+  gap:         10px;
+  padding:     12px 14px;
+  background:  var(--att-cream);
+  border-radius: var(--radius-sm);
+  margin-bottom: 14px;
+  flex-wrap:   wrap;
+}
+
+.att-bulk-bar span {
+  font-size:   .8rem;
+  color:       var(--att-ink-mid);
+  margin-right: auto;
+}
+
+/* ── Action buttons ──────────────────────────────────────────────────────── */
+.att-btn {
+  padding:       9px 20px;
+  border-radius: var(--radius-sm);
+  font-family:   var(--font-ui);
+  font-size:     .86rem;
+  font-weight:   600;
+  cursor:        pointer;
+  border:        none;
+  transition:    background .14s, transform .1s;
+  line-height:   1;
+}
+.att-btn:active   { transform: scale(.97); }
+.att-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.att-btn--primary {
+  background: var(--att-forest);
+  color:      #fff;
+  box-shadow: 0 1px 4px rgba(15,76,42,.3);
+}
+.att-btn--primary:hover:not(:disabled) { background: var(--att-forest-mid); }
+
+.att-btn--ghost {
+  background: transparent;
+  color:      var(--att-ink-mid);
+  border:     1.5px solid var(--att-rule);
+}
+.att-btn--ghost:hover:not(:disabled) { background: var(--att-cream); }
+
+.att-btn--amber {
+  background: var(--att-amber);
+  color:      #fff;
+}
+.att-btn--amber:hover:not(:disabled) { filter: brightness(1.08); }
+
+.att-btn--danger {
+  background: var(--att-crimson-pale);
+  color:      var(--att-crimson);
+  border:     1.5px solid #fca5a5;
+}
+
+.att-btn--lock {
+  background: var(--att-ink);
+  color:      #fff;
+  display:    flex;
+  align-items: center;
+  gap:        7px;
+}
+.att-btn--lock:hover:not(:disabled) { background: #2a2820; }
+
+/* Finalized badge on the button */
+.att-finalized-badge {
+  display:       inline-flex;
+  align-items:   center;
+  gap:           6px;
+  padding:       6px 14px;
+  background:    var(--att-forest-dim);
+  color:         var(--att-forest);
+  border:        1.5px solid var(--att-forest-mid);
+  border-radius: var(--radius-sm);
+  font-size:     .83rem;
+  font-weight:   600;
+}
+
+/* ── Alert / banner ──────────────────────────────────────────────────────── */
+.att-alert {
+  padding:       11px 15px;
+  border-radius: var(--radius-sm);
+  font-size:     .83rem;
+  margin-bottom: 16px;
+  display:       flex;
+  gap:           10px;
+  align-items:   flex-start;
+}
+.att-alert--warn  { background: var(--att-amber-pale); color: #78350f; border: 1px solid #fde68a; }
+.att-alert--error { background: var(--att-crimson-pale); color: var(--att-crimson); border: 1px solid #fca5a5; }
+.att-alert--info  { background: var(--att-forest-pale); color: var(--att-forest); border: 1px solid var(--att-forest-mid); }
+
+/* ── Stats strip ─────────────────────────────────────────────────────────── */
+.att-stats-strip {
+  display:       grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap:           10px;
+  margin-bottom: 20px;
+}
+
+.att-stat-chip {
+  background:    #fff;
+  border:        1.5px solid var(--att-rule);
+  border-radius: var(--radius-md);
+  padding:       14px 16px;
+  display:       flex;
+  flex-direction: column;
+  gap:           4px;
+}
+
+.att-stat-chip__num {
+  font-family:   var(--font-mono);
+  font-size:     1.6rem;
+  font-weight:   500;
+  line-height:   1;
+  color:         var(--att-forest);
+}
+.att-stat-chip__num.is-absent  { color: var(--att-crimson); }
+.att-stat-chip__num.is-late    { color: var(--att-amber); }
+.att-stat-chip__num.is-excused { color: #7c3aed; }
+
+.att-stat-chip__label {
+  font-size:     .7rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color:         var(--att-ink-light);
+}
+
+/* ── Heatmap calendar ────────────────────────────────────────────────────── */
+.att-heatmap {
+  padding:     20px;
+}
+
+.att-heatmap__month {
+  margin-bottom: 20px;
+}
+
+.att-heatmap__month-label {
+  font-size:     .78rem;
+  font-weight:   700;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  color:         var(--att-ink-mid);
+  margin-bottom: 8px;
+  padding-left:  2px;
+}
+
+.att-heatmap__grid {
+  display:       flex;
+  flex-wrap:     wrap;
+  gap:           5px;
+}
+
+.att-heatmap__day {
+  width:         32px;
+  height:        32px;
+  border-radius: 5px;
+  display:       flex;
+  align-items:   center;
+  justify-content: center;
+  font-family:   var(--font-mono);
+  font-size:     .68rem;
+  cursor:        default;
+  position:      relative;
+  transition:    transform .1s;
+  border:        1px solid transparent;
+}
+.att-heatmap__day:hover { transform: scale(1.18); z-index: 2; }
+.att-heatmap__day.no-data    { background: var(--heat-0); color: var(--att-rule); }
+.att-heatmap__day.heat-low   { background: var(--heat-low); color: var(--att-crimson); }
+.att-heatmap__day.heat-mid   { background: var(--heat-mid); color: #78350f; }
+.att-heatmap__day.heat-ok    { background: var(--heat-ok);  color: #065f46; }
+.att-heatmap__day.heat-hi    { background: var(--heat-hi);  color: #fff; }
+.att-heatmap__day.weekend    { background: transparent; color: var(--att-rule); border-color: transparent; cursor: default; }
+.att-heatmap__day.finalized::after {
+  content:  '✓';
+  position: absolute;
+  bottom:   0px;
+  right:    2px;
+  font-size:.55rem;
+  opacity:  .6;
+}
+
+/* Heatmap legend */
+.att-heatmap__legend {
+  display:    flex;
+  gap:        12px;
+  flex-wrap:  wrap;
+  padding:    12px 20px;
+  border-top: 1px solid var(--att-rule);
+  background: var(--att-cream);
+}
+.att-heatmap__legend-item {
+  display:    flex;
+  align-items: center;
+  gap:        6px;
+  font-size:  .73rem;
+  color:      var(--att-ink-mid);
+}
+.att-heatmap__legend-dot {
+  width:  13px;
+  height: 13px;
+  border-radius: 3px;
+}
+
+/* ── Low attendance panel ────────────────────────────────────────────────── */
+.att-low-panel__badge {
+  display:       inline-flex;
+  align-items:   center;
+  gap:           6px;
+  background:    var(--att-crimson-pale);
+  color:         var(--att-crimson);
+  border:        1px solid #fca5a5;
+  border-radius: 20px;
+  padding:       3px 12px;
+  font-size:     .78rem;
+  font-weight:   700;
+}
+
+.att-low-table {
+  width:          100%;
+  border-collapse: collapse;
+  font-size:      .85rem;
+}
+.att-low-table th {
+  text-align:    left;
+  padding:       8px 12px;
+  font-size:     .7rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color:         var(--att-ink-mid);
+  border-bottom: 2px solid var(--att-rule);
+}
+.att-low-table td {
+  padding:       10px 12px;
+  border-bottom: 1px solid var(--att-rule);
+  color:         var(--att-ink);
+}
+.att-low-table tr:last-child td { border-bottom: none; }
+.att-low-table tr:hover td      { background: var(--att-cream); }
+
+.att-pct-bar {
+  display:    flex;
+  align-items: center;
+  gap:        8px;
+}
+.att-pct-track {
+  flex:         1;
+  height:       6px;
+  background:   var(--att-rule);
+  border-radius: 3px;
+  overflow:     hidden;
+  max-width:    80px;
+}
+.att-pct-fill {
+  height:       100%;
+  border-radius: 3px;
+  background:   var(--att-crimson);
+  transition:   width .4s ease;
+}
+.att-pct-fill.ok  { background: var(--att-forest-mid); }
+.att-pct-fill.mid { background: var(--att-amber); }
+
+.att-pct-num {
+  font-family: var(--font-mono);
+  font-size:   .8rem;
+  font-weight: 500;
+  min-width:   42px;
+  text-align:  right;
+}
+
+/* ── Student view: calendar dots ─────────────────────────────────────────── */
+.att-mini-cal {
+  display:   flex;
+  flex-wrap: wrap;
+  gap:       6px;
+  padding:   4px 0;
+}
+
+.att-mini-dot {
+  width:         20px;
+  height:        20px;
+  border-radius: 50%;
+  display:       flex;
+  align-items:   center;
+  justify-content: center;
+  font-size:     .62rem;
+  font-family:   var(--font-mono);
+  cursor:        default;
+  transition:    transform .1s;
+  position:      relative;
+}
+.att-mini-dot:hover { transform: scale(1.25); z-index: 1; }
+.att-mini-dot.P { background: var(--status-P-bg); color: var(--status-P-fg); }
+.att-mini-dot.A { background: var(--status-A-bg); color: var(--status-A-fg); }
+.att-mini-dot.L { background: var(--status-L-bg); color: var(--status-L-fg); }
+.att-mini-dot.E { background: var(--status-E-bg); color: var(--status-E-fg); }
+.att-mini-dot.empty { background: var(--att-cream); color: var(--att-rule); }
+
+/* ── Percentage badge ────────────────────────────────────────────────────── */
+.att-pct-badge {
+  display:       inline-flex;
+  flex-direction: column;
+  align-items:   center;
+  justify-content: center;
+  width:         90px;
+  height:        90px;
+  border-radius: 50%;
+  border:        4px solid var(--att-forest-mid);
+  background:    #fff;
+  box-shadow:    var(--shadow-card);
+}
+.att-pct-badge__num {
+  font-family: var(--font-mono);
+  font-size:   1.5rem;
+  font-weight: 500;
+  line-height: 1;
+  color:       var(--att-forest);
+}
+.att-pct-badge__num.warn { color: var(--att-amber); }
+.att-pct-badge__num.crit { color: var(--att-crimson); }
+.att-pct-badge__label {
+  font-size:   .62rem;
+  color:       var(--att-ink-light);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.att-pct-badge.warn { border-color: var(--att-amber); }
+.att-pct-badge.crit { border-color: var(--att-crimson); }
+
+/* ── Skeleton ────────────────────────────────────────────────────────────── */
+.att-skeleton {
+  background:      linear-gradient(90deg, #ede9e0 25%, #e3dfd7 50%, #ede9e0 75%);
+  background-size: 300% 100%;
+  animation:       shimmer 1.5s infinite;
+  border-radius:   6px;
+}
+@keyframes shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.att-empty {
+  text-align:  center;
+  padding:     50px 20px;
+  color:       var(--att-ink-light);
+}
+.att-empty strong {
+  display:      block;
+  font-family:  var(--font-serif);
+  font-size:    1.15rem;
+  font-style:   italic;
+  color:        var(--att-ink-mid);
+  margin-bottom: 6px;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .att-page { padding: 16px 14px 60px; }
+  .att-header__title { font-size: 1.45rem; }
+  .att-student-row { grid-template-columns: 22px 1fr auto; }
+  .att-student-row__adm { display: none; }
+}

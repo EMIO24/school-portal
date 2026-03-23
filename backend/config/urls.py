@@ -29,4 +29,6 @@ urlpatterns = [
 
     # Enrollment (students, staff, class levels/arms, subjects)
     path("api/", include("enrollment.urls")),
+
+    path('api/attendance/', include('attendance.urls')),
 ]

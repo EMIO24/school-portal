@@ -23,7 +23,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.mixins import TenantMixin
+from tenants.mixins import TenantMixin
 from .models import Period, TimetableEntry
 from .serializers import (
     PeriodSerializer,

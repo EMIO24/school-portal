@@ -8,6 +8,7 @@ Period          — configurable time slots for a school day (inc. breaks)
 TimetableEntry  — a single lesson: class × subject × teacher × day × period
 """
 
+from django.conf import settings
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
@@ -20,7 +21,7 @@ class Period(models.Model):
     order_index controls visual position in the grid rows.
     """
     school      = models.ForeignKey(
-        'schools.School', on_delete=models.CASCADE, related_name='periods'
+        'tenants.School', on_delete=models.CASCADE, related_name='periods'
     )
     name        = models.CharField(max_length=50)       # e.g. "Period 1", "Lunch Break"
     start_time  = models.TimeField()
@@ -62,19 +63,19 @@ class TimetableEntry(models.Model):
         FRI = 'FRI', _('Friday')
 
     school    = models.ForeignKey(
-        'schools.School', on_delete=models.CASCADE, related_name='timetable_entries'
+        'tenants.School', on_delete=models.CASCADE, related_name='timetable_entries'
     )
     term      = models.ForeignKey(
         'academics.Term', on_delete=models.CASCADE, related_name='timetable_entries'
     )
     class_arm = models.ForeignKey(
-        'academics.ClassArm', on_delete=models.CASCADE, related_name='timetable_entries'
+        'enrollment.ClassArm', on_delete=models.CASCADE, related_name='timetable_entries'
     )
     subject   = models.ForeignKey(
-        'academics.Subject', on_delete=models.CASCADE, related_name='timetable_entries'
+        'enrollment.Subject', on_delete=models.CASCADE, related_name='timetable_entries'
     )
     teacher   = models.ForeignKey(
-        'accounts.User',
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='timetable_entries',
