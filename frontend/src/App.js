@@ -38,6 +38,8 @@ import TeacherDashboard from "./pages/teacher/TeacherDashboard";
 import StudentDashboard from "./pages/student/StudentDashboard";
 import ParentDashboard  from "./pages/parent/ParentDashboard";
 import MyResult         from "./pages/student/MyResult";
+import ExamList         from "./pages/student/ExamList";
+import ExamRoom         from "./pages/student/ExamRoom";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 import { useAuth } from "./hooks/useAuth";
@@ -133,9 +135,12 @@ function AppRoutes() {
             {/* Results */}
             <Route path="results" element={<MyResult />} />
 
+            {/* CBT */}
+            <Route path="exams"        element={<ExamList />} />
+            <Route path="exam/:examId" element={<ExamRoom />} />
+
             {/*
               Upcoming student routes:
-              <Route path="cbt"        element={<CBTExam />} />
               <Route path="timetable"  element={<Timetable />} />
               <Route path="profile"    element={<StudentSelfProfile />} />
             */}

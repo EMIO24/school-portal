@@ -1,0 +1,183 @@
+/*
+  ExamList.css — student exam lobby
+*/
+
+.el-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 20px 60px;
+}
+
+.el-header {
+  margin-bottom: 28px;
+}
+
+.el-header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0c1c40;
+  margin: 0 0 4px;
+}
+
+.el-subtitle {
+  font-size: .88rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* Grid */
+.el-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+/* Card */
+.el-card {
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: box-shadow .15s, border-color .15s;
+}
+
+.el-card:hover {
+  box-shadow: 0 4px 18px rgba(12,28,64,.09);
+  border-color: #c7d2fe;
+}
+
+.el-card--done {
+  opacity: .75;
+}
+
+.el-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.el-subject {
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #1e40af;
+  background: #dbeafe;
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+
+/* Status badges */
+.el-badge {
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+
+.el-badge--new      { background: #dcfce7; color: #166534; }
+.el-badge--progress { background: #fef9c3; color: #713f12; }
+.el-badge--done     { background: #e0f2fe; color: #0369a1; }
+.el-badge--timeout  { background: #fee2e2; color: #991b1b; }
+
+.el-card__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+  line-height: 1.35;
+}
+
+.el-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: .78rem;
+  color: #6b7280;
+}
+
+.el-card__instructions {
+  font-size: .82rem;
+  color: #374151;
+  background: #f8fafc;
+  border-left: 3px solid #c7d2fe;
+  padding: 8px 10px;
+  border-radius: 0 6px 6px 0;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.el-score-chip {
+  font-size: .84rem;
+  color: #374151;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.el-score-chip strong { color: #166534; }
+
+.el-card__footer {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+}
+
+.el-start-btn {
+  padding: 10px 20px;
+  background: #0c1c40;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: .88rem;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+  transition: background .15s;
+}
+
+.el-start-btn:hover { background: #1a3470; }
+
+.el-done-label {
+  font-size: .82rem;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+/* Empty state */
+.el-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #9ca3af;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.el-empty-icon { font-size: 2.5rem; }
+.el-empty strong { font-size: 1rem; color: #374151; }
+.el-empty span   { font-size: .88rem; }
+
+/* Skeleton */
+.el-skeleton {
+  height: 200px;
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 12px;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

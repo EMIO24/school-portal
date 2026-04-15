@@ -466,27 +466,89 @@ Frontend:
   - `/check-result` → CheckResult (public, no auth)
   - `/admin/scratch-cards` → ScratchCards
 
+## Latest Update — Phase 3.1 & 3.2 Complete
+
+- Timestamp: `2026-04-15`
+- `python manage.py check` passes (0 issues)
+- `python manage.py migrate` applied:
+  - `cbt.0001_initial` — Topic + Question tables
+  - `cbt.0002_cbtexam_studentexamsession_studentanswer` — exam engine tables
+
+### Phase 3.1 — CBT Question Bank (complete)
+
+Backend (`backend/cbt/`):
+- `Topic` model: school FK, subject FK, class_level FK, name — unique_together on all four
+- `Question` model: school FK, subject FK, topic FK (nullable), class_level FK, question_text, question_image (URLField), question_type (mcq/true_false/fill_blank), difficulty (easy/medium/hard), cognitive_level (Bloom's 6 levels: knowledge → evaluation), options (JSONField: [{id, text, image_url}]), correct_answer, explanation, created_by FK, is_active
+- `TopicViewSet`: CRUD, filter by subject + class_level
+- `QuestionViewSet`: CRUD + 7 filter params + search; `GET stats/` (total/by_subject/by_difficulty/by_type); `POST bulk-import/` (JSON array, 207 on partial errors)
+- Endpoint prefix: `/api/cbt/`
+
+Frontend:
+- `frontend/src/components/cbt/QuestionEditor.jsx` — modal: two-pane form+preview, MCQ/True-False/Fill-blank type switching, live preview pane, radio to mark correct answer, topic loads dynamically on subject+class_level selection
+- `frontend/src/pages/admin/QuestionBank.jsx` — filter sidebar (subject/class_level/topic/difficulty/type), cards grid (3-line clamp, tags, options preview, edit/delete), stats chips, QuestionEditor modal wired in
+- `frontend/src/styles/QuestionEditor.css`, `frontend/src/styles/QuestionBank.css`
+- Route: `/admin/question-bank` → QuestionBank
+
+### Phase 3.2 — CBT Exam Engine (complete)
+
+Backend (`backend/cbt/` extended):
+- `CBTExam` model: school FK, title, subject FK, class_arms M2M (ClassArm), term FK, session FK (AcademicSession), created_by FK, start_datetime, end_datetime, duration_minutes, instructions, selection_mode (manual/random_from_bank), manual_questions M2M (Question), random_config (JSONField: [{topic_id, count, difficulty?}]), randomize_questions, randomize_options, allow_review, show_score_immediately, status (draft/published/ongoing/completed)
+  - `resolve_questions()`: handles both manual and random pool drawing + shuffle
+- `StudentExamSession` model: exam FK, student FK, question_order (JSONField: list of question IDs), option_maps (JSONField: {str(q_id): {original_option_id: shuffled_option_id}}), started_at, submitted_at, time_remaining_seconds, status (not_started/in_progress/submitted/timed_out), score (Decimal %), tab_switch_count, ip_address — unique_together (exam, student)
+- `StudentAnswer` model: exam_session FK, question FK, selected_option, is_correct (null until submit), time_spent_seconds — unique_together (exam_session, question)
+
+Endpoints added to `/api/cbt/exams/`:
+- `GET available/` — exams for logged-in student's class arm, annotated with session_status + score
+- `POST {id}/start/` — creates/resumes session; shuffles questions and options; returns questions WITHOUT correct_answer or explanation; marks exam `ongoing`
+- `POST {id}/save-answer/` — body: {question_id, selected_option, time_spent_seconds}; upserts StudentAnswer
+- `GET {id}/status/` — recalculates time_remaining from started_at; returns session status + all saved answers
+- `POST {id}/submit/` — marks every answer correct/incorrect (reverses option shuffle map before comparing); computes percentage score; returns score + optionally full answer breakdown if show_score_immediately
+- `POST {id}/log-tab-switch/` — increments tab_switch_count
+
+Key logic:
+- Option shuffle stored per question as `{original_id: shuffled_id}`; submit reverses map to get original before comparing to `Question.correct_answer`
+- Fill-blank graded with `.strip().lower()` compare
+- Timer: time_remaining computed live as `duration_minutes * 60 - elapsed_since_started_at`
+
+Frontend:
+- `frontend/src/pages/student/ExamList.jsx` — card grid of available exams; status badges (Not Started / In Progress / Submitted / Timed Out); score chip on completed; Start/Resume button navigates to ExamRoom
+- `frontend/src/styles/ExamList.css`
+- `frontend/src/pages/student/ExamRoom.jsx` — full-screen exam room:
+  - Top bar: question counter, countdown timer (amber <5 min, red <1 min, pulse animation), answered count, Submit button
+  - Left sidebar: navigator grid (green=answered, outlined=current, white=unanswered), legend
+  - Main pane: question image (optional), question text, MCQ option labels (radio hidden, entire row clickable), fill-blank text input
+  - Auto-save: 400 ms debounce on every selection, calls `save-answer/`
+  - Tab-switch detection: `visibilitychange` event → calls `log-tab-switch/`, shows TabWarning overlay
+  - Submit modal: shows answered/total count, warns on unanswered questions
+  - Auto-submit: timer hitting 0 triggers `doSubmit()`
+  - Score screen: percentage with grade (Pass ≥70 / Average ≥50 / Below Average), correct count, back to list button
+  - Responsive: navigator hidden on mobile (<640px)
+- `frontend/src/styles/ExamRoom.css`
+
 ### Current Active Routes in App.js
 
 Public (no auth):
 - `/login`
 - `/change-password`
-- `/check-result`  ← NEW
+- `/check-result`
 
 Admin:
 - `/admin/dashboard`
 - `/admin/calendar`
 - `/admin/students/*`
 - `/admin/staff/*`
-- `/admin/results`  ← NEW
-- `/admin/scratch-cards`  ← NEW
+- `/admin/results`
+- `/admin/scratch-cards`
+- `/admin/question-bank`
 
 Teacher:
 - `/teacher/dashboard`
 
 Student:
 - `/student/dashboard`
-- `/student/results`  ← NEW
+- `/student/results`
+- `/student/exams`
+- `/student/exam/:examId`
 
 Parent:
 - `/parent/dashboard`
@@ -503,5 +565,9 @@ Parent:
 - `pages/student/MyAttendance.jsx`
 - `pages/student/Timetable.jsx`
 
+### Backend Apps — Current Status
+- **Fully implemented:** tenants, accounts, academics, enrollment, attendance, timetable, gradebook, results, cbt
+- **Scaffold only:** analytics, fees, notifications, promotion
+
 ### Next Phase
-Phase 3.1 — CBT Question Bank (backend/cbt/ + frontend QuestionBank page)
+Phase 3.3 — Auto-Marking, Gradebook Push & Exam Review

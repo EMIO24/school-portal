@@ -3,7 +3,7 @@ backend/cbt/serializers.py
 """
 
 from rest_framework import serializers
-from .models import Topic, Question
+from .models import Topic, Question, CBTExam, StudentExamSession, StudentAnswer
 
 
 class TopicSerializer(serializers.ModelSerializer):
@@ -57,3 +57,72 @@ class QuestionWriteSerializer(serializers.ModelSerializer):
             if 'id' not in opt or 'text' not in opt:
                 raise serializers.ValidationError("Each option must have 'id' and 'text'.")
         return value
+
+
+# ── CBT Exam serializers ──────────────────────────────────────────────────────
+
+class CBTExamListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for listing exams (no question detail)."""
+    subject_name = serializers.CharField(source='subject.name', read_only=True)
+    class_arms_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = CBTExam
+        fields = [
+            'id', 'title', 'subject', 'subject_name',
+            'class_arms_display',
+            'start_datetime', 'end_datetime', 'duration_minutes',
+            'status', 'show_score_immediately', 'allow_review',
+            'instructions',
+        ]
+
+    def get_class_arms_display(self, obj):
+        return [arm.full_name for arm in obj.class_arms.all()]
+
+
+class CBTExamWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = CBTExam
+        fields = [
+            'title', 'subject', 'class_arms', 'term', 'session',
+            'start_datetime', 'end_datetime', 'duration_minutes', 'instructions',
+            'selection_mode', 'manual_questions', 'random_config',
+            'randomize_questions', 'randomize_options',
+            'allow_review', 'show_score_immediately', 'status',
+        ]
+
+
+# ── Student-facing question (no correct_answer) ───────────────────────────────
+
+class ExamQuestionSerializer(serializers.ModelSerializer):
+    """
+    Sent to the student during an active exam.
+    correct_answer and explanation are deliberately excluded.
+    Options are reordered per the session's option_map.
+    """
+    class Meta:
+        model  = Question
+        fields = [
+            'id', 'question_text', 'question_image',
+            'question_type', 'options',
+        ]
+
+
+# ── Session serializers ───────────────────────────────────────────────────────
+
+class StudentAnswerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = StudentAnswer
+        fields = ['question', 'selected_option', 'time_spent_seconds']
+
+
+class ExamSessionStatusSerializer(serializers.ModelSerializer):
+    """Returned by the /status/ endpoint — includes saved answers."""
+    saved_answers = StudentAnswerSerializer(source='answers', many=True, read_only=True)
+
+    class Meta:
+        model  = StudentExamSession
+        fields = [
+            'id', 'status', 'time_remaining_seconds',
+            'tab_switch_count', 'score', 'saved_answers',
+        ]
