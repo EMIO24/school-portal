@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<!--
+  backend/results/pdf_templates/result_slip.html
+  WeasyPrint-rendered individual student result slip.
+  Designed to fit on one A4 portrait page (12mm margins).
+  All styles inline / in <style> — no external CSS files needed.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  /* ── Page setup ── */
+  @page {
+    size: A4 portrait;
+    margin: 12mm 14mm;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DejaVu Sans', Arial, sans-serif;
+    font-size: 9pt;
+    color: #1a1a1a;
+    line-height: 1.35;
+  }
+
+  /* ── School header ── */
+  .school-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 3px solid #0f1e3c;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+  }
+
+  .school-logo {
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  .school-logo-placeholder {
+    width: 56px; height: 56px;
+    border: 2px solid #0f1e3c;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 7pt; color: #0f1e3c; text-align: center;
+  }
+
+  .school-info { flex: 1; text-align: center; }
+
+  .school-name {
+    font-size: 14pt;
+    font-weight: bold;
+    color: #0f1e3c;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+
+  .school-address { font-size: 8pt; color: #555; margin-top: 2px; }
+
+  .report-title {
+    font-size: 10pt;
+    font-weight: bold;
+    color: #0f1e3c;
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+
+  /* ── Student bio strip ── */
+  .bio-strip {
+    display: flex;
+    gap: 10px;
+    background: #f0f4fa;
+    border: 1px solid #c5d0e6;
+    border-radius: 4px;
+    padding: 7px 10px;
+    margin-bottom: 10px;
+  }
+
+  .bio-photo {
+    width: 52px; height: 62px;
+    object-fit: cover;
+    border: 1px solid #c5d0e6;
+    flex-shrink: 0;
+  }
+
+  .bio-photo-placeholder {
+    width: 52px; height: 62px;
+    border: 1px solid #c5d0e6;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 7pt; color: #999; text-align: center;
+    background: #e8ecf4;
+  }
+
+  .bio-fields { flex: 1; }
+
+  .bio-row {
+    display: flex;
+    gap: 18px;
+    margin-bottom: 4px;
+  }
+
+  .bio-item { display: flex; gap: 4px; align-items: baseline; }
+  .bio-label { font-size: 7.5pt; color: #555; font-weight: bold; text-transform: uppercase; }
+  .bio-value { font-size: 9pt; font-weight: bold; color: #0f1e3c; }
+
+  /* ── Score table ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 8px;
+  }
+
+  .score-table th {
+    background: #0f1e3c;
+    color: #e8eef8;
+    padding: 5px 6px;
+    font-size: 8pt;
+    text-align: center;
+    font-weight: bold;
+    white-space: nowrap;
+  }
+
+  .score-table th.col-subject { text-align: left; }
+
+  .score-table td {
+    padding: 4px 6px;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 8.5pt;
+    text-align: center;
+  }
+
+  .score-table td.col-subject { text-align: left; font-weight: 500; }
+
+  .score-table tr:nth-child(even) td { background: #f8fafc; }
+
+  /* Grade badges in table */
+  .grade-badge {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: bold;
+    font-size: 8pt;
+  }
+  .grade-A1 { background: #dcfce7; color: #166534; }
+  .grade-B2,.grade-B3 { background: #dbeafe; color: #1e3a8a; }
+  .grade-C4,.grade-C5,.grade-C6 { background: #ede9fe; color: #4c1d95; }
+  .grade-D7,.grade-E8 { background: #fef9c3; color: #78350f; }
+  .grade-F9 { background: #fee2e2; color: #991b1b; }
+
+  /* ── Summary bar ── */
+  .summary-bar {
+    display: flex;
+    gap: 0;
+    border: 1.5px solid #0f1e3c;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+
+  .summary-cell {
+    flex: 1;
+    text-align: center;
+    padding: 5px 4px;
+    border-right: 1px solid #c5d0e6;
+  }
+  .summary-cell:last-child { border-right: none; }
+
+  .summary-cell .s-label {
+    font-size: 6.5pt;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #555;
+    display: block;
+  }
+  .summary-cell .s-value {
+    font-size: 11pt;
+    font-weight: bold;
+    color: #0f1e3c;
+    display: block;
+  }
+
+  /* Position gets special treatment */
+  .summary-cell.pos-cell { background: #0f1e3c; }
+  .summary-cell.pos-cell .s-label { color: #a5b4d4; }
+  .summary-cell.pos-cell .s-value { color: #fff; font-size: 13pt; }
+
+  /* ── Domain tables ── */
+  .section-title {
+    font-size: 8pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: #0f1e3c;
+    background: #e8ecf4;
+    padding: 3px 7px;
+    margin-bottom: 0;
+    border-top: 2px solid #0f1e3c;
+  }
+
+  .domain-table th {
+    background: #1e3560;
+    color: #e8eef8;
+    padding: 4px 7px;
+    font-size: 7.5pt;
+    font-weight: bold;
+  }
+
+  .domain-table td {
+    padding: 3px 7px;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 8pt;
+  }
+
+  .domain-table tr:nth-child(even) td { background: #f8fafc; }
+
+  .rating-pip {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 2px;
+    background: #c5d0e6;
+    vertical-align: middle;
+  }
+  .rating-pip.filled { background: #0f1e3c; }
+
+  /* ── Attendance ── */
+  .att-row {
+    display: flex;
+    gap: 8px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    align-items: center;
+  }
+
+  .att-item { text-align: center; padding: 0 10px; border-right: 1px solid #e2e8f0; }
+  .att-item:last-child { border-right: none; }
+  .att-label { font-size: 7pt; text-transform: uppercase; color: #555; }
+  .att-value { font-size: 12pt; font-weight: bold; color: #0f1e3c; }
+
+  /* ── Remarks ── */
+  .remarks-section {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .remark-box {
+    flex: 1;
+    border: 1px solid #c5d0e6;
+    border-radius: 4px;
+    padding: 6px 9px;
+    min-height: 36px;
+  }
+
+  .remark-label {
+    font-size: 7pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #0f1e3c;
+    letter-spacing: .05em;
+    margin-bottom: 3px;
+  }
+
+  .remark-text { font-size: 8.5pt; color: #333; font-style: italic; }
+
+  /* ── Signature / footer ── */
+  .footer-strip {
+    display: flex;
+    gap: 10px;
+    border-top: 2px solid #0f1e3c;
+    padding-top: 8px;
+    margin-top: 6px;
+  }
+
+  .sig-box {
+    flex: 1;
+    text-align: center;
+  }
+
+  .sig-line {
+    border-top: 1px solid #333;
+    margin: 18px 10px 3px;
+  }
+
+  .sig-label { font-size: 7.5pt; color: #555; }
+
+  .next-term-note {
+    text-align: center;
+    font-size: 8pt;
+    color: #0f1e3c;
+    font-weight: bold;
+    margin-top: 6px;
+    background: #f0f4fa;
+    padding: 4px;
+    border-radius: 3px;
+  }
+
+  /* Two-column layout for domain tables side by side */
+  .domain-columns { display: flex; gap: 10px; margin-bottom: 8px; }
+  .domain-col { flex: 1; }
+</style>
+</head>
+<body>
+
+<!-- ── School Header ───────────────────────────────────────────────────── -->
+<div class="school-header">
+  {% if school_logo %}
+    <img src="{{ school_logo }}" class="school-logo" alt="School Logo">
+  {% else %}
+    <div class="school-logo-placeholder">LOGO</div>
+  {% endif %}
+  <div class="school-info">
+    <div class="school-name">{{ school_name }}</div>
+    <div class="school-address">{{ school_address }}</div>
+    <div class="report-title">Student Academic Report — {{ term_name }} | {{ session_name }}</div>
+  </div>
+</div>
+
+<!-- ── Student Bio ─────────────────────────────────────────────────────── -->
+<div class="bio-strip">
+  {% if photo_url %}
+    <img src="{{ photo_url }}" class="bio-photo" alt="Student Photo">
+  {% else %}
+    <div class="bio-photo-placeholder">PHOTO</div>
+  {% endif %}
+  <div class="bio-fields">
+    <div class="bio-row">
+      <div class="bio-item">
+        <span class="bio-label">Name:</span>
+        <span class="bio-value">{{ student_name }}</span>
+      </div>
+      <div class="bio-item">
+        <span class="bio-label">Admission No.:</span>
+        <span class="bio-value">{{ admission_no }}</span>
+      </div>
+      <div class="bio-item">
+        <span class="bio-label">Class:</span>
+        <span class="bio-value">{{ class_name }}</span>
+      </div>
+    </div>
+    <div class="bio-row">
+      <div class="bio-item">
+        <span class="bio-label">Gender:</span>
+        <span class="bio-value">{{ gender }}</span>
+      </div>
+      <div class="bio-item">
+        <span class="bio-label">Date of Birth:</span>
+        <span class="bio-value">{{ date_of_birth }}</span>
+      </div>
+      <div class="bio-item">
+        <span class="bio-label">Term:</span>
+        <span class="bio-value">{{ term_name }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Score Table ─────────────────────────────────────────────────────── -->
+<table class="score-table">
+  <thead>
+    <tr>
+      <th class="col-subject">Subject</th>
+      <th>1st Test<br>/10</th>
+      <th>2nd Test<br>/10</th>
+      <th>Assignment<br>/10</th>
+      <th>CA Total<br>/40</th>
+      <th>Exam<br>/60</th>
+      <th>Total<br>/100</th>
+      <th>Grade</th>
+      <th>Remark</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in score_rows %}
+    <tr>
+      <td class="col-subject">{{ row.subject }}</td>
+      <td>{{ row.first_test }}</td>
+      <td>{{ row.second_test }}</td>
+      <td>{{ row.assignment }}</td>
+      <td><strong>{{ row.ca_total }}</strong></td>
+      <td>{{ row.exam_score }}</td>
+      <td><strong>{{ row.total_score }}</strong></td>
+      <td><span class="grade-badge grade-{{ row.grade }}">{{ row.grade }}</span></td>
+      <td>{{ row.remark }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- ── Summary Bar ─────────────────────────────────────────────────────── -->
+<div class="summary-bar">
+  <div class="summary-cell">
+    <span class="s-label">Total Score</span>
+    <span class="s-value">{{ total_score|floatformat:1 }}</span>
+  </div>
+  <div class="summary-cell">
+    <span class="s-label">Average</span>
+    <span class="s-value">{{ average_score|floatformat:1 }}</span>
+  </div>
+  <div class="summary-cell pos-cell">
+    <span class="s-label">Position</span>
+    <span class="s-value">
+      {{ position }}{% if position == 1 %}st{% elif position == 2 %}nd{% elif position == 3 %}rd{% else %}th{% endif %}
+    </span>
+  </div>
+  <div class="summary-cell">
+    <span class="s-label">Out of</span>
+    <span class="s-value">{{ class_size }}</span>
+  </div>
+  <div class="summary-cell">
+    <span class="s-label">Subjects</span>
+    <span class="s-value">{{ num_subjects }}</span>
+  </div>
+</div>
+
+<!-- ── Domain Tables (side by side) ───────────────────────────────────── -->
+<div class="domain-columns">
+
+  <!-- Affective -->
+  {% if affective_rows %}
+  <div class="domain-col">
+    <div class="section-title">Affective Domain</div>
+    <table class="domain-table">
+      <thead>
+        <tr>
+          <th>Trait</th>
+          <th>Rating</th>
+          <th>Descriptor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in affective_rows %}
+        <tr>
+          <td>{{ row.trait }}</td>
+          <td>
+            {% for i in "12345" %}
+              <span class="rating-pip{% if forloop.counter <= row.rating %} filled{% endif %}"></span>
+            {% endfor %}
+            {{ row.rating }}
+          </td>
+          <td>{{ row.descriptor }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Psychomotor -->
+  {% if psychomotor_rows %}
+  <div class="domain-col">
+    <div class="section-title">Psychomotor Domain</div>
+    <table class="domain-table">
+      <thead>
+        <tr>
+          <th>Skill</th>
+          <th>Rating</th>
+          <th>Descriptor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in psychomotor_rows %}
+        <tr>
+          <td>{{ row.skill }}</td>
+          <td>
+            {% for i in "12345" %}
+              <span class="rating-pip{% if forloop.counter <= row.rating %} filled{% endif %}"></span>
+            {% endfor %}
+            {{ row.rating }}
+          </td>
+          <td>{{ row.descriptor }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Attendance (placed under psychomotor to balance layout) -->
+    <div class="section-title" style="margin-top:8px">Attendance</div>
+    <div class="att-row">
+      <div class="att-item">
+        <div class="att-label">Days Present</div>
+        <div class="att-value">{{ days_present }}</div>
+      </div>
+      <div class="att-item">
+        <div class="att-label">Total Days</div>
+        <div class="att-value">{{ total_days }}</div>
+      </div>
+      <div class="att-item">
+        <div class="att-label">Attendance %</div>
+        <div class="att-value">{{ att_percentage }}%</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- ── Remarks ─────────────────────────────────────────────────────────── -->
+<div class="remarks-section">
+  <div class="remark-box">
+    <div class="remark-label">Class Teacher's Remark</div>
+    <div class="remark-text">{{ class_teacher_remark|default:"—" }}</div>
+  </div>
+  <div class="remark-box">
+    <div class="remark-label">Principal's Remark</div>
+    <div class="remark-text">{{ principal_remark|default:"—" }}</div>
+  </div>
+</div>
+
+<!-- ── Footer ──────────────────────────────────────────────────────────── -->
+{% if next_term_date %}
+<div class="next-term-note">
+  📅 Next Term Begins: {{ next_term_date }}
+</div>
+{% endif %}
+
+<div class="footer-strip">
+  <div class="sig-box">
+    <div class="sig-line"></div>
+    <div class="sig-label">Class Teacher's Signature</div>
+  </div>
+  <div class="sig-box">
+    <div class="sig-line"></div>
+    <div class="sig-label">Principal's Signature &amp; Stamp</div>
+  </div>
+  <div class="sig-box">
+    <div class="sig-line"></div>
+    <div class="sig-label">Parent / Guardian Signature</div>
+  </div>
+</div>
+
+</body>
+</html>

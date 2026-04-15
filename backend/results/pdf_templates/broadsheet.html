@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<!--
+  backend/results/pdf_templates/broadsheet.html
+  WeasyPrint-rendered class broadsheet — landscape A4.
+  Top 3 students highlighted gold / silver / bronze.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page {
+    size: A4 landscape;
+    margin: 10mm 12mm;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DejaVu Sans', Arial, sans-serif;
+    font-size: 7.5pt;
+    color: #1a1a1a;
+  }
+
+  /* ── Header ── */
+  .bs-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 3px solid #0f1e3c;
+    padding-bottom: 7px;
+    margin-bottom: 8px;
+  }
+
+  .bs-logo {
+    width: 46px; height: 46px;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  .bs-logo-placeholder {
+    width: 46px; height: 46px;
+    border: 2px solid #0f1e3c;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 6pt; color: #0f1e3c;
+  }
+
+  .bs-school-info { text-align: center; flex: 1; }
+  .bs-school-name { font-size: 12pt; font-weight: bold; color: #0f1e3c; text-transform: uppercase; }
+  .bs-subtitle    { font-size: 8.5pt; font-weight: bold; color: #1e3560; margin-top: 2px; }
+  .bs-meta        { font-size: 7.5pt; color: #555; margin-top: 1px; }
+
+  /* ── Table ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 7pt;
+  }
+
+  thead th {
+    background: #0f1e3c;
+    color: #e8eef8;
+    padding: 5px 4px;
+    text-align: center;
+    font-weight: bold;
+    white-space: nowrap;
+    border: 1px solid #1e3560;
+    vertical-align: bottom;
+  }
+
+  thead th.col-name { text-align: left; min-width: 100px; }
+  thead th.col-adm  { min-width: 66px; }
+  thead th.col-sn   { width: 22px; }
+
+  tbody td {
+    padding: 3.5px 4px;
+    border: 1px solid #dde3ec;
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  tbody td.col-name { text-align: left; font-weight: 500; padding-left: 6px; }
+  tbody td.col-adm  { font-size: 6.5pt; color: #555; }
+
+  tbody tr:nth-child(even) td { background: #f6f8fc; }
+
+  /* ── Rank highlights ── */
+  tbody tr.rank-gold td {
+    background: #fffbeb !important;
+    border-color: #f59e0b;
+  }
+  tbody tr.rank-gold td.col-name { color: #92400e; font-weight: bold; }
+
+  tbody tr.rank-silver td {
+    background: #f8fafc !important;
+    border-color: #94a3b8;
+  }
+  tbody tr.rank-silver td.col-name { color: #334155; font-weight: bold; }
+
+  tbody tr.rank-bronze td {
+    background: #fff7ed !important;
+    border-color: #c2410c;
+  }
+  tbody tr.rank-bronze td.col-name { color: #7c2d12; font-weight: bold; }
+
+  /* Rank medal cell */
+  .medal { font-size: 9pt; }
+
+  /* Grade in broadsheet cells */
+  .bs-grade {
+    font-size: 6pt;
+    font-weight: bold;
+    color: #444;
+  }
+
+  /* Totals / averages columns */
+  td.col-total, td.col-avg {
+    font-weight: bold;
+    background: #eef1f8 !important;
+    color: #0f1e3c;
+  }
+
+  td.col-pos {
+    font-weight: bold;
+    font-size: 8.5pt;
+    color: #0f1e3c;
+    background: #e8ecf4 !important;
+  }
+
+  /* ── Footer ── */
+  .bs-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 7pt;
+    color: #777;
+    border-top: 1px solid #dde3ec;
+    padding-top: 4px;
+  }
+
+  /* ── Legend ── */
+  .bs-legend {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 6px;
+    font-size: 7pt;
+    color: #555;
+    align-items: center;
+  }
+
+  .legend-chip {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    margin-right: 3px;
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Broadsheet Header ───────────────────────────────────────────────── -->
+<div class="bs-header">
+  {% if school_logo %}
+    <img src="{{ school_logo }}" class="bs-logo" alt="">
+  {% else %}
+    <div class="bs-logo-placeholder">LOGO</div>
+  {% endif %}
+
+  <div class="bs-school-info">
+    <div class="bs-school-name">{{ school_name }}</div>
+    <div class="bs-subtitle">CONTINUOUS ASSESSMENT BROADSHEET</div>
+    <div class="bs-meta">
+      Class: <strong>{{ class_name }}</strong> &nbsp;|&nbsp;
+      Term: <strong>{{ term_name }}</strong> &nbsp;|&nbsp;
+      Session: <strong>{{ session_name }}</strong> &nbsp;|&nbsp;
+      Total Students: <strong>{{ total_students }}</strong>
+    </div>
+  </div>
+</div>
+
+<!-- ── Legend ─────────────────────────────────────────────────────────── -->
+<div class="bs-legend">
+  <span><span class="legend-chip" style="background:#fffbeb;border:1px solid #f59e0b"></span>1st Place</span>
+  <span><span class="legend-chip" style="background:#f8fafc;border:1px solid #94a3b8"></span>2nd Place</span>
+  <span><span class="legend-chip" style="background:#fff7ed;border:1px solid #c2410c"></span>3rd Place</span>
+  <span style="margin-left:auto; color:#888">Scores shown as Total / Grade</span>
+</div>
+
+<!-- ── Main Table ─────────────────────────────────────────────────────── -->
+<table>
+  <thead>
+    <tr>
+      <th class="col-sn">S/N</th>
+      <th class="col-name">Student Name</th>
+      <th class="col-adm">Adm No.</th>
+      {% for subj in subjects %}
+      <th>{{ subj }}</th>
+      {% endfor %}
+      <th style="background:#1a3060">Total</th>
+      <th style="background:#1a3060">Avg</th>
+      <th style="background:#1a3060">Pos</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr class="{{ row.rank_class }}">
+      <td>
+        {% if row.position == 1 %}<span class="medal">🥇</span>
+        {% elif row.position == 2 %}<span class="medal">🥈</span>
+        {% elif row.position == 3 %}<span class="medal">🥉</span>
+        {% else %}{{ row.sn }}{% endif %}
+      </td>
+      <td class="col-name">{{ row.name }}</td>
+      <td class="col-adm">{{ row.admission_no }}</td>
+
+      {% for score in row.scores %}
+      <td>
+        {% if score.total != '' %}
+          {{ score.total|floatformat:0 }}
+          {% if score.grade %}<br><span class="bs-grade">{{ score.grade }}</span>{% endif %}
+        {% else %}
+          —
+        {% endif %}
+      </td>
+      {% endfor %}
+
+      <td class="col-total">{{ row.total|floatformat:1 }}</td>
+      <td class="col-avg">{{ row.average|floatformat:1 }}</td>
+      <td class="col-pos">
+        {{ row.position }}{% if row.position == 1 %}st{% elif row.position == 2 %}nd{% elif row.position == 3 %}rd{% else %}th{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────── -->
+<div class="bs-footer">
+  <span>Generated: {{ generated_at|date:"d M Y, H:i" }}</span>
+  <span>{{ school_name }} — {{ class_name }} — {{ term_name }} Broadsheet</span>
+  <span>Confidential — For Internal Use Only</span>
+</div>
+
+</body>
+</html>

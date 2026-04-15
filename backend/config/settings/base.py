@@ -90,7 +90,7 @@ TEMPLATES = [
         },
     },
 ]
-
+TEMPLATES[0]['DIRS'] += [BASE_DIR / 'results' / 'pdf_templates']
 # ── Database ───────────────────────────────────────────────────────────────
 # Overridden in development.py and production.py
 

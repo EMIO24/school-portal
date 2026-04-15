@@ -73,7 +73,6 @@ These apps exist structurally, but their current models/views are still boilerpl
 - `analytics`
 - `cbt`
 - `fees`
-- `gradebook`
 - `notifications`
 - `promotion`
 - `results`
@@ -98,6 +97,7 @@ Currently included route groups:
 - `/api/` academics routes
 - `/api/` enrollment routes
 - `/api/attendance/` attendance routes
+- `/api/gradebook/` gradebook routes
 - `/api/timetable/` timetable routes
 
 Important implication:
@@ -367,3 +367,44 @@ For future edits, assume selective completeness rather than whole-project comple
   - `frontend/src/pages/student/Timetable.jsx`
   - `frontend/src/pages/teacher/MyTimetable.jsx`
   - `frontend/src/pages/teacher/TakeAttendance.jsx`
+
+## Latest Update Addendum
+
+- Gradebook backend is now implemented, not scaffold-only.
+- Gradebook backend files now in active use:
+  - `backend/gradebook/models.py`
+  - `backend/gradebook/serializers.py`
+  - `backend/gradebook/views.py`
+  - `backend/gradebook/urls.py`
+  - `backend/gradebook/admin.py`
+- Gradebook backend capabilities now present:
+  - Nigerian WAEC A1–F9 grade scale per school
+  - score entry rows with CA + exam grading
+  - affective domain ratings
+  - psychomotor domain ratings
+  - bulk update / publish / grade-scale endpoints
+- Gradebook routing is now included in `backend/config/urls.py`:
+  - `/api/gradebook/`
+- New migrations were created and applied:
+  - `attendance.0001_initial`
+  - `attendance.0002_initial`
+  - `timetable.0001_initial`
+  - `gradebook.0001_initial`
+- `python manage.py migrate` succeeded for the new attendance, timetable, and gradebook modules.
+- `python manage.py check` still passes after the migration work.
+
+- Teacher gradebook frontend now exists in active project files:
+  - `frontend/src/pages/teacher/ScoreEntry.jsx`
+  - `frontend/src/pages/teacher/AffinityDomain.jsx`
+  - `frontend/src/components/teacher/GradeCell.jsx`
+  - `frontend/src/styles/ScoreEntry.css`
+- The teacher gradebook frontend has already been aligned with the current backend/API shape:
+  - uses `full_name` for students
+  - uses `is_current` for active term detection
+  - score-entry focus handling uses `inputRef`
+  - gradebook serializers use `student.student_profile`
+  - email is used instead of `username` as fallback
+
+- Current remaining gap:
+  - teacher gradebook pages exist, but are still not active routes in `frontend/src/App.js`
+  - route wiring is still pending even though the pages and backend endpoints exist
