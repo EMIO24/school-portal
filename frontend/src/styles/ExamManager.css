@@ -1,0 +1,416 @@
+/*
+  ExamManager.css — admin exam create/edit/publish
+*/
+
+.em-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 28px 20px 60px;
+}
+
+.em-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.em-header h1 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #0c1c40;
+  margin: 0;
+}
+
+.em-new-btn {
+  padding: 10px 20px;
+  background: #0c1c40;
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  font-size: .88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.em-new-btn:hover { background: #1a3470; }
+
+/* Exam list */
+.em-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.em-row-card {
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  transition: box-shadow .15s;
+}
+
+.em-row-card:hover { box-shadow: 0 2px 12px rgba(12,28,64,.07); }
+
+.em-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.em-row-title {
+  font-weight: 700;
+  color: #111827;
+  font-size: .95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.em-row-subject {
+  font-size: .78rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.em-row-meta {
+  display: flex;
+  gap: 12px;
+  font-size: .78rem;
+  color: #6b7280;
+  flex-wrap: wrap;
+}
+
+.em-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* Status badges */
+.em-badge {
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 2px 9px;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+
+.em-badge--draft     { background: #f3f4f6; color: #6b7280; }
+.em-badge--published { background: #dcfce7; color: #166534; }
+.em-badge--ongoing   { background: #fef9c3; color: #713f12; }
+.em-badge--completed { background: #e0f2fe; color: #0369a1; }
+
+/* Action buttons */
+.em-action-btn {
+  padding: 5px 12px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  font-size: .78rem;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+}
+.em-action-btn:hover            { background: #f9fafb; }
+.em-action-btn--publish         { border-color: #16a34a; color: #16a34a; }
+.em-action-btn--publish:hover   { background: #f0fdf4; }
+.em-action-btn--delete:hover    { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+
+/* Empty */
+.em-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #9ca3af;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.em-empty strong { font-size: 1rem; color: #374151; }
+
+/* Skeleton */
+.em-grid { display: flex; flex-direction: column; gap: 10px; }
+.em-skeleton {
+  height: 68px;
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 10px;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ── Modal ── */
+.em-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(12,28,64,.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 32px 16px 64px;
+  z-index: 200;
+  overflow-y: auto;
+}
+
+.em-modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 680px;
+  box-shadow: 0 8px 40px rgba(12,28,64,.22);
+  display: flex;
+  flex-direction: column;
+}
+
+.em-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.em-modal-header h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0c1c40;
+  margin: 0;
+}
+
+.em-close {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.em-close:hover { background: #f3f4f6; }
+
+.em-modal-body {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  max-height: 72vh;
+}
+
+.em-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 24px;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* Form elements */
+.em-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.em-label {
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #374151;
+}
+
+.em-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.em-input,
+.em-select,
+.em-textarea {
+  padding: 9px 12px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 7px;
+  font-size: .9rem;
+  color: #111;
+  background: #fff;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.em-input:focus,
+.em-select:focus,
+.em-textarea:focus {
+  outline: none;
+  border-color: #1a3470;
+  box-shadow: 0 0 0 3px rgba(26,52,112,.1);
+}
+
+.em-textarea { resize: vertical; min-height: 72px; font-family: inherit; line-height: 1.5; }
+
+/* Checkbox grid (class arms) */
+.em-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+}
+
+.em-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .85rem;
+  color: #374151;
+  cursor: pointer;
+}
+
+/* Radio group */
+.em-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.em-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .88rem;
+  color: #374151;
+  cursor: pointer;
+}
+
+/* Toggles */
+.em-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.em-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .88rem;
+  color: #374151;
+  cursor: pointer;
+}
+
+/* Random rule rows */
+.em-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.em-rule-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.em-rule-select { flex: 1; min-width: 120px; }
+.em-rule-count  { width: 80px; flex-shrink: 0; }
+
+.em-rule-remove {
+  background: none;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: .82rem;
+}
+.em-rule-remove:hover { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+
+.em-add-rule-btn {
+  padding: 7px 14px;
+  border: 1.5px dashed #d1d5db;
+  border-radius: 7px;
+  background: #f9fafb;
+  color: #374151;
+  font-size: .84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.em-add-rule-btn:hover { background: #f3f4f6; }
+
+.em-hint {
+  font-size: .75rem;
+  color: #9ca3af;
+  margin: 4px 0 0;
+}
+
+/* Manual question picker */
+.em-q-picker {
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.em-q-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background .1s;
+}
+.em-q-row:last-child { border-bottom: none; }
+.em-q-row:hover       { background: #f8fafc; }
+.em-q-row--selected   { background: #eef2ff; }
+
+.em-q-text {
+  flex: 1;
+  font-size: .84rem;
+  color: #111827;
+  line-height: 1.4;
+}
+
+.em-q-diff {
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+.em-q-diff--easy   { background: #dcfce7; color: #166534; }
+.em-q-diff--medium { background: #fef9c3; color: #713f12; }
+.em-q-diff--hard   { background: #fee2e2; color: #991b1b; }
+
+/* Error */
+.em-error {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: .84rem;
+}
+
+/* Buttons */
+.em-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 7px;
+  font-size: .88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.em-btn:disabled { opacity: .5; cursor: not-allowed; }
+.em-btn--navy  { background: #0c1c40; color: #fff; }
+.em-btn--navy:not(:disabled):hover { background: #1a3470; }
+.em-btn--ghost { background: #f3f4f6; color: #374151; border: 1.5px solid #e5e7eb; }
+.em-btn--ghost:not(:disabled):hover { background: #e5e7eb; }

@@ -569,5 +569,49 @@ Parent:
 - **Fully implemented:** tenants, accounts, academics, enrollment, attendance, timetable, gradebook, results, cbt
 - **Scaffold only:** analytics, fees, notifications, promotion
 
+## Latest Update — Phase 3.3 Complete
+
+- Timestamp: `2026-04-15`
+- `python manage.py check` passes (0 issues)
+- No new migrations (models unchanged)
+- `recharts` installed in `frontend/package.json`
+
+### Phase 3.3 — Auto-Marking, Gradebook Push & Exam Review (complete)
+
+Backend (`backend/cbt/` extended):
+- `services.py` (new): `auto_mark(session, final_status)` — marks all StudentAnswers correct/incorrect, reverses option shuffle map before comparing, fill-blank graded case-insensitive, computes % score; `submit` action now delegates here
+- `POST exams/{id}/push-to-gradebook/` (admin/teacher): scales `session.score / 100 * subject.max_exam_score`, upserts `ScoreEntry.exam_score`; returns `{updated, skipped}`
+- `GET exams/{id}/review/` (student, submitted only, allow_review=True): questions in session order with options remapped, `selected_option`, `correct_option` (in shuffled space), `is_correct`, `explanation`
+- `GET exams/{id}/results/` (admin/teacher): per-student `{name, score, time_taken_seconds, tab_switches, status}` sorted by score desc
+- `GET exams/{id}/question-analysis/` (admin/teacher): per-question `{pct_correct, total_answered, correct_count, most_chosen_wrong}` sorted pct_correct asc
+
+Frontend:
+- `pages/student/ExamReview.jsx` — score summary card at top; per-question cards with student answer (red if wrong), correct answer (green), explanation; fill-blank shows both answers side-by-side
+- `styles/ExamReview.css`
+- `pages/admin/ExamResults.jsx` — exam selector; stats strip (students/avg/submitted/timed-out); score distribution BarChart (Recharts, red/amber/green cells); tabs: Student Results table (score pill, time, tab-switch warning badge) | Question Analysis table (% correct bar, most wrong option); Push to Gradebook button with confirmation
+- `styles/ExamResults.css`
+- `pages/admin/ExamManager.jsx` — exam list with status badges + Publish/Edit/Delete actions; create/edit modal: basic info, random config rule builder (topic+difficulty+count per row), manual question checkbox picker, settings toggles, Save Draft / Save & Publish footer
+- `styles/ExamManager.css`
+
+Routes added:
+- `/admin/exam-manager` → ExamManager
+- `/admin/exam-results` → ExamResults
+- `/student/exam/:examId/review` → ExamReview
+
+### Current Active Routes in App.js
+
+Public: `/login`, `/change-password`, `/check-result`
+
+Admin: `/admin/dashboard`, `/admin/calendar`, `/admin/students/*`, `/admin/staff/*`, `/admin/results`, `/admin/scratch-cards`, `/admin/question-bank`, `/admin/exam-manager`, `/admin/exam-results`
+
+Student: `/student/dashboard`, `/student/results`, `/student/exams`, `/student/exam/:examId`, `/student/exam/:examId/review`
+
+Teacher: `/teacher/dashboard`
+Parent: `/parent/dashboard`
+
+### Backend Apps — Current Status
+- **Fully implemented:** tenants, accounts, academics, enrollment, attendance, timetable, gradebook, results, cbt
+- **Scaffold only:** analytics, fees, notifications, promotion
+
 ### Next Phase
-Phase 3.3 — Auto-Marking, Gradebook Push & Exam Review
+Phase 4.1 — Notification System (Termii SMS + Django Email)

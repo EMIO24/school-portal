@@ -2,21 +2,26 @@
 backend/cbt/views.py
 
 Endpoint map:
-  GET/POST              /api/cbt/topics/                   → TopicViewSet
-  GET/POST              /api/cbt/questions/                → QuestionViewSet
-  GET                   /api/cbt/questions/stats/          → question counts
-  POST                  /api/cbt/questions/bulk-import/    → JSON array import
-  GET/POST              /api/cbt/exams/                    → CBTExamViewSet
-  GET                   /api/cbt/exams/available/          → student's upcoming exams
-  POST                  /api/cbt/exams/{id}/start/         → begin exam, get questions
-  POST                  /api/cbt/exams/{id}/save-answer/   → auto-save one answer
-  GET                   /api/cbt/exams/{id}/status/        → time + saved answers
-  POST                  /api/cbt/exams/{id}/submit/        → final submission + scoring
-  POST                  /api/cbt/exams/{id}/log-tab-switch/→ increment tab switch counter
+  GET/POST              /api/cbt/topics/                        → TopicViewSet
+  GET/POST              /api/cbt/questions/                     → QuestionViewSet
+  GET                   /api/cbt/questions/stats/               → question counts
+  POST                  /api/cbt/questions/bulk-import/         → JSON array import
+  GET/POST              /api/cbt/exams/                         → CBTExamViewSet
+  GET                   /api/cbt/exams/available/               → student's upcoming exams
+  POST                  /api/cbt/exams/{id}/start/              → begin exam, get questions
+  POST                  /api/cbt/exams/{id}/save-answer/        → auto-save one answer
+  GET                   /api/cbt/exams/{id}/status/             → time + saved answers
+  POST                  /api/cbt/exams/{id}/submit/             → final submission + scoring
+  POST                  /api/cbt/exams/{id}/log-tab-switch/     → increment tab switch counter
+  POST                  /api/cbt/exams/{id}/push-to-gradebook/  → write scores to ScoreEntry
+  GET                   /api/cbt/exams/{id}/review/             → student post-exam review
+  GET                   /api/cbt/exams/{id}/results/            → admin per-student table
+  GET                   /api/cbt/exams/{id}/question-analysis/  → per-question stats
 """
 
 import random
-from datetime import timedelta
+from collections import Counter
+from decimal import Decimal
 
 from django.db.models import Count
 from django.utils import timezone
@@ -26,6 +31,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from accounts.permissions import IsSchoolAdminOrTeacher
 from tenants.mixins import TenantMixin
 from .models import Topic, Question, CBTExam, StudentExamSession, StudentAnswer
 from .serializers import (
@@ -33,6 +39,7 @@ from .serializers import (
     CBTExamListSerializer, CBTExamWriteSerializer,
     ExamQuestionSerializer, ExamSessionStatusSerializer,
 )
+from .services import auto_mark
 
 
 class TopicViewSet(TenantMixin, ModelViewSet):
@@ -340,8 +347,7 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
         if isinstance(session, Response):
             return session
 
-        now = timezone.now()
-        _mark_session(session, now, 'submitted')
+        auto_mark(session, final_status='submitted')
 
         payload = {'score': float(session.score), 'status': 'submitted'}
         if exam.show_score_immediately:
@@ -363,6 +369,207 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
             session.tab_switch_count += 1
             session.save(update_fields=['tab_switch_count'])
         return Response({'tab_switch_count': session.tab_switch_count if session else 0})
+
+    # ── /exams/{id}/push-to-gradebook/ ───────────────────────────────────────
+
+    @action(detail=True, methods=['post'], url_path='push-to-gradebook',
+            permission_classes=[IsSchoolAdminOrTeacher])
+    def push_to_gradebook(self, request, pk=None):
+        """
+        Scale every completed session's CBT percentage to the subject's
+        max_exam_score and upsert a ScoreEntry.exam_score.
+
+        Returns {updated: N, skipped: N}.
+        """
+        from gradebook.models import ScoreEntry
+
+        exam = self.get_object()
+        sessions = StudentExamSession.objects.filter(
+            exam=exam, status__in=['submitted', 'timed_out']
+        ).select_related('student', 'student__student_profile')
+
+        max_exam = exam.subject.max_exam_score
+        updated  = 0
+        skipped  = 0
+
+        for sess in sessions:
+            try:
+                profile   = sess.student.student_profile
+                class_arm = profile.current_class
+                if not class_arm:
+                    skipped += 1
+                    continue
+
+                scaled = (
+                    Decimal(str(sess.score)) / Decimal('100') * Decimal(str(max_exam))
+                ).quantize(Decimal('0.01'))
+
+                ScoreEntry.objects.update_or_create(
+                    student  = sess.student,
+                    subject  = exam.subject,
+                    term     = exam.term,
+                    session  = exam.session,
+                    school   = exam.school,
+                    defaults = {
+                        'class_arm':  class_arm,
+                        'exam_score': scaled,
+                    },
+                )
+                updated += 1
+            except Exception:
+                skipped += 1
+
+        return Response({'updated': updated, 'skipped': skipped})
+
+    # ── /exams/{id}/review/ ───────────────────────────────────────────────────
+
+    @action(detail=True, methods=['get'])
+    def review(self, request, pk=None):
+        """
+        Post-exam review for the student — questions with their answer,
+        the correct answer, and the explanation.
+        Only available after submission and only if allow_review=True.
+        """
+        exam    = self.get_object()
+        user    = request.user
+        session = StudentExamSession.objects.filter(exam=exam, student=user).first()
+
+        if not session or session.status not in ('submitted', 'timed_out'):
+            return Response({'detail': 'Review not available yet.'}, status=403)
+
+        if not exam.allow_review:
+            return Response({'detail': 'Review is disabled for this exam.'}, status=403)
+
+        answers = {a.question_id: a for a in session.answers.select_related('question')}
+        q_map   = {
+            q.id: q
+            for q in Question.objects.filter(id__in=session.question_order)
+        }
+
+        result = []
+        for q_id in session.question_order:
+            q   = q_map.get(q_id)
+            ans = answers.get(q_id)
+            if not q:
+                continue
+
+            # Re-apply shuffle for display consistency
+            omap      = session.option_maps.get(str(q_id), {})
+            rev_map   = {v: k for k, v in omap.items()}
+            options   = _shuffled_options(q, omap)
+
+            # What the student picked (in shuffled space) and the correct (in original space)
+            selected  = ans.selected_option if ans else ''
+            # Map correct_answer to shuffled space for display
+            correct_shuffled = omap.get(q.correct_answer, q.correct_answer)
+
+            result.append({
+                'id':               q.id,
+                'question_text':    q.question_text,
+                'question_image':   q.question_image,
+                'question_type':    q.question_type,
+                'options':          options,
+                'selected_option':  selected,
+                'correct_option':   correct_shuffled,
+                'is_correct':       ans.is_correct if ans else None,
+                'explanation':      q.explanation,
+            })
+
+        return Response({
+            'score':     float(session.score),
+            'questions': result,
+        })
+
+    # ── /exams/{id}/results/ ─────────────────────────────────────────────────
+
+    @action(detail=True, methods=['get'], permission_classes=[IsSchoolAdminOrTeacher])
+    def results(self, request, pk=None):
+        """
+        Admin / teacher view: per-student performance table.
+        Returns [{student_id, name, score, time_taken_seconds, tab_switches, status}].
+        """
+        exam     = self.get_object()
+        sessions = (
+            StudentExamSession.objects
+            .filter(exam=exam)
+            .select_related('student')
+            .order_by('-score')
+        )
+
+        data = []
+        for sess in sessions:
+            time_taken = None
+            if sess.started_at and sess.submitted_at:
+                time_taken = int((sess.submitted_at - sess.started_at).total_seconds())
+
+            data.append({
+                'student_id':        sess.student_id,
+                'name':              sess.student.get_full_name() or sess.student.email,
+                'score':             float(sess.score) if sess.score is not None else None,
+                'status':            sess.status,
+                'time_taken_seconds': time_taken,
+                'tab_switches':      sess.tab_switch_count,
+            })
+
+        return Response({
+            'exam_title':     exam.title,
+            'total_students': len(data),
+            'results':        data,
+        })
+
+    # ── /exams/{id}/question-analysis/ ───────────────────────────────────────
+
+    @action(detail=True, methods=['get'], url_path='question-analysis',
+            permission_classes=[IsSchoolAdminOrTeacher])
+    def question_analysis(self, request, pk=None):
+        """
+        Per-question analysis: % answered correctly and most common wrong option.
+        """
+        exam = self.get_object()
+
+        # Collect all answer rows for this exam
+        answers = (
+            StudentAnswer.objects
+            .filter(exam_session__exam=exam)
+            .select_related('question')
+        )
+
+        # Group by question
+        from collections import defaultdict
+        q_data: dict = defaultdict(lambda: {'correct': 0, 'total': 0, 'wrong_opts': []})
+        for ans in answers:
+            q_data[ans.question_id]['total'] += 1
+            if ans.is_correct:
+                q_data[ans.question_id]['correct'] += 1
+            elif ans.selected_option:
+                q_data[ans.question_id]['wrong_opts'].append(ans.selected_option)
+
+        q_map = {
+            q.id: q
+            for q in Question.objects.filter(id__in=list(q_data.keys()))
+        }
+
+        result = []
+        for q_id, stats in q_data.items():
+            q     = q_map.get(q_id)
+            total = stats['total']
+            pct   = round(stats['correct'] / total * 100, 1) if total else 0
+
+            most_wrong = None
+            if stats['wrong_opts']:
+                most_wrong = Counter(stats['wrong_opts']).most_common(1)[0][0]
+
+            result.append({
+                'question_id':        q_id,
+                'question_text':      q.question_text if q else '',
+                'total_answered':     total,
+                'correct_count':      stats['correct'],
+                'pct_correct':        pct,
+                'most_chosen_wrong':  most_wrong,
+            })
+
+        result.sort(key=lambda x: x['pct_correct'])
+        return Response(result)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -406,37 +613,13 @@ def _build_question_list(session):
     return result
 
 
-def _mark_session(session, submitted_at, final_status):
-    """Mark answers correct/incorrect and compute percentage score."""
-    q_ids    = session.question_order
-    questions = {q.id: q for q in Question.objects.filter(id__in=q_ids)}
-    answers   = {a.question_id: a for a in session.answers.all()}
-
-    correct = 0
-    total   = len(q_ids)
-
-    for q_id in q_ids:
-        q   = questions.get(q_id)
-        ans = answers.get(q_id)
-        if not q or not ans:
-            continue
-
-        # Reverse-map the student's (possibly shuffled) option back to original
-        omap = session.option_maps.get(str(q_id), {})
-        reverse_map = {v: k for k, v in omap.items()}
-        original_selected = reverse_map.get(ans.selected_option, ans.selected_option)
-
-        if q.question_type == 'fill_blank':
-            is_correct = original_selected.strip().lower() == q.correct_answer.strip().lower()
-        else:
-            is_correct = original_selected == q.correct_answer
-
-        ans.is_correct = is_correct
-        ans.save(update_fields=['is_correct'])
-        if is_correct:
-            correct += 1
-
-    session.score        = round((correct / total * 100), 2) if total else 0
-    session.status       = final_status
-    session.submitted_at = submitted_at
-    session.save(update_fields=['score', 'status', 'submitted_at'])
+def _shuffled_options(question, omap):
+    """Return question options with ids remapped through omap (for review display)."""
+    opts = []
+    for opt in question.options:
+        opts.append({
+            'id':   omap.get(opt['id'], opt['id']),
+            'text': opt['text'],
+        })
+    opts.sort(key=lambda o: o['id'])
+    return opts

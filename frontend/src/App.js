@@ -32,6 +32,8 @@ import BulkImportPage   from "./pages/admin/BulkImportPage";
 import ResultManagement from "./pages/admin/ResultManagement";
 import ScratchCards     from "./pages/admin/ScratchCards";
 import QuestionBank     from "./pages/admin/QuestionBank";
+import ExamManager     from "./pages/admin/ExamManager";
+import ExamResults     from "./pages/admin/ExamResults";
 
 // ── Role dashboards (stubs) ────────────────────────────────────────────────
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
@@ -40,6 +42,7 @@ import ParentDashboard  from "./pages/parent/ParentDashboard";
 import MyResult         from "./pages/student/MyResult";
 import ExamList         from "./pages/student/ExamList";
 import ExamRoom         from "./pages/student/ExamRoom";
+import ExamReview       from "./pages/student/ExamReview";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 import { useAuth } from "./hooks/useAuth";
@@ -96,7 +99,9 @@ function AppRoutes() {
             <Route path="scratch-cards" element={<ScratchCards />} />
 
             {/* CBT */}
-            <Route path="question-bank" element={<QuestionBank />} />
+            <Route path="question-bank"  element={<QuestionBank />} />
+            <Route path="exam-manager"   element={<ExamManager />} />
+            <Route path="exam-results"   element={<ExamResults />} />
 
             {/*
               Upcoming admin routes (added in later prompts):
@@ -136,8 +141,9 @@ function AppRoutes() {
             <Route path="results" element={<MyResult />} />
 
             {/* CBT */}
-            <Route path="exams"        element={<ExamList />} />
-            <Route path="exam/:examId" element={<ExamRoom />} />
+            <Route path="exams"               element={<ExamList />} />
+            <Route path="exam/:examId"        element={<ExamRoom />} />
+            <Route path="exam/:examId/review" element={<ExamReview />} />
 
             {/*
               Upcoming student routes:
