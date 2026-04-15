@@ -8,7 +8,7 @@ the WeasyPrint HTML template and the browser-side MyResult preview.
 """
 
 from rest_framework import serializers
-from .models import ResultRemark
+from .models import ResultRemark, ScratchCard
 
 
 class ResultRemarkSerializer(serializers.ModelSerializer):
@@ -38,3 +38,31 @@ class RemarkPatchSerializer(serializers.ModelSerializer):
     class Meta:
         model  = ResultRemark
         fields = ['class_teacher_remark', 'principal_remark']
+
+
+class ScratchCardSerializer(serializers.ModelSerializer):
+    generated_by_name = serializers.SerializerMethodField()
+    term_name         = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = ScratchCard
+        fields = [
+            'id', 'serial_number', 'batch_name', 'term', 'term_name',
+            'price', 'is_used', 'used_at', 'generated_by_name', 'created_at',
+        ]
+
+    def get_generated_by_name(self, obj):
+        if obj.generated_by:
+            return f"{obj.generated_by.last_name} {obj.generated_by.first_name}".strip()
+        return ''
+
+    def get_term_name(self, obj):
+        return str(obj.term) if obj.term else ''
+
+
+class BatchStatsSerializer(serializers.Serializer):
+    batch_name  = serializers.CharField()
+    total       = serializers.IntegerField()
+    used        = serializers.IntegerField()
+    unused      = serializers.IntegerField()
+    created_at  = serializers.DateTimeField()

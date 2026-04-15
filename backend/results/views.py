@@ -2,6 +2,7 @@
 backend/results/views.py
 
 Result slip + broadsheet PDF generation via WeasyPrint.
+Scratch card generation and public PIN result checking.
 
 Endpoint map:
   GET  /api/results/slip/{student_id}/?term=         → PDF
@@ -9,29 +10,36 @@ Endpoint map:
   POST /api/results/positions/compute/?class_arm=&term=
   PATCH /api/results/remarks/{student_id}/?term=
   GET  /api/results/slip-data/{student_id}/?term=    → JSON preview
+  POST /api/results/check/                           → PUBLIC PIN check
+  POST /api/scratch-cards/generate/                  → Admin, returns CSV
+  GET  /api/scratch-cards/                           → Admin list
+  GET  /api/scratch-cards/batch-stats/               → Admin batch summary
 """
 
+import csv
 import io
+import random
+import string
 import zipfile
 from decimal import Decimal
 
-from django.db.models import Sum, Avg, Count, Q
+from django.contrib.auth.hashers import check_password, make_password
+from django.db.models import Count, Q, Sum, Avg
 from django.http import HttpResponse, JsonResponse
 from django.template.loader import render_to_string
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
-from weasyprint import HTML, CSS
-
-from tenants.mixins import TenantMixin
 from rest_framework.views import APIView
+from tenants.mixins import TenantMixin
 
-from .models import ResultRemark
-from .serializers import ResultRemarkSerializer, RemarkPatchSerializer
+from .models import ResultRemark, ScratchCard, _generate_serial
+from .serializers import (
+    ResultRemarkSerializer, RemarkPatchSerializer,
+    ScratchCardSerializer,
+)
 
-# Optional: import gradebook/attendance models for slip data
 from gradebook.models import ScoreEntry, AffectiveDomain, PsychomotorDomain
 from attendance.models import AttendanceRecord
 
@@ -187,7 +195,8 @@ def _assemble_slip_data(school, student, term):
 
 def _render_pdf(template_name, context, orientation='portrait'):
     """Render a WeasyPrint PDF and return raw bytes."""
-    html_string = render_to_string(f'results/{template_name}', context)
+    from weasyprint import HTML, CSS
+    html_string = render_to_string(template_name, context)
     base_css = CSS(string=f'@page {{ size: A4 {orientation}; margin: 12mm; }}')
     pdf_bytes = HTML(string=html_string).write_pdf(stylesheets=[base_css])
     return pdf_bytes
@@ -538,3 +547,206 @@ class AllSlipsZipView(TenantMixin, APIView):
             f'attachment; filename="results_class{class_arm_id}_term{term_id}.zip"'
         )
         return response
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scratch Card: Generate (Admin)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ScratchCardGenerateView(TenantMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        quantity   = int(request.data.get('quantity', 0))
+        batch_name = request.data.get('batch_name', '').strip()
+        term_id    = request.data.get('term_id')
+        price      = request.data.get('price', '0')
+
+        if quantity < 1 or quantity > 500:
+            return Response({'detail': 'quantity must be between 1 and 500.'}, status=400)
+        if not batch_name:
+            return Response({'detail': 'batch_name is required.'}, status=400)
+
+        cards_to_create = []
+        csv_rows = [['serial_number', 'pin']]
+
+        for _ in range(quantity):
+            # Generate unique serial
+            while True:
+                serial = _generate_serial(self.school.slug)
+                if not ScratchCard.objects.filter(serial_number=serial).exists():
+                    break
+
+            plain_pin = ''.join(random.choices(string.digits, k=10))
+            hashed    = make_password(plain_pin)
+
+            cards_to_create.append(ScratchCard(
+                school       = self.school,
+                serial_number= serial,
+                pin_hash     = hashed,
+                batch_name   = batch_name,
+                term_id      = term_id or None,
+                price        = price,
+                generated_by = request.user,
+            ))
+            csv_rows.append([serial, plain_pin])
+
+        ScratchCard.objects.bulk_create(cards_to_create)
+
+        # Return CSV download
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerows(csv_rows)
+        output.seek(0)
+
+        filename = f"scratch_cards_{batch_name.replace(' ', '_')}.csv"
+        response = HttpResponse(output.read(), content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scratch Card: List + Batch Stats (Admin)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ScratchCardListView(TenantMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        batch = request.query_params.get('batch')
+        qs = ScratchCard.objects.filter(school=self.school)
+        if batch:
+            qs = qs.filter(batch_name=batch)
+        serializer = ScratchCardSerializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class ScratchCardBatchStatsView(TenantMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Min
+        batches = (
+            ScratchCard.objects
+            .filter(school=self.school)
+            .values('batch_name')
+            .annotate(
+                total     = Count('id'),
+                used      = Count('id', filter=Q(is_used=True)),
+                unused    = Count('id', filter=Q(is_used=False)),
+                created_at= Min('created_at'),
+            )
+            .order_by('-created_at')
+        )
+        return Response(list(batches))
+
+
+class ScratchCardUnusedCSVView(TenantMixin, APIView):
+    """Download unused PINs for a batch — admin only."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        batch = request.query_params.get('batch', '').strip()
+        if not batch:
+            return Response({'detail': 'batch param required.'}, status=400)
+
+        cards = ScratchCard.objects.filter(
+            school=self.school, batch_name=batch, is_used=False
+        )
+        # Note: we can only return serial numbers here — PINs are hashed and not recoverable.
+        # Admins should keep the original CSV from generation. This endpoint lists unused serials.
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['serial_number', 'status'])
+        for card in cards:
+            writer.writerow([card.serial_number, 'unused'])
+        output.seek(0)
+
+        filename = f"unused_{batch.replace(' ', '_')}.csv"
+        response = HttpResponse(output.read(), content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public PIN Check (NO auth, NO tenant middleware)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PublicResultCheckView(APIView):
+    """
+    Public endpoint — no login required.
+    Accepts admission_number + serial_number + pin.
+    Verifies the scratch card, marks it used, returns full result JSON.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        admission_number = request.data.get('admission_number', '').strip().upper()
+        serial_number    = request.data.get('serial_number', '').strip().upper()
+        pin              = request.data.get('pin', '').strip()
+
+        if not (admission_number and serial_number and pin):
+            return Response(
+                {'detail': 'admission_number, serial_number and pin are all required.'},
+                status=400,
+            )
+
+        # Look up card
+        try:
+            card = ScratchCard.objects.select_related('school').get(
+                serial_number=serial_number
+            )
+        except ScratchCard.DoesNotExist:
+            return Response({'detail': 'Invalid serial number.'}, status=404)
+
+        # Verify PIN
+        if not check_password(pin, card.pin_hash):
+            return Response({'detail': 'Incorrect PIN.'}, status=403)
+
+        # Already used?
+        if card.is_used:
+            return Response(
+                {'detail': 'This card has already been used.'},
+                status=403,
+            )
+
+        # Find student by admission number within that school
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        try:
+            from enrollment.models import StudentProfile
+            profile = StudentProfile.objects.select_related('user').get(
+                school=card.school,
+                admission_number=admission_number,
+            )
+            student = profile.user
+        except StudentProfile.DoesNotExist:
+            return Response(
+                {'detail': 'No student found with that admission number.'},
+                status=404,
+            )
+
+        # Determine term — use card's term if set, else current term for the school
+        if card.term:
+            term = card.term
+        else:
+            from academics.models import Term
+            term = Term.objects.filter(
+                session__school=card.school, is_current=True
+            ).first()
+            if not term:
+                return Response(
+                    {'detail': 'No current term configured for this school.'},
+                    status=404,
+                )
+
+        # Mark card used
+        card.is_used         = True
+        card.used_at         = timezone.now()
+        card.used_by_student = student
+        card.save(update_fields=['is_used', 'used_at', 'used_by_student'])
+
+        # Assemble and return result data
+        data = _assemble_slip_data(card.school, student, term)
+        return Response(data)

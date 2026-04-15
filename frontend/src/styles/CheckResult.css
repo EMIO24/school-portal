@@ -1,0 +1,313 @@
+/*
+  CheckResult.css
+  Public-facing scratch card result checker page.
+  Clean, formal, mobile-first. Print stylesheet included.
+*/
+
+:root {
+  --cr-navy:      #0c1c40;
+  --cr-navy-mid:  #1a3470;
+  --cr-navy-pale: #eef2fa;
+  --cr-accent:    #e07b00;
+  --cr-rule:      #dde3ec;
+  --cr-ink:       #16130d;
+  --cr-ink-mid:   #4a4438;
+  --cr-bg:        #f5f7fc;
+  --cr-white:     #ffffff;
+  --cr-success:   #166534;
+  --cr-success-bg:#dcfce7;
+  --cr-error:     #991b1b;
+  --cr-error-bg:  #fee2e2;
+}
+
+/* ── Page shell ── */
+.cr-page {
+  min-height: 100vh;
+  background: var(--cr-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 16px 64px;
+}
+
+/* ── Checker card ── */
+.cr-card {
+  background: var(--cr-white);
+  border: 1px solid var(--cr-rule);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(12, 28, 64, 0.10);
+  width: 100%;
+  max-width: 480px;
+  padding: 36px 32px;
+}
+
+.cr-logo-wrap {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.cr-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.cr-logo-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--cr-navy-pale);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+}
+
+.cr-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--cr-navy);
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.cr-subtitle {
+  font-size: 0.82rem;
+  color: var(--cr-ink-mid);
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+/* ── Form ── */
+.cr-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cr-field label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cr-navy);
+  margin-bottom: 6px;
+}
+
+.cr-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1.5px solid var(--cr-rule);
+  border-radius: 7px;
+  font-size: 0.95rem;
+  color: var(--cr-ink);
+  background: var(--cr-white);
+  transition: border-color 0.15s;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.05em;
+}
+
+.cr-input:focus {
+  outline: none;
+  border-color: var(--cr-navy-mid);
+  box-shadow: 0 0 0 3px rgba(26, 52, 112, 0.12);
+}
+
+.cr-btn {
+  padding: 13px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  margin-top: 4px;
+}
+
+.cr-btn:active { transform: scale(0.98); }
+.cr-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.cr-btn--navy {
+  background: var(--cr-navy);
+  color: #fff;
+}
+
+.cr-btn--navy:hover:not(:disabled) { background: var(--cr-navy-mid); }
+
+.cr-btn--ghost {
+  background: var(--cr-navy-pale);
+  color: var(--cr-navy);
+  border: 1.5px solid var(--cr-rule);
+}
+
+/* ── Alert ── */
+.cr-alert {
+  padding: 12px 16px;
+  border-radius: 7px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.cr-alert--error {
+  background: var(--cr-error-bg);
+  color: var(--cr-error);
+  border: 1px solid #fca5a5;
+}
+
+.cr-alert--success {
+  background: var(--cr-success-bg);
+  color: var(--cr-success);
+  border: 1px solid #86efac;
+}
+
+/* ── Result slip (rendered after successful check) ── */
+.cr-result-wrap {
+  width: 100%;
+  max-width: 860px;
+  margin-top: 32px;
+}
+
+.cr-result-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+/* Result card mirrors MyResult styles but is print-optimised */
+.cr-result-card {
+  background: var(--cr-white);
+  border: 1px solid var(--cr-rule);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(12, 28, 64, 0.08);
+}
+
+.cr-result-header {
+  background: var(--cr-navy);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 28px;
+}
+
+.cr-result-header img.school-logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.cr-result-header .school-info h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.cr-result-header .school-info p {
+  font-size: 0.78rem;
+  opacity: 0.8;
+  margin: 0;
+}
+
+.cr-result-body {
+  padding: 24px 28px;
+}
+
+/* Score table */
+.cr-score-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  margin-bottom: 20px;
+}
+
+.cr-score-table th {
+  background: var(--cr-navy);
+  color: #e8eef8;
+  padding: 8px 10px;
+  text-align: center;
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.cr-score-table th.left { text-align: left; }
+
+.cr-score-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--cr-rule);
+  text-align: center;
+}
+
+.cr-score-table td.left { text-align: left; }
+
+.cr-score-table tr:nth-child(even) td { background: #f8fafc; }
+
+/* Summary chips */
+.cr-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.cr-summary-chip {
+  flex: 1;
+  min-width: 80px;
+  background: var(--cr-navy-pale);
+  border: 1px solid var(--cr-rule);
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.cr-summary-chip__num {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--cr-navy);
+}
+
+.cr-summary-chip__num.pos { color: var(--cr-accent); font-size: 1.4rem; }
+
+.cr-summary-chip__label {
+  display: block;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cr-ink-mid);
+  margin-top: 2px;
+}
+
+/* Grade pill */
+.grade-pill {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+
+.grade-pill.A1                         { background: #dcfce7; color: #166534; }
+.grade-pill.B2, .grade-pill.B3         { background: #dbeafe; color: #1e3a8a; }
+.grade-pill.C4, .grade-pill.C5, .grade-pill.C6 { background: #ede9fe; color: #4c1d95; }
+.grade-pill.D7, .grade-pill.E8         { background: #fef9c3; color: #78350f; }
+.grade-pill.F9                         { background: #fee2e2; color: #991b1b; }
+
+/* ── Print styles ── */
+@media print {
+  .cr-page       { padding: 0; background: #fff; }
+  .cr-card       { display: none; }
+  .cr-result-actions { display: none; }
+  .cr-result-wrap { margin-top: 0; max-width: 100%; }
+  .cr-result-card {
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .cr-result-header { background: #0c1c40 !important; -webkit-print-color-adjust: exact; }
+}

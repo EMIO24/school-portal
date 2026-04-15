@@ -408,3 +408,100 @@ For future edits, assume selective completeness rather than whole-project comple
 - Current remaining gap:
   - teacher gradebook pages exist, but are still not active routes in `frontend/src/App.js`
   - route wiring is still pending even though the pages and backend endpoints exist
+
+## Latest Update — Phase 2.4 & 2.5 Complete
+
+- Timestamp: `2026-04-15`
+- `python manage.py check` passes (0 issues)
+- `python manage.py migrate` applied:
+  - `results.0001_initial` — ResultRemark table
+  - `results.0002_scratchcard` — ScratchCard table
+
+### Phase 2.4 — Result Slip & Broadsheet PDF (now complete)
+
+Backend (`backend/results/`):
+- `ResultRemark` model: student FK, term FK, school FK, class_arm FK, class_teacher_remark, principal_remark, computed_position, total_score (cached), average_score (cached), subjects_offered
+- `_assemble_slip_data()` helper builds full context dict for both PDF and JSON preview
+- `WeasyPrint` import is **lazy** (inside `_render_pdf()`) — required because GTK+ system libs are not installed on Windows; app starts cleanly without them
+- Template path fix: `render_to_string(template_name, ...)` without `results/` prefix — templates are found via `BASE_DIR / 'results' / 'pdf_templates'` in `TEMPLATES[0]['DIRS']`
+- PDF templates at `backend/results/pdf_templates/`:
+  - `result_slip.html` — A4 portrait, full result card with affective/psychomotor domains, attendance, remarks, signature lines
+  - `broadsheet.html` — A4 landscape, all students × all subjects, gold/silver/bronze top-3 highlighting
+- API endpoints at `/api/results/`:
+  - `POST positions/compute/?class_arm=&term=` — competition-style ranking, writes to ResultRemark
+  - `GET class-results/?class_arm=&term=` — admin table data
+  - `GET/PATCH remarks/{student_id}/?term=` — remark read/write
+  - `GET slip-data/{student_id}/?term=` — JSON for browser preview
+  - `GET slip/{student_id}/?term=` → PDF download
+  - `GET broadsheet/{class_arm_id}/?term=` → PDF download
+  - `GET all-slips/{class_arm_id}/?term=` → ZIP of all student PDFs
+- `backend/config/urls.py` includes `/api/results/` using named urlpatterns list
+
+Frontend:
+- `frontend/src/pages/admin/ResultManagement.jsx` — compute positions, inline remark editor, broadsheet + all-slips ZIP download, individual slip download per student; stats strip (class average, pending remarks)
+- `frontend/src/pages/student/MyResult.jsx` — browser-rendered result card, term selector, PDF download button
+- `frontend/src/styles/Results.css` — "Official Record" design: Oxford navy + parchment + medal colours; Cormorant Garamond / Fira Code / Figtree fonts
+- Routes now active in `App.js`:
+  - `/admin/results` → ResultManagement
+  - `/student/results` → MyResult
+
+### Phase 2.5 — Scratch Card / PIN Result Checker (now complete)
+
+Backend (`backend/results/` extended, `backend/config/urls.py`):
+- `ScratchCard` model: school FK, serial_number (unique, format `{SLUG}-XXXX-XXXX`), pin_hash (make_password), term FK (nullable), batch_name, price, generated_by FK, is_used, used_at, used_by_student FK
+- `_generate_serial(school_slug)` utility — uppercase alphanumeric `{SLUG}-{4}-{4}` format
+- `POST /api/scratch-cards/generate/` — Admin only; generates 1–500 cards, stores hashed PINs, returns CSV download (`serial_number, pin`); plain PINs are never stored and cannot be recovered
+- `GET /api/scratch-cards/` — Admin list (filterable by batch)
+- `GET /api/scratch-cards/batch-stats/` — per-batch summary (total/used/unused/created_at)
+- `GET /api/scratch-cards/unused-csv/?batch=` — download unused serial numbers per batch (note: PINs not included — only serials)
+- `POST /api/results/check/` — **PUBLIC, no auth, no tenant** — body: `{admission_number, serial_number, pin}`; verifies card, marks used, returns full result JSON from `_assemble_slip_data()`
+- `/api/results/check/` added to `EXEMPT_PATH_PREFIXES` in `backend/tenants/middleware.py`
+- `backend/config/urls.py` now includes `/api/scratch-cards/` as a separate route group
+
+Frontend:
+- `frontend/src/pages/public/CheckResult.jsx` — 3-field form (admission no. + serial + PIN); on success renders full result slip inline; per-case error messages (wrong PIN / already used / not found); "Print Result" button (`window.print()`); "Check Another" resets the form
+- `frontend/src/styles/CheckResult.css` — clean public styles + `@media print` stylesheet
+- `frontend/src/pages/admin/ScratchCards.jsx` — generate batch form (name, quantity 1–500, term, price); batch table with usage progress bar; download unused serials CSV per batch
+- Routes now active in `App.js`:
+  - `/check-result` → CheckResult (public, no auth)
+  - `/admin/scratch-cards` → ScratchCards
+
+### Current Active Routes in App.js
+
+Public (no auth):
+- `/login`
+- `/change-password`
+- `/check-result`  ← NEW
+
+Admin:
+- `/admin/dashboard`
+- `/admin/calendar`
+- `/admin/students/*`
+- `/admin/staff/*`
+- `/admin/results`  ← NEW
+- `/admin/scratch-cards`  ← NEW
+
+Teacher:
+- `/teacher/dashboard`
+
+Student:
+- `/student/dashboard`
+- `/student/results`  ← NEW
+
+Parent:
+- `/parent/dashboard`
+
+### Still Unwired in App.js (pages exist, routes not added yet)
+- `pages/admin/AttendanceOverview.jsx`
+- `pages/admin/SubjectAssignment.jsx`
+- `pages/admin/SubjectManager.jsx`
+- `pages/admin/TimetableBuilder.jsx`
+- `pages/teacher/ScoreEntry.jsx`
+- `pages/teacher/AffinityDomain.jsx`
+- `pages/teacher/TakeAttendance.jsx`
+- `pages/teacher/MyTimetable.jsx`
+- `pages/student/MyAttendance.jsx`
+- `pages/student/Timetable.jsx`
+
+### Next Phase
+Phase 3.1 — CBT Question Bank (backend/cbt/ + frontend QuestionBank page)

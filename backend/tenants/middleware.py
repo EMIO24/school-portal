@@ -23,6 +23,7 @@ EXEMPT_PATH_PREFIXES = (
     "/superadmin/",
     "/health/",
     "/api/auth/",
+    "/api/results/check/",  # Public PIN result checker — no tenant needed
 )
 
 

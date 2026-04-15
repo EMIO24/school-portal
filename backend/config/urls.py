@@ -5,6 +5,7 @@ config/urls.py — complete root URL configuration
 from django.contrib import admin
 from django.urls import include, path
 from django.http import JsonResponse
+from results.urls import results_urlpatterns, scratch_card_urlpatterns
 
 
 def health_check(request):
@@ -30,7 +31,9 @@ urlpatterns = [
     # Enrollment (students, staff, class levels/arms, subjects)
     path("api/", include("enrollment.urls")),
 
-    path('api/attendance/', include('attendance.urls')),
-    path('api/gradebook/', include('gradebook.urls')),
-    path('api/results/', include('results.urls')),
+    path('api/attendance/',    include('attendance.urls')),
+    path('api/gradebook/',     include('gradebook.urls')),
+    path('api/cbt/',           include('cbt.urls')),
+    path('api/results/',       include((results_urlpatterns,      'results'))),
+    path('api/scratch-cards/', include((scratch_card_urlpatterns, 'scratch-cards'))),
 ]

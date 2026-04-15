@@ -17,6 +17,7 @@ import ProtectedRoute from "./components/common/ProtectedRoute";
 // ── Public ─────────────────────────────────────────────────────────────────
 import Login          from "./pages/public/Login";
 import ChangePassword from "./pages/public/ChangePassword";
+import CheckResult    from "./pages/public/CheckResult";
 
 // ── Admin pages ────────────────────────────────────────────────────────────
 import AdminDashboard   from "./pages/admin/AdminDashboard";
@@ -28,11 +29,15 @@ import Staff            from "./pages/admin/Staff";
 import StaffForm        from "./pages/admin/StaffForm";
 import StaffProfilePage from "./pages/admin/StaffProfilePage";
 import BulkImportPage   from "./pages/admin/BulkImportPage";
+import ResultManagement from "./pages/admin/ResultManagement";
+import ScratchCards     from "./pages/admin/ScratchCards";
+import QuestionBank     from "./pages/admin/QuestionBank";
 
 // ── Role dashboards (stubs) ────────────────────────────────────────────────
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
 import StudentDashboard from "./pages/student/StudentDashboard";
 import ParentDashboard  from "./pages/parent/ParentDashboard";
+import MyResult         from "./pages/student/MyResult";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 import { useAuth } from "./hooks/useAuth";
@@ -52,6 +57,7 @@ function AppRoutes() {
 
       {/* ── Public ───────────────────────────────────────────────────────── */}
       <Route path="/login"           element={<Login />} />
+      <Route path="/check-result"    element={<CheckResult />} />
       <Route path="/change-password" element={
         <ProtectedRoute><ChangePassword /></ProtectedRoute>
       } />
@@ -83,10 +89,16 @@ function AppRoutes() {
             <Route path="staff/:id"            element={<StaffProfilePage />} />
             <Route path="staff/:id/edit"       element={<StaffForm />} />
 
+            {/* Results & Scratch Cards */}
+            <Route path="results"       element={<ResultManagement />} />
+            <Route path="scratch-cards" element={<ScratchCards />} />
+
+            {/* CBT */}
+            <Route path="question-bank" element={<QuestionBank />} />
+
             {/*
               Upcoming admin routes (added in later prompts):
               <Route path="subjects"           element={<Subjects />} />
-              <Route path="results"            element={<ResultsManager />} />
               <Route path="cbt"                element={<CBTManager />} />
               <Route path="fees"               element={<FeeManager />} />
               <Route path="settings"           element={<SchoolSettings />} />
@@ -118,9 +130,11 @@ function AppRoutes() {
         <ProtectedRoute allowedRoles={["student"]}>
           <Routes>
             <Route path="dashboard" element={<StudentDashboard />} />
+            {/* Results */}
+            <Route path="results" element={<MyResult />} />
+
             {/*
               Upcoming student routes:
-              <Route path="results"    element={<MyResults />} />
               <Route path="cbt"        element={<CBTExam />} />
               <Route path="timetable"  element={<Timetable />} />
               <Route path="profile"    element={<StudentSelfProfile />} />
