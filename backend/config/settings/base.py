@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
+    "django_celery_beat",
 
     # Local apps — ORDER MATTERS
     "tenants",
@@ -163,7 +164,6 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS":    True,
     "BLACKLIST_AFTER_ROTATION": True,
     "ALGORITHM":                "HS256",
-    "SIGNING_KEY":              None,  # falls back to SECRET_KEY
     "AUTH_HEADER_TYPES":        ("Bearer",),
     "AUTH_HEADER_NAME":         "HTTP_AUTHORIZATION",
     "USER_ID_FIELD":            "id",
@@ -188,6 +188,7 @@ CORS_ALLOW_HEADERS = [
     "origin",
     "x-csrftoken",
     "x-requested-with",
+    "x-school-slug",  # tenant identification for cross-origin deployments
 ]
 
 # ── Cloudinary ─────────────────────────────────────────────────────────────
@@ -211,3 +212,12 @@ CELERY_ACCEPT_CONTENT    = ["json"]
 CELERY_TASK_SERIALIZER   = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE          = "Africa/Lagos"
+CELERY_BEAT_SCHEDULER    = "django_celery_beat.schedulers:DatabaseScheduler"
+
+from celery.schedules import crontab
+CELERY_BEAT_SCHEDULE = {
+    'nightly-analytics': {
+        'task':     'analytics.tasks.compute_all_schools_analytics',
+        'schedule': crontab(hour=23, minute=0),
+    },
+}

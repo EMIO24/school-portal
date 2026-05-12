@@ -9,7 +9,7 @@ from results.urls import results_urlpatterns, scratch_card_urlpatterns
 
 
 def health_check(request):
-    return JsonResponse({"status": "ok"})
+    return JsonResponse({"status": "ok", "version": "1.0"})
 
 
 urlpatterns = [
@@ -36,4 +36,19 @@ urlpatterns = [
     path('api/cbt/',           include('cbt.urls')),
     path('api/results/',       include((results_urlpatterns,      'results'))),
     path('api/scratch-cards/', include((scratch_card_urlpatterns, 'scratch-cards'))),
+
+    # Phase 4
+    path('api/notifications/', include('notifications.urls')),
+    path('api/fees/',          include('fees.urls')),
+
+    # Timetable
+    path('api/timetable/',     include('timetable.urls')),
+
+    # Parent data (tenant-aware — must NOT be under /api/auth/)
+    path('api/parent/',        include('accounts.parent_urls')),
+
+    # Phase 5
+    path('api/analytics/',     include('analytics.urls')),
+    path('api/reports/',       include('analytics.reports_urls')),  # transcript only
+    path('api/promotion/',     include('promotion.urls')),
 ]

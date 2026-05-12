@@ -145,7 +145,7 @@ class QuestionViewSet(TenantMixin, ModelViewSet):
             'by_type':       by_type,
         })
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_path='bulk-import')
     def bulk_import(self, request):
         """
         Import a JSON array of question objects.
@@ -202,22 +202,27 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
         user = request.user
         now  = timezone.now()
 
-        # Find the student's class arm
+        # Find the student's current class arm
         try:
-            arm = user.student_profile.class_arm
+            arm = user.student_profile.current_class
         except Exception:
             return Response([])
 
-        exams = CBTExam.objects.filter(
+        exams = list(CBTExam.objects.filter(
             school=self.school,
             status__in=['published', 'ongoing'],
             class_arms=arm,
-        ).prefetch_related('class_arms')
+        ).prefetch_related('class_arms'))
 
-        # Annotate with student's session status (if any)
+        # Batch-fetch all sessions for these exams in one query
+        sessions_map = {
+            s.exam_id: s
+            for s in StudentExamSession.objects.filter(exam__in=exams, student=user)
+        }
+
         result = []
         for exam in exams:
-            session = StudentExamSession.objects.filter(exam=exam, student=user).first()
+            session = sessions_map.get(exam.id)
             item = CBTExamListSerializer(exam).data
             item['session_status'] = session.status if session else None
             item['score']          = float(session.score) if session and session.score is not None else None
@@ -296,7 +301,10 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
         """
         exam    = self.get_object()
         user    = request.user
-        q_id    = request.data.get('question_id')
+        try:
+            q_id = int(request.data.get('question_id', 0))
+        except (TypeError, ValueError):
+            return Response({'detail': 'question_id must be an integer.'}, status=400)
         option  = request.data.get('selected_option', '')
         spent   = int(request.data.get('time_spent_seconds', 0))
 

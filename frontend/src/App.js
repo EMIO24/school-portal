@@ -39,10 +39,22 @@ import ExamResults     from "./pages/admin/ExamResults";
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
 import StudentDashboard from "./pages/student/StudentDashboard";
 import ParentDashboard  from "./pages/parent/ParentDashboard";
+import ParentLogin      from "./pages/parent/ParentLogin";
 import MyResult         from "./pages/student/MyResult";
 import ExamList         from "./pages/student/ExamList";
 import ExamRoom         from "./pages/student/ExamRoom";
 import ExamReview       from "./pages/student/ExamReview";
+import StudentFees      from "./pages/student/Fees";
+
+// ── Phase 4 admin pages ────────────────────────────────────────────────────
+import Notifications          from "./pages/admin/Notifications";
+import NotificationTemplates  from "./pages/admin/NotificationTemplates";
+import FeeSetup               from "./pages/admin/FeeSetup";
+import FeeCollection          from "./pages/admin/FeeCollection";
+
+// ── Phase 5 pages ──────────────────────────────────────────────────────────
+import Promotion        from "./pages/admin/Promotion";
+import MyPerformance    from "./pages/student/MyPerformance";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 import { useAuth } from "./hooks/useAuth";
@@ -62,6 +74,7 @@ function AppRoutes() {
 
       {/* ── Public ───────────────────────────────────────────────────────── */}
       <Route path="/login"           element={<Login />} />
+      <Route path="/parent/login"    element={<ParentLogin />} />
       <Route path="/check-result"    element={<CheckResult />} />
       <Route path="/change-password" element={
         <ProtectedRoute><ChangePassword /></ProtectedRoute>
@@ -103,13 +116,16 @@ function AppRoutes() {
             <Route path="exam-manager"   element={<ExamManager />} />
             <Route path="exam-results"   element={<ExamResults />} />
 
-            {/*
-              Upcoming admin routes (added in later prompts):
-              <Route path="subjects"           element={<Subjects />} />
-              <Route path="cbt"                element={<CBTManager />} />
-              <Route path="fees"               element={<FeeManager />} />
-              <Route path="settings"           element={<SchoolSettings />} />
-            */}
+            {/* Notifications */}
+            <Route path="notifications"           element={<Notifications />} />
+            <Route path="notification-templates"  element={<NotificationTemplates />} />
+
+            {/* Fees */}
+            <Route path="fee-setup"      element={<FeeSetup />} />
+            <Route path="fee-collection" element={<FeeCollection />} />
+
+            {/* Promotion */}
+            <Route path="promotion" element={<Promotion />} />
             <Route index element={<Navigate to="dashboard" replace />} />
           </Routes>
         </ProtectedRoute>
@@ -145,11 +161,11 @@ function AppRoutes() {
             <Route path="exam/:examId"        element={<ExamRoom />} />
             <Route path="exam/:examId/review" element={<ExamReview />} />
 
-            {/*
-              Upcoming student routes:
-              <Route path="timetable"  element={<Timetable />} />
-              <Route path="profile"    element={<StudentSelfProfile />} />
-            */}
+            {/* Fees */}
+            <Route path="fees" element={<StudentFees />} />
+
+            {/* Performance */}
+            <Route path="performance" element={<MyPerformance />} />
             <Route index element={<Navigate to="dashboard" replace />} />
           </Routes>
         </ProtectedRoute>

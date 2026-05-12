@@ -151,6 +151,18 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         return f"{self.first_name} {self.last_name}".strip()
 
     @property
+    def username(self) -> str:
+        """
+        Compatibility shim for code that still expects Django's default
+        username attribute on the user model.
+        """
+        return self.email
+
+    def get_full_name(self) -> str:
+        """Compatibility shim for Django-style full-name access."""
+        return self.full_name
+
+    @property
     def is_superadmin(self) -> bool:
         return self.role == "superadmin"
 
@@ -182,3 +194,31 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f"{self.full_name} <{self.email}> [{self.role}]"
+
+
+class ParentStudentLink(models.Model):
+    RELATIONSHIP_CHOICES = [
+        ('father',   'Father'),
+        ('mother',   'Mother'),
+        ('guardian', 'Guardian'),
+    ]
+
+    parent       = models.ForeignKey(
+        'accounts.CustomUser',
+        on_delete=models.CASCADE,
+        related_name='child_links',
+        limit_choices_to={'role': 'parent'},
+    )
+    student      = models.ForeignKey(
+        'enrollment.StudentProfile',
+        on_delete=models.CASCADE,
+        related_name='parent_links',
+    )
+    school       = models.ForeignKey('tenants.School', on_delete=models.CASCADE)
+    relationship = models.CharField(max_length=20, choices=RELATIONSHIP_CHOICES, default='guardian')
+
+    class Meta:
+        unique_together = [('parent', 'student')]
+
+    def __str__(self):
+        return f"{self.parent.full_name} → {self.student} ({self.relationship})"

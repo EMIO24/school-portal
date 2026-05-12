@@ -73,6 +73,7 @@ class StudentProfileSerializer(serializers.ModelSerializer):
     """Full serializer — used for create, retrieve, update."""
 
     # Nested read-only fields
+    user               = serializers.IntegerField(source="user_id", read_only=True)
     full_name          = serializers.ReadOnlyField()
     email              = serializers.EmailField(source="user.email", read_only=True)
     first_name         = serializers.CharField(source="user.first_name", read_only=True)
@@ -91,7 +92,7 @@ class StudentProfileSerializer(serializers.ModelSerializer):
         model  = StudentProfile
         fields = [
             # Identifiers
-            "id", "admission_number", "admission_date", "status",
+            "id", "user", "admission_number", "admission_date", "status",
             # From user
             "email", "first_name", "last_name", "full_name", "profile_photo",
             # Write fields for user account creation
@@ -106,6 +107,7 @@ class StudentProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id", "admission_number", "admission_date",
+            "user",
             "email", "first_name", "last_name", "full_name",
             "profile_photo", "current_class_name",
         ]

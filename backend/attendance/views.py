@@ -45,7 +45,7 @@ def _session_qs(school):
         AttendanceSession.objects
         .filter(school=school)
         .select_related('class_arm', 'teacher', 'term', 'period')
-        .prefetch_related('records__student__profile')
+        .prefetch_related('records__student__student_profile')
     )
 
 
@@ -54,7 +54,7 @@ def _build_student_summary(school, student_id, term_id):
     from django.contrib.auth import get_user_model
     User = get_user_model()
     try:
-        student = User.objects.select_related('profile__class_arm').get(
+        student = User.objects.select_related('student_profile__current_class').get(
             pk=student_id, school=school
         )
     except User.DoesNotExist:
@@ -64,8 +64,8 @@ def _build_student_summary(school, student_id, term_id):
     return {
         'student_id':   student.id,
         'student_name': student.get_full_name() or student.username,
-        'admission_no': getattr(getattr(student, 'profile', None), 'admission_number', ''),
-        'class_arm':    str(getattr(getattr(student, 'profile', None), 'class_arm', '')),
+        'admission_no': getattr(getattr(student, 'student_profile', None), 'admission_number', ''),
+        'class_arm':    str(getattr(getattr(student, 'student_profile', None), 'current_class', '')),
         **summary,
     }
 
@@ -293,7 +293,7 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
 
         # Get all students in this school
         students = User.objects.filter(school=self.school, role='student').select_related(
-            'profile__class_arm'
+            'student_profile__current_class'
         )
 
         flagged = []
@@ -303,8 +303,8 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
                 flagged.append({
                     'student_id':   student.id,
                     'student_name': student.get_full_name() or student.username,
-                    'admission_no': getattr(getattr(student, 'profile', None), 'admission_number', ''),
-                    'class_arm':    str(getattr(getattr(student, 'profile', None), 'class_arm', '')),
+                    'admission_no': getattr(getattr(student, 'student_profile', None), 'admission_number', ''),
+                    'class_arm':    str(getattr(getattr(student, 'student_profile', None), 'current_class', '')),
                     **summary,
                 })
 

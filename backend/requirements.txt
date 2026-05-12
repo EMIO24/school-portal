@@ -1,5 +1,8 @@
 asgiref
 celery
+dj-database-url
+django-celery-beat
+weasyprint
 cloudinary
 Django
 django-cloudinary-storage
@@ -8,9 +11,11 @@ django-environ
 django-redis
 djangorestframework
 djangorestframework-simplejwt
+gunicorn
 kombu
 psycopg2-binary
 python-dotenv
 redis
 requests
 vine
+whitenoise

@@ -17,6 +17,11 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 const CACHE_KEY = "school_theme";
 const API_URL = process.env.REACT_APP_API_URL || "";
 
+// When deployed to Vercel (different domain from Railway backend),
+// the backend can't detect the school from the Host subdomain.
+// Set REACT_APP_SCHOOL_SLUG so requests carry X-School-Slug header instead.
+const SCHOOL_SLUG = process.env.REACT_APP_SCHOOL_SLUG || "";
+
 /** Default fallback theme — matches variables.css :root defaults */
 const DEFAULT_THEME = {
   name: "",
@@ -101,9 +106,10 @@ export function ThemeProvider({ children }) {
     setError(null);
 
     try {
-      const res = await fetch(`${API_URL}/api/school/me/`, {
-        headers: { Accept: "application/json" },
-      });
+      const headers = { Accept: "application/json" };
+      if (SCHOOL_SLUG) headers["X-School-Slug"] = SCHOOL_SLUG;
+
+      const res = await fetch(`${API_URL}/api/school/me/`, { headers });
 
       if (!res.ok) {
         throw new Error(`Server returned ${res.status} — school not found for this subdomain.`);

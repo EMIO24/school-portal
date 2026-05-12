@@ -24,7 +24,7 @@ from .models import AttendanceSession, AttendanceRecord
 class AttendanceRecordSerializer(serializers.ModelSerializer):
     student_name      = serializers.SerializerMethodField()
     student_admission = serializers.CharField(
-        source='student.profile.admission_number', read_only=True, default=''
+        source='student.student_profile.admission_number', read_only=True, default=''
     )
 
     class Meta:
@@ -117,7 +117,7 @@ class AttendanceSessionCreateSerializer(serializers.ModelSerializer):
         students = User.objects.filter(
             school=school,
             role='student',
-            profile__class_arm=session.class_arm,
+            student_profile__current_class=session.class_arm,
         )
 
         AttendanceRecord.objects.bulk_create([

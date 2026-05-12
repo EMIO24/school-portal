@@ -60,7 +60,10 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
         qs = (
             ScoreEntry.objects
             .filter(school=self.school)
-            .select_related('student', 'subject', 'class_arm', 'term', 'session')
+            .select_related(
+                'student', 'student__student_profile',
+                'subject', 'class_arm', 'term', 'session',
+            )
         )
         p = self.request.query_params
         if p.get('class_arm'): qs = qs.filter(class_arm_id=p['class_arm'])
@@ -148,7 +151,8 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
             updated_ids.append(entry.id)
 
         rows = ScoreEntry.objects.filter(id__in=updated_ids).select_related(
-            'student', 'subject', 'class_arm', 'term', 'session'
+            'student', 'student__student_profile',
+            'subject', 'class_arm', 'term', 'session',
         )
         return Response({
             'updated': ScoreEntryReadSerializer(rows, many=True).data,
@@ -202,6 +206,11 @@ class AffectiveDomainViewSet(TenantMixin, viewsets.ModelViewSet):
     )
     def student_term(self, request, student_id=None, term_id=None):
         """GET or upsert affective ratings for one student in one term."""
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        if not User.objects.filter(pk=student_id, school=self.school, role='student').exists():
+            return Response({'detail': 'Student not found.'}, status=status.HTTP_404_NOT_FOUND)
+
         instance, _ = AffectiveDomain.objects.get_or_create(
             school=self.school,
             student_id=student_id,
@@ -242,6 +251,11 @@ class PsychomotorDomainViewSet(TenantMixin, viewsets.ModelViewSet):
     )
     def student_term(self, request, student_id=None, term_id=None):
         """GET or upsert psychomotor ratings for one student in one term."""
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        if not User.objects.filter(pk=student_id, school=self.school, role='student').exists():
+            return Response({'detail': 'Student not found.'}, status=status.HTTP_404_NOT_FOUND)
+
         instance, _ = PsychomotorDomain.objects.get_or_create(
             school=self.school,
             student_id=student_id,

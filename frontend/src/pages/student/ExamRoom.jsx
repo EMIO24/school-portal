@@ -147,7 +147,7 @@ export default function ExamRoom() {
 
   // ── Start exam ───────────────────────────────────────────────────────────────
   useEffect(() => {
-    api.post(`/cbt/exams/${examId}/start/`)
+    api.post(`/api/cbt/exams/${examId}/start/`)
       .then(({ data }) => {
         setQuestions(data.questions);
         setAllowReview(data.allow_review);
@@ -156,7 +156,7 @@ export default function ExamRoom() {
         setPhase('exam');
 
         // Restore any already-saved answers from /status/
-        api.get(`/cbt/exams/${examId}/status/`).then(({ data: st }) => {
+        api.get(`/api/cbt/exams/${examId}/status/`).then(({ data: st }) => {
           const saved = {};
           (st.saved_answers || []).forEach(a => {
             if (a.selected_option) saved[a.question] = a.selected_option;
@@ -194,7 +194,7 @@ export default function ExamRoom() {
     if (phase !== 'exam') return;
     const onVisibilityChange = () => {
       if (document.hidden) {
-        api.post(`/cbt/exams/${examId}/log-tab-switch/`).then(({ data }) => {
+        api.post(`/api/cbt/exams/${examId}/log-tab-switch/`).then(({ data }) => {
           setTabSwitches(data.tab_switch_count || 0);
         }).catch(() => {});
         setShowTabWarning(true);
@@ -208,7 +208,7 @@ export default function ExamRoom() {
   const saveAnswer = useCallback((questionId, option) => {
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      api.post(`/cbt/exams/${examId}/save-answer/`, {
+      api.post(`/api/cbt/exams/${examId}/save-answer/`, {
         question_id:     questionId,
         selected_option: option,
       }).catch(() => {});
@@ -226,7 +226,7 @@ export default function ExamRoom() {
     setSubmitting(true);
     clearInterval(timerRef.current);
     try {
-      const { data } = await api.post(`/cbt/exams/${examId}/submit/`);
+      const { data } = await api.post(`/api/cbt/exams/${examId}/submit/`);
       let correct;
       if (data.answers) {
         correct = data.answers.filter(a => a.is_correct).length;

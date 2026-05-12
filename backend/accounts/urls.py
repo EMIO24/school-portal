@@ -7,7 +7,10 @@ Auth endpoints — all exempt from TenantMiddleware via the
 
 from django.urls import path
 
-from .views import ChangePasswordView, LoginView, MeView, TokenRefreshView
+from .views import (
+    ChangePasswordView, LoginView, MeView, TokenRefreshView,
+    ParentOTPRequestView, ParentOTPVerifyView,
+)
 
 urlpatterns = [
     # ── Authentication ────────────────────────────────────────────────────────
@@ -17,4 +20,11 @@ urlpatterns = [
     # ── Authenticated user ────────────────────────────────────────────────────
     path("me/",            MeView.as_view(),             name="auth-me"),
     path("change-password/", ChangePasswordView.as_view(), name="auth-change-password"),
+
+    # ── Parent OTP login (public — must stay under /api/auth/ exempt prefix) ──
+    path("parent/otp-request/", ParentOTPRequestView.as_view(), name="parent-otp-request"),
+    path("parent/otp-verify/",  ParentOTPVerifyView.as_view(),  name="parent-otp-verify"),
+
+    # Parent data views live at /api/parent/ (see accounts/parent_urls.py)
+    # so that TenantMiddleware resolves request.tenant before they run.
 ]

@@ -47,10 +47,8 @@ class TimetableEntryReadSerializer(serializers.ModelSerializer):
     each cell without additional fetches.
     """
     subject_name     = serializers.CharField(source='subject.name',           read_only=True)
-    subject_color    = serializers.CharField(source='subject.category.color', read_only=True,
-                                             default='')
-    subject_category = serializers.CharField(source='subject.category.name',  read_only=True,
-                                             default='')
+    subject_color    = serializers.SerializerMethodField()
+    subject_category = serializers.CharField(source='subject.category', read_only=True)
     teacher_name     = serializers.SerializerMethodField()
     teacher_id       = serializers.IntegerField(source='teacher.id',          read_only=True)
     period_detail    = PeriodSerializer(source='period',                       read_only=True)
@@ -79,6 +77,14 @@ class TimetableEntryReadSerializer(serializers.ModelSerializer):
         if obj.teacher:
             return obj.teacher.get_full_name() or obj.teacher.username
         return None
+
+    def get_subject_color(self, obj):
+        color_map = {
+            'core': '#1d4ed8',
+            'elective': '#059669',
+            'vocational': '#b45309',
+        }
+        return color_map.get(obj.subject.category, '')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

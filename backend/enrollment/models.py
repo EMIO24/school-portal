@@ -46,6 +46,10 @@ class ClassLevel(models.Model):
         default=0,
         help_text="Ascending order for display (0 = JSS1 first).",
     )
+    is_final_year = models.BooleanField(
+        default=False,
+        help_text="Students at this level are graduated rather than promoted.",
+    )
 
     class Meta:
         verbose_name        = "Class Level"

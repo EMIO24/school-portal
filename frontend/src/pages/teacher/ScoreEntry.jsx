@@ -81,11 +81,11 @@ export default function ScoreEntry() {
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/academics/terms/'),
-      api.get('/academics/sessions/'),
-      api.get('/enrollment/class-arms/'),
-      api.get('/enrollment/subjects/'),
-      api.get('/gradebook/entries/grade-scale/'),
+      api.get('/api/academics/terms/'),
+      api.get('/api/academics/sessions/'),
+      api.get('/api/enrollment/class-arms/'),
+      api.get('/api/enrollment/subjects/'),
+      api.get('/api/gradebook/entries/grade-scale/'),
     ]).then(([t, s, c, sub, gs]) => {
       const termList = t.data.results ?? t.data;
       setTerms(termList);
@@ -107,13 +107,13 @@ export default function ScoreEntry() {
     setErrors({});
     try {
       const { data } = await api.get(
-        `/gradebook/entries/?class_arm=${selClass}&subject=${selSubject}&term=${selTerm}`
+        `/api/gradebook/entries/?class_arm=${selClass}&subject=${selSubject}&term=${selTerm}`
       );
       const entries = data.results ?? data;
 
       // Also fetch the full enrolled student list so ungraded students appear
       const { data: stuData } = await api.get(
-        `/enrollment/students/?class_arm=${selClass}`
+        `/api/enrollment/students/?class_arm=${selClass}`
       );
       const allStudents = stuData.results ?? stuData;
       setStudents(allStudents);
@@ -198,7 +198,7 @@ export default function ScoreEntry() {
     }));
 
     try {
-      const { data } = await api.post('/gradebook/entries/bulk-update/', {
+      const { data } = await api.post('/api/gradebook/entries/bulk-update/', {
         class_arm: Number(selClass),
         subject:   Number(selSubject),
         term:      Number(selTerm),
@@ -213,7 +213,7 @@ export default function ScoreEntry() {
         setDirty(false);
         if (publish) {
           await api.post(
-            `/gradebook/entries/publish/?class_arm=${selClass}&subject=${selSubject}&term=${selTerm}`
+            `/api/gradebook/entries/publish/?class_arm=${selClass}&subject=${selSubject}&term=${selTerm}`
           );
           setAlert({ type: 'success', msg: 'Scores saved and published to students.' });
         } else {

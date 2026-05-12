@@ -48,7 +48,7 @@ def auto_mark(session: StudentExamSession, final_status: str = 'submitted') -> N
         original_selected = reverse_map.get(ans.selected_option, ans.selected_option)
 
         if q.question_type == 'fill_blank':
-            is_correct = (
+            is_correct = bool(original_selected) and (
                 original_selected.strip().lower() == q.correct_answer.strip().lower()
             )
         else:

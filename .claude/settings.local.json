@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python manage.py runserver --noreload)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(python manage.py makemigrations*)",
+      "Bash(python manage.py migrate*)",
+      "Bash(mkdir*)",
+      "Bash(ls*)",
+      "Bash(cat*)",
+      "Bash(cd*)",
+      "Bash(powershell*)"
+    ]
+  }
+}

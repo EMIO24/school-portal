@@ -60,7 +60,7 @@ export default function MyResult() {
 
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    api.get('/academics/terms/').then(({ data: d }) => {
+    api.get('/api/academics/terms/').then(({ data: d }) => {
       const list   = d.results ?? d;
       setTerms(list);
       const current = list.find(t => t.is_current);
@@ -76,7 +76,7 @@ export default function MyResult() {
     setData(null);
     try {
       const { data: d } = await api.get(
-        `/results/slip-data/${user.id}/?term=${selectedTerm}`
+        `/api/results/slip-data/${user.id}/?term=${selectedTerm}`
       );
       setData(d);
     } catch (err) {
@@ -92,7 +92,7 @@ export default function MyResult() {
 
   useEffect(() => { load(); }, [load]);
 
-  const apiBase = process.env.REACT_APP_API_BASE_URL || '';
+  const apiBase = process.env.REACT_APP_API_URL || '';
 
   const downloadPDF = () => {
     window.open(

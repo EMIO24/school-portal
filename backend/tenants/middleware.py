@@ -11,8 +11,6 @@ Flow:
   4. Attach school to request or return 404 JSON.
 """
 
-import json
-
 from django.http import JsonResponse
 
 from .models import School
@@ -22,8 +20,10 @@ from .models import School
 EXEMPT_PATH_PREFIXES = (
     "/superadmin/",
     "/health/",
-    "/api/auth/",
-    "/api/results/check/",  # Public PIN result checker — no tenant needed
+    "/api/auth/login/",          # resolves tenant itself
+    "/api/auth/token/",          # JWT refresh — no tenant needed
+    "/api/auth/parent/",         # OTP flow — resolves tenant itself
+    "/api/results/check/",       # Public PIN result checker — no tenant needed
 )
 
 
@@ -46,8 +46,13 @@ class TenantMiddleware:
             request.tenant = None
             return self.get_response(request)
 
-        # ── 2. Extract subdomain from Host header ─────────────────────────────
-        subdomain = self._extract_subdomain(request)
+        # ── 2. Extract subdomain from Host header or X-School-Slug header ───────
+        # X-School-Slug allows cross-origin deployments (e.g. Vercel → Railway)
+        # where the frontend can't embed the school slug in its own subdomain.
+        subdomain = (
+            request.headers.get("X-School-Slug")
+            or self._extract_subdomain(request)
+        )
 
         if not subdomain:
             # Request came from the bare apex domain (no subdomain).

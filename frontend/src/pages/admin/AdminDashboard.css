@@ -1,0 +1,43 @@
+.admin-dash { max-width: 1200px; }
+
+.dash-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+.dash-controls { display: flex; gap: 10px; align-items: center; }
+.dash-select { padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+
+.loading-msg { text-align: center; color: #888; padding: 40px; }
+.no-snap { background: #fff8e1; border-left: 4px solid #f39c12; padding: 14px 18px; border-radius: 4px; color: #7d6608; }
+
+/* KPI Row */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+.kpi-card { background: #fff; border-radius: 10px; padding: 18px 20px; border-top: 4px solid var(--primary, #1a6b3c); box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+.kpi-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #888; margin-bottom: 6px; }
+.kpi-value { display: block; font-size: 28px; font-weight: 800; color: #222; }
+.kpi-sub { display: block; font-size: 11px; color: #aaa; margin-top: 2px; }
+
+/* Chart cards */
+.chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.chart-card { background: #fff; border-radius: 10px; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+.chart-card h3 { font-size: 13px; font-weight: 700; color: #444; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .4px; }
+.chart-card.full-width { margin-bottom: 20px; }
+
+/* Leaderboard */
+.leaderboard { width: 100%; border-collapse: collapse; font-size: 13px; }
+.leaderboard th { font-size: 11px; color: #888; text-transform: uppercase; padding: 5px 8px; border-bottom: 1px solid #eee; }
+.leaderboard td { padding: 7px 8px; border-bottom: 1px solid #f5f5f5; }
+.rank { font-weight: 800; font-size: 15px; width: 24px; }
+.rank-1 { color: #f39c12; }
+.rank-2 { color: #95a5a6; }
+.rank-3 { color: #cd7f32; }
+
+/* Attendance card */
+.attend-big   { font-size: 48px; font-weight: 800; color: var(--primary, #1a6b3c); margin: 8px 0; }
+.attend-label { font-size: 12px; color: #888; }
+.attend-alert { background: #fff8e1; color: #b8860b; border-radius: 6px; padding: 8px 10px; font-size: 12px; font-weight: 600; margin-top: 10px; }
+
+@media (max-width: 900px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .chart-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 500px) {
+  .kpi-row { grid-template-columns: 1fr; }
+}

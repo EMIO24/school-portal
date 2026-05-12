@@ -18,6 +18,7 @@ class StaffProfileSerializer(serializers.ModelSerializer):
     """Full serializer — create, retrieve, update."""
 
     # Read-only user fields
+    user          = serializers.IntegerField(source="user_id", read_only=True)
     full_name     = serializers.ReadOnlyField()
     email         = serializers.EmailField(source="user.email",         read_only=True)
     first_name    = serializers.CharField(source="user.first_name",     read_only=True)
@@ -42,7 +43,7 @@ class StaffProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model  = StaffProfile
         fields = [
-            "id", "staff_id", "employment_status", "created_at",
+            "id", "user", "staff_id", "employment_status", "created_at",
             # User fields (read)
             "email", "first_name", "last_name", "full_name",
             "profile_photo", "role", "is_active",
@@ -58,7 +59,7 @@ class StaffProfileSerializer(serializers.ModelSerializer):
             "subjects_taught_detail", "assigned_classes_detail",
         ]
         read_only_fields = [
-            "id", "staff_id", "created_at",
+            "id", "user", "staff_id", "created_at",
             "email", "first_name", "last_name", "full_name",
             "profile_photo", "role", "is_active",
             "subjects_taught_detail", "assigned_classes_detail",

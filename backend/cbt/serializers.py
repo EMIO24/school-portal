@@ -44,11 +44,13 @@ class QuestionWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Question
         fields = [
+            'id',
             'subject', 'topic', 'class_level',
             'question_text', 'question_image', 'question_type',
             'difficulty', 'cognitive_level',
             'options', 'correct_answer', 'explanation', 'is_active',
         ]
+        read_only_fields = ['id']
 
     def validate_options(self, value):
         if not isinstance(value, list):
@@ -84,12 +86,14 @@ class CBTExamWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model  = CBTExam
         fields = [
+            'id',
             'title', 'subject', 'class_arms', 'term', 'session',
             'start_datetime', 'end_datetime', 'duration_minutes', 'instructions',
             'selection_mode', 'manual_questions', 'random_config',
             'randomize_questions', 'randomize_options',
             'allow_review', 'show_score_immediately', 'status',
         ]
+        read_only_fields = ['id']
 
 
 # ── Student-facing question (no correct_answer) ───────────────────────────────

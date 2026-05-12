@@ -1,0 +1,24 @@
+﻿bash.exe : /c/Users/user/school-portal/run_tests.sh: line 1: ﻿#!/usr/bin/env: No such file or directory
+At line:14 char:11
++ $result = & $gitbash --login -c "bash /c/Users/user/school-portal/run ...
++           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (/c/Users/user/s...le or directory:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[0;36m[1m══ HEALTH CHECK ══[0m
+[0;32m  ✓ PASS[0m GET /health/ (HTTP 200)
+
+[0;36m[1m══ AUTH — Admin login ══[0m
+[0;32m  ✓ PASS[0m POST /api/auth/login/ (admin) (HTTP 200)
+[0;32m  ✓ PASS[0m POST /api/auth/login/ rejects bad credentials (HTTP 401)
+[0;32m  ✓ PASS[0m POST /api/auth/token/refresh/ (HTTP 200)
+[0;32m  ✓ PASS[0m GET /api/auth/me/ (HTTP 200)
+[0;32m  ✓ PASS[0m POST /api/auth/change-password/ (HTTP 200)
+[0;32m  ✓ PASS[0m POST /api/auth/change-password/ (restore) (HTTP 200)
+
+[0;36m[1m══ TENANT — School ══[0m
+[0;32m  ✓ PASS[0m GET /api/school/me/ (HTTP 200)
+[0;32m  ✓ PASS[0m GET /api/schools/ (HTTP 403 — 403 expected for school_admin; 200 for superadmin)
+
+[0;36m[1m══ ACADEMICS — Sessions ══[0m

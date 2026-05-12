@@ -1,0 +1,42 @@
+.fees-page { max-width: 800px; }
+
+.fees-filter-row { margin-bottom: 20px; }
+.fees-select { padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; min-width: 200px; }
+
+.fee-cards { display: flex; flex-direction: column; gap: 16px; }
+
+.fee-card {
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #e0e0e0;
+  padding: 18px 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  transition: border-color .2s;
+}
+.fee-card.fee-paid { border-left: 4px solid #1a6b3c; }
+
+.fee-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.fee-name { font-size: 16px; font-weight: 600; }
+
+.fee-checkbox { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; color: #555; }
+
+.fee-amounts { display: flex; gap: 24px; margin-bottom: 10px; }
+.fee-amounts > div { display: flex; flex-direction: column; }
+.fee-amounts span  { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: .4px; }
+.fee-amounts strong { font-size: 18px; }
+.fee-amounts .green { color: #1a6b3c; }
+.fee-amounts .red   { color: #c0392b; }
+
+.fee-progress-bar { height: 6px; background: #eee; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+.fee-progress-fill { height: 100%; background: var(--primary, #1a6b3c); border-radius: 3px; transition: width .4s; }
+
+.due-date { font-size: 12px; color: #888; margin-bottom: 10px; }
+
+.fee-history { border-top: 1px solid #f0f0f0; padding-top: 10px; margin-top: 8px; }
+.history-title { font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 8px; }
+.payment-row { display: flex; gap: 16px; font-size: 13px; align-items: center; padding: 4px 0; }
+.payment-row span { color: #444; }
+.receipt-link { color: var(--primary, #1a6b3c); text-decoration: underline; margin-left: auto; }
+
+.pay-bar { position: sticky; bottom: 20px; display: flex; justify-content: center; margin-top: 24px; }
+.pay-btn { padding: 12px 32px; font-size: 16px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.15); }

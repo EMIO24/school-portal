@@ -45,7 +45,6 @@ def _base_entry_qs(school):
             'period',
             'class_arm',
             'subject',
-            'subject__category',
             'teacher',
             'term',
         )

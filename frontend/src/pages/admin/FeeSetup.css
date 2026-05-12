@@ -1,0 +1,30 @@
+.fee-setup { max-width: 1200px; }
+
+.fee-setup-layout { display: grid; grid-template-columns: 300px 1fr; gap: 24px; align-items: start; }
+
+.section-header-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.section-header-row h2 { font-size: 15px; margin: 0; flex: 1; }
+
+.fee-select { padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+
+.amount-input { width: 80px; padding: 5px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; text-align: right; }
+.amount-input:focus { outline: none; border-color: var(--primary, #1a6b3c); }
+
+.schedule-grid th, .schedule-grid td { white-space: nowrap; }
+.level-name { font-weight: 600; }
+
+.table-scroll { overflow-x: auto; }
+
+.fee-toast { position: fixed; top: 20px; right: 20px; background: #1a6b3c; color: #fff; padding: 10px 18px; border-radius: 6px; z-index: 1000; }
+
+.checkbox-label { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 14px; cursor: pointer; }
+
+/* shared modal styles */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 200; }
+.modal-box { background: #fff; border-radius: 10px; padding: 28px 32px; width: min(480px, 95vw); box-shadow: 0 8px 32px rgba(0,0,0,.18); }
+.modal-box h2 { margin-bottom: 16px; }
+.modal-box label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-top: 12px; margin-bottom: 5px; }
+.modal-box input, .modal-box select { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+@media (max-width: 800px) { .fee-setup-layout { grid-template-columns: 1fr; } }

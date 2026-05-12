@@ -28,3 +28,10 @@ root.render(
     <App />
   </React.StrictMode>
 );
+
+// Register service worker for parent portal PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/serviceWorker.js').catch(() => {});
+  });
+}

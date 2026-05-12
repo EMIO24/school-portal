@@ -41,6 +41,11 @@ class TenantMixin:
             )
         return tenant
 
+    @property
+    def school(self):
+        """Shorthand for _get_tenant(); lets ViewSets reference self.school directly."""
+        return self._get_tenant()
+
     # ── Queryset scoping ──────────────────────────────────────────────────────
 
     def get_queryset(self):
