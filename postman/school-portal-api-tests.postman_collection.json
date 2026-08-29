@@ -1,0 +1,5260 @@
+{
+  "info": {
+    "_postman_id": "8c3c74f0-1fd0-45be-a6bf-6a1b38ba6cf6",
+    "name": "School Portal API Tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Postman version of the school portal end-to-end API tests. Collection variables store JWT tokens, generated fixture IDs, and run-scoped emails so the suite can run in Collection Runner or Newman without manual token copying."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const cv = pm.collectionVariables;",
+          "",
+          "function ensure(name, value) {",
+          "  if (!cv.get(name)) cv.set(name, value);",
+          "}",
+          "",
+          "const runId = cv.get('run_id') || String(Date.now());",
+          "const suffix = runId.slice(-4);",
+          "cv.set('run_id', runId);",
+          "cv.set('run_suffix', suffix);",
+          "cv.set('today', new Date().toISOString().slice(0, 10));",
+          "cv.set('start_ts', new Date().toISOString());",
+          "cv.set('end_ts', new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString());",
+          "",
+          "ensure('school_slug', pm.environment.get('school_slug') || 'testschool');",
+          "ensure('admin_email', pm.environment.get('admin_email') || 'admin@testschool.ng');",
+          "ensure('admin_pass', pm.environment.get('admin_pass') || 'AdminStr0ng#1');",
+          "ensure('teacher_email', `teacher.${runId}@testschool.ng`);",
+          "ensure('student_email', `student.${runId}@testschool.ng`);",
+          "ensure('session_name', `2024/2025-${suffix}`);",
+          "ensure('primary_class_level_name', 'JSS1');",
+          "ensure('secondary_class_level_name', 'JSS2');",
+          "ensure('primary_arm_name', `A${suffix}`);",
+          "ensure('secondary_arm_name', `B${suffix}`);",
+          "ensure('subject_name', `Mathematics ${suffix}`);",
+          "ensure('subject_code', `M${suffix}`);",
+          "ensure('fee_category_name', `School Fees ${suffix}`);",
+          "ensure('template_name', `Test Template ${suffix}`);",
+          "ensure('period_name', `Period ${suffix}`);",
+          "ensure('period_order_index', String(1000 + Number(suffix)));",
+          "ensure('batch_label', `TEST-BATCH-${suffix}`);",
+          "ensure('parent_phone', '08012345678');"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const cv = pm.collectionVariables;",
+          "",
+          "function jsonBody() {",
+          "  try { return pm.response.json(); } catch (error) { return null; }",
+          "}",
+          "",
+          "function textBody() {",
+          "  return pm.response.text();",
+          "}",
+          "",
+          "function setVar(name, value) {",
+          "  if (value !== undefined && value !== null && value !== '') {",
+          "    cv.set(name, String(value));",
+          "  }",
+          "}",
+          "",
+          "function getVar(name) {",
+          "  return cv.get(name);",
+          "}",
+          "",
+          "function expectStatus(allowed, label) {",
+          "  pm.test(label || pm.info.requestName, function () {",
+          "    pm.expect(allowed, `Expected status in ${allowed.join(', ')}, got ${pm.response.code}`).to.include(pm.response.code);",
+          "  });",
+          "}",
+          "",
+          "function authHeader(token) {",
+          "  const headers = [{ key: 'X-School-Slug', value: getVar('school_slug') }];",
+          "  if (token) headers.push({ key: 'Authorization', value: `Bearer ${token}` });",
+          "  return headers;",
+          "}",
+          "",
+          "function sendJson(method, route, token, body, callback) {",
+          "  pm.sendRequest({",
+          "    url: `${pm.variables.replaceIn('{{base_url}}')}${route}`,",
+          "    method,",
+          "    header: [",
+          "      { key: 'Content-Type', value: 'application/json' },",
+          "      ...authHeader(token),",
+          "    ],",
+          "    body: body === undefined || body === null ? undefined : {",
+          "      mode: 'raw',",
+          "      raw: typeof body === 'string' ? body : JSON.stringify(body),",
+          "    },",
+          "  }, callback);",
+          "}",
+          "",
+          "function send(method, route, token, callback) {",
+          "  pm.sendRequest({",
+          "    url: `${pm.variables.replaceIn('{{base_url}}')}${route}`,",
+          "    method,",
+          "    header: authHeader(token),",
+          "  }, callback);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "school_slug",
+      "value": "testschool"
+    },
+    {
+      "key": "admin_email",
+      "value": "admin@testschool.ng"
+    },
+    {
+      "key": "admin_pass",
+      "value": "AdminStr0ng#1"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 Bootstrap",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/health/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /health/');",
+                  "pm.test('Run variables initialized', function () {",
+                  "  pm.expect(getVar('run_id')).to.be.a('string');",
+                  "  pm.expect(getVar('teacher_email')).to.include(getVar('run_id'));",
+                  "  pm.expect(getVar('student_email')).to.include(getVar('run_id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 Auth",
+      "item": [
+        {
+          "name": "Admin Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/login/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"{{admin_email}}\",\"password\":\"{{admin_pass}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/auth/login/ (admin)');",
+                  "const body = jsonBody();",
+                  "setVar('admin_token', body?.access);",
+                  "setVar('refresh_token', body?.refresh);",
+                  "pm.test('Admin tokens stored', function () {",
+                  "  pm.expect(getVar('admin_token')).to.be.ok;",
+                  "  pm.expect(getVar('refresh_token')).to.be.ok;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject Bad Credentials",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/login/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"wrong@x.com\",\"password\":\"badpass\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([401], 'POST /api/auth/login/ rejects bad credentials');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/token/refresh/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refresh\":\"{{refresh_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/auth/token/refresh/');",
+                  "const body = jsonBody();",
+                  "setVar('admin_token', body?.access || getVar('admin_token'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/me/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/auth/me/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin Change Password Temporary",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/change-password/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"current_password\":\"{{admin_pass}}\",\"new_password\":\"TmpT3st@Pass99\",\"confirm_password\":\"TmpT3st@Pass99\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/auth/change-password/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin Login With Temporary Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/login/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"{{admin_email}}\",\"password\":\"TmpT3st@Pass99\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/auth/login/ (temp password)');",
+                  "const body = jsonBody();",
+                  "setVar('tmp_token', body?.access);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Restore Admin Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/change-password/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tmp_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"current_password\":\"TmpT3st@Pass99\",\"new_password\":\"{{admin_pass}}\",\"confirm_password\":\"{{admin_pass}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/auth/change-password/ (restore)');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin Re-Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/login/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"{{admin_email}}\",\"password\":\"{{admin_pass}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/auth/login/ (restore check)');",
+                  "const body = jsonBody();",
+                  "setVar('admin_token', body?.access);",
+                  "setVar('refresh_token', body?.refresh);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Tenant",
+      "item": [
+        {
+          "name": "School Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/school/me/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/school/me/');",
+                  "const body = jsonBody();",
+                  "setVar('school_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Schools List Or Forbidden",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/schools/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200, 403], 'GET /api/schools/');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Academics",
+      "item": [
+        {
+          "name": "Create Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/sessions/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"{{session_name}}\",\"start_date\":\"2024-09-01\",\"end_date\":\"2025-07-31\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/sessions/');",
+                  "const body = jsonBody();",
+                  "setVar('session_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Sessions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/sessions/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/sessions/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Session Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/sessions/{{session_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/sessions/{id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Set Current Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/sessions/{{session_id}}/set-current/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/sessions/{id}/set-current/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Term",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/terms/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"first\",\"session\":{{session_id}},\"start_date\":\"2024-09-02\",\"end_date\":\"2024-12-13\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/terms/');",
+                  "const body = jsonBody();",
+                  "setVar('term_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Terms",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/terms/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/terms/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Set Current Term",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/terms/{{term_id}}/set-current/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/terms/{id}/set-current/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Holiday",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/holidays/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Holiday {{run_suffix}}\",\"start_date\":\"2024-10-01\",\"end_date\":\"2024-10-02\",\"term\":{{term_id}},\"holiday_type\":\"public\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/holidays/');",
+                  "const body = jsonBody();",
+                  "setVar('holiday_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Holidays",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/holidays/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/holidays/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Calendar",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/calendar/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/calendar/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Holiday",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/holidays/{{holiday_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([204], 'DELETE /api/holidays/{id}/');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 Enrollment",
+      "item": [
+        {
+          "name": "Create Or Reuse JSS1 Class Level",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/class-levels/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"{{primary_class_level_name}}\",\"order_index\":1,\"is_final_year\":false}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Create or reuse JSS1 class level', function (done) {",
+                  "  pm.expect([201, 400]).to.include(pm.response.code);",
+                  "  if (pm.response.code === 201) {",
+                  "    const body = jsonBody();",
+                  "    setVar('level_id', body?.id);",
+                  "    done();",
+                  "    return;",
+                  "  }",
+                  "  send('GET', '/api/class-levels/', getVar('admin_token'), (err, res) => {",
+                  "    pm.expect(err).to.equal(null);",
+                  "    pm.expect(res.code).to.equal(200);",
+                  "    const rows = res.json();",
+                  "    const item = rows.find((entry) => entry.name === getVar('primary_class_level_name'));",
+                  "    pm.expect(item, 'Existing JSS1 class level').to.be.ok;",
+                  "    setVar('level_id', item.id);",
+                  "    done();",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Class Levels",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/class-levels/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/class-levels/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Class Arm",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/class-arms/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"{{primary_arm_name}}\",\"class_level\":{{level_id}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/class-arms/');",
+                  "const body = jsonBody();",
+                  "setVar('arm_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Class Arms",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/class-arms/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/class-arms/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Subject",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/subjects/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"{{subject_name}}\",\"code\":\"{{subject_code}}\",\"class_level\":{{level_id}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/subjects/');",
+                  "const body = jsonBody();",
+                  "setVar('subject_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Subjects",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/subjects/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/subjects/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Subjects By Class",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/subjects/by-class/{{arm_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/subjects/by-class/{arm_id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Teacher",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/staff/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"new_email\":\"{{teacher_email}}\",\"new_first_name\":\"Test\",\"new_last_name\":\"Teacher\",\"new_role\":\"teacher\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/staff/ (create teacher)');",
+                  "const body = jsonBody();",
+                  "setVar('teacher_id', body?.id);",
+                  "setVar('teacher_user_id', body?.user);",
+                  "setVar('teacher_staff_id', body?.staff_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Staff",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/staff/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/staff/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Subject Assignment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/subject-assignments/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"teacher\":{{teacher_id}},\"subject\":{{subject_id}},\"class_arm\":{{arm_id}},\"session\":{{session_id}},\"term\":{{term_id}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/subject-assignments/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Teacher Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/login/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"{{teacher_email}}\",\"password\":\"{{teacher_staff_id}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/auth/login/ (teacher)');",
+                  "const body = jsonBody();",
+                  "setVar('teacher_token', body?.access);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Student",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/students/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"new_email\":\"{{student_email}}\",\"new_first_name\":\"Test\",\"new_last_name\":\"Student\",\"current_class\":{{arm_id}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/students/ (create student)');",
+                  "const body = jsonBody();",
+                  "setVar('student_profile_id', body?.id);",
+                  "setVar('student_user_id', body?.user);",
+                  "setVar('student_adm_num', body?.admission_number);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Students",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/students/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/students/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Students By Class",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/students/by-class/{{arm_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/students/by-class/{arm_id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign Student Class",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/students/{{student_profile_id}}/assign-class/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"class_arm\":{{arm_id}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/students/{id}/assign-class/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Student Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/login/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"{{student_email}}\",\"password\":\"{{student_adm_num}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/auth/login/ (student)');",
+                  "const body = jsonBody();",
+                  "setVar('student_token', body?.access);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Subject Assignments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/subject-assignments/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/subject-assignments/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Subject Assignments Grid",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/subject-assignments/grid/?term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/subject-assignments/grid/');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 Attendance",
+      "item": [
+        {
+          "name": "Create Attendance Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/attendance/sessions/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"class_arm\":{{arm_id}},\"term\":{{term_id}},\"date\":\"{{today}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/attendance/sessions/');",
+                  "const body = jsonBody();",
+                  "setVar('att_session_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Attendance Sessions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/attendance/sessions/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/attendance/sessions/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attendance Session Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/attendance/sessions/{{att_session_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/attendance/sessions/{id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Attendance Records",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/attendance/sessions/{{att_session_id}}/submit/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"records\":[{\"student_id\":{{student_user_id}},\"status\":\"present\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'PATCH /api/attendance/sessions/{id}/submit/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Finalize Attendance Session",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/attendance/sessions/{{att_session_id}}/finalize/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'PATCH /api/attendance/sessions/{id}/finalize/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attendance Student Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/attendance/sessions/report/?student={{student_user_id}}&term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/attendance/sessions/report/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attendance Class Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/attendance/sessions/class-report/?class_arm={{arm_id}}&term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/attendance/sessions/class-report/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Low Attendance Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/attendance/sessions/low-attendance/?term={{term_id}}&threshold=75",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/attendance/sessions/low-attendance/');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 Gradebook",
+      "item": [
+        {
+          "name": "Grade Scale",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/gradebook/entries/grade-scale/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/gradebook/entries/grade-scale/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filtered Gradebook Entries",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/gradebook/entries/?class_arm={{arm_id}}&subject={{subject_id}}&term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/gradebook/entries/ (filtered)');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bulk Update Scores",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/gradebook/entries/bulk-update/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"class_arm\":{{arm_id}},\"subject\":{{subject_id}},\"term\":{{term_id}},\"session\":{{session_id}},\"scores\":[{\"student_id\":{{student_user_id}},\"first_test\":10,\"second_test\":10,\"assignment\":5,\"project\":5,\"practical\":0,\"exam_score\":50}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/gradebook/entries/bulk-update/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Publish Scores",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/gradebook/entries/publish/?class_arm={{arm_id}}&subject={{subject_id}}&term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/gradebook/entries/publish/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Affective List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/gradebook/affective/?class_arm={{arm_id}}&term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/gradebook/affective/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Affective",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/gradebook/affective/student/{{student_user_id}}/term/{{term_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"class_arm\":{{arm_id}},\"punctuality\":4,\"neatness\":5,\"attentiveness\":4,\"honesty\":5,\"politeness\":4,\"cooperation\":5}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'PUT /api/gradebook/affective/student/{id}/term/{id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Psychomotor List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/gradebook/psychomotor/?class_arm={{arm_id}}&term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/gradebook/psychomotor/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Psychomotor",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/gradebook/psychomotor/student/{{student_user_id}}/term/{{term_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"class_arm\":{{arm_id}},\"handwriting\":4,\"drawing\":3,\"sports\":5,\"music\":4,\"verbal_fluency\":4,\"craft\":3}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'PUT /api/gradebook/psychomotor/student/{id}/term/{id}/');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 Results",
+      "item": [
+        {
+          "name": "Compute Positions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/results/positions/compute/?class_arm={{arm_id}}&term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/results/positions/compute/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Class Results",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/results/class-results/?class_arm={{arm_id}}&term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/results/class-results/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Student Remarks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/results/remarks/{{student_user_id}}/?term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/results/remarks/{student_id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Patch Student Remarks",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/results/remarks/{{student_user_id}}/?term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"principal_remark\":\"Excellent performance\",\"teacher_remark\":\"Keep it up\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'PATCH /api/results/remarks/{student_id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Slip Data Preview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/results/slip-data/{{student_user_id}}/?term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{student_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/results/slip-data/{student_id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Result Slip PDF",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/results/slip/{{student_user_id}}/?term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{student_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/results/slip/{student_id}/ (PDF)');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Broadsheet PDF",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/results/broadsheet/{{arm_id}}/?term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/results/broadsheet/{class_arm_id}/ (PDF)');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 Scratch Cards",
+      "item": [
+        {
+          "name": "Generate Scratch Cards",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/scratch-cards/generate/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"term_id\":{{term_id}},\"quantity\":5,\"batch_name\":\"{{batch_label}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/scratch-cards/generate/');",
+                  "const lines = textBody().trim().split(/\\r?\\n/);",
+                  "if (lines.length > 1) {",
+                  "  const cols = lines[1].split(',');",
+                  "  setVar('card_serial', cols[0]);",
+                  "  setVar('card_pin', cols[1]);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Scratch Cards",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/scratch-cards/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/scratch-cards/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Scratch Card Batch Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/scratch-cards/batch-stats/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/scratch-cards/batch-stats/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Scratch Card Unused CSV",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/scratch-cards/unused-csv/?batch={{batch_label}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/scratch-cards/unused-csv/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Public Result Check",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/results/check/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"serial_number\":\"{{card_serial}}\",\"pin\":\"{{card_pin}}\",\"admission_number\":\"{{student_adm_num}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/results/check/ (public scratch-card)');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "09 CBT",
+      "item": [
+        {
+          "name": "Create Topic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/topics/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Algebra Basics {{run_suffix}}\",\"subject\":{{subject_id}},\"class_level\":{{level_id}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/cbt/topics/');",
+                  "const body = jsonBody();",
+                  "setVar('topic_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Topics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/topics/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/cbt/topics/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create MCQ Question",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/questions/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"topic\":{{topic_id}},\"subject\":{{subject_id}},\"class_level\":{{level_id}},\"question_text\":\"What is 2+2?\",\"question_type\":\"mcq\",\"difficulty\":\"easy\",\"cognitive_level\":\"knowledge\",\"options\":[{\"id\":\"A\",\"text\":\"3\"},{\"id\":\"B\",\"text\":\"4\"},{\"id\":\"C\",\"text\":\"5\"},{\"id\":\"D\",\"text\":\"6\"}],\"correct_answer\":\"B\",\"explanation\":\"2 plus 2 equals 4.\",\"is_active\":true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/cbt/questions/ (MCQ)');",
+                  "const body = jsonBody();",
+                  "setVar('question_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Fill Blank Question",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/questions/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"topic\":{{topic_id}},\"subject\":{{subject_id}},\"class_level\":{{level_id}},\"question_text\":\"The capital of Nigeria is ___.\",\"question_type\":\"fill_blank\",\"difficulty\":\"easy\",\"cognitive_level\":\"knowledge\",\"options\":[],\"correct_answer\":\"Abuja\",\"explanation\":\"Abuja is Nigeria's capital city.\",\"is_active\":true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/cbt/questions/ (fill_blank)');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Questions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/questions/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/cbt/questions/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Question Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/questions/stats/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/cbt/questions/stats/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bulk Import Questions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/questions/bulk-import/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "[{\"topic\":{{topic_id}},\"subject\":{{subject_id}},\"class_level\":{{level_id}},\"question_text\":\"5 x 5 = ?\",\"question_type\":\"mcq\",\"difficulty\":\"easy\",\"cognitive_level\":\"knowledge\",\"options\":[{\"id\":\"A\",\"text\":\"20\"},{\"id\":\"B\",\"text\":\"25\"},{\"id\":\"C\",\"text\":\"30\"},{\"id\":\"D\",\"text\":\"35\"}],\"correct_answer\":\"B\",\"is_active\":true}]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/cbt/questions/bulk-import/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create CBT Exam",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/exams/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test Maths Exam {{run_suffix}}\",\"subject\":{{subject_id}},\"term\":{{term_id}},\"session\":{{session_id}},\"class_arms\":[{{arm_id}}],\"duration_minutes\":60,\"start_datetime\":\"{{start_ts}}\",\"end_datetime\":\"{{end_ts}}\",\"instructions\":\"Answer all questions.\",\"selection_mode\":\"manual\",\"manual_questions\":[{{question_id}}],\"random_config\":[],\"randomize_questions\":false,\"randomize_options\":false,\"allow_review\":true,\"show_score_immediately\":true,\"status\":\"published\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/cbt/exams/');",
+                  "const body = jsonBody();",
+                  "setVar('exam_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List CBT Exams",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/exams/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/cbt/exams/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CBT Exam Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/exams/{{exam_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/cbt/exams/{id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Student Available Exams",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/exams/available/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{student_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/cbt/exams/available/ (student)');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start CBT Exam",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/exams/{{exam_id}}/start/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{student_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/cbt/exams/{id}/start/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CBT Exam Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/exams/{{exam_id}}/status/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{student_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/cbt/exams/{id}/status/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Save CBT Answer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/exams/{{exam_id}}/save-answer/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{student_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"question_id\":{{question_id}},\"selected_option\":\"B\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/cbt/exams/{id}/save-answer/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log Tab Switch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/exams/{{exam_id}}/log-tab-switch/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{student_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/cbt/exams/{id}/log-tab-switch/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit CBT Exam",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/cbt/exams/{{exam_id}}/submit/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{student_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/cbt/exams/{id}/submit/');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10 Fees",
+      "item": [
+        {
+          "name": "Create Fee Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/fees/categories/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"{{fee_category_name}}\",\"description\":\"Main term school fees\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/fees/categories/');",
+                  "const body = jsonBody();",
+                  "setVar('fee_cat_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Fee Categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/fees/categories/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/fees/categories/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Fee Category",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/fees/categories/{{fee_cat_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"{{fee_category_name}} Updated\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'PUT /api/fees/categories/{id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Fee Schedule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/fees/schedule/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"term_id\":{{term_id}},\"schedules\":[{\"class_level_id\":{{level_id}},\"fee_category_id\":{{fee_cat_id}},\"amount\":25000,\"due_date\":\"2024-09-30\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/fees/schedule/ (bulk)');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Fee Schedules",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/fees/schedule/?term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/fees/schedule/');",
+                  "const body = jsonBody();",
+                  "setVar('fee_schedule_id', Array.isArray(body) && body[0] ? body[0].id : '');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Student Fee Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/fees/student/{{student_profile_id}}/?term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/fees/student/{id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Manual Fee Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/fees/pay/manual/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"student_id\":{{student_profile_id}},\"fee_schedule_id\":{{fee_schedule_id}},\"amount_paid\":25000,\"payment_date\":\"{{today}}\",\"method\":\"cash\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/fees/pay/manual/');",
+                  "const body = jsonBody();",
+                  "setVar('payment_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fee Receipt PDF",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/fees/receipts/{{payment_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/fees/receipts/{id}/ (PDF)');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Outstanding Fees",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/fees/outstanding/?term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/fees/outstanding/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Outstanding Fees By Class",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/fees/outstanding/?term={{term_id}}&class_arm={{arm_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/fees/outstanding/ (filtered by class_arm)');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Initiate Paystack Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/fees/pay/initiate/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"student_id\":{{student_profile_id}},\"fee_schedule_ids\":[{{fee_schedule_id}}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200, 502], 'POST /api/fees/pay/initiate/');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11 Timetable",
+      "item": [
+        {
+          "name": "Create Period",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/timetable/periods/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"{{period_name}}\",\"start_time\":\"08:00:00\",\"end_time\":\"08:45:00\",\"order_index\":{{period_order_index}},\"is_break\":false}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/timetable/periods/');",
+                  "const body = jsonBody();",
+                  "setVar('period_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Periods",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/timetable/periods/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/timetable/periods/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Timetable Entry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/timetable/entries/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"class_arm\":{{arm_id}},\"subject\":{{subject_id}},\"teacher\":{{teacher_user_id}},\"period\":{{period_id}},\"day_of_week\":\"MON\",\"term\":{{term_id}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/timetable/entries/');",
+                  "const body = jsonBody();",
+                  "setVar('tt_entry_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Timetable Entries",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/timetable/entries/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/timetable/entries/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Timetable Grid",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/timetable/entries/grid/?class_arm={{arm_id}}&term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/timetable/entries/grid/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Timetable By Class",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/timetable/entries/by-class/{{arm_id}}/?term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/timetable/entries/by-class/{id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Timetable By Teacher",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/timetable/entries/by-teacher/{{teacher_user_id}}/?term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/timetable/entries/by-teacher/{id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My Timetable",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/timetable/entries/my-timetable/?term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/timetable/entries/my-timetable/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Teacher Load",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/timetable/entries/teacher-load/?teacher={{teacher_user_id}}&term={{term_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/timetable/entries/teacher-load/');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "12 Notifications",
+      "item": [
+        {
+          "name": "Create Notification Template",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/notifications/templates/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"{{template_name}}\",\"type\":\"sms\",\"category\":\"general\",\"body\":\"Hello {{student_name}}, this is a test.\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/notifications/templates/');",
+                  "const body = jsonBody();",
+                  "setVar('template_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Notification Templates",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notifications/templates/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/notifications/templates/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Notification Template",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/notifications/templates/{{template_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"{{template_name}} Updated\",\"type\":\"sms\",\"category\":\"general\",\"body\":\"Hi {{student_name}}!\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'PUT /api/notifications/templates/{id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send Notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/notifications/send/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"channel\":\"sms\",\"template_id\":{{template_id}},\"recipient_ids\":[{{student_user_id}}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200, 201, 207, 500], 'POST /api/notifications/send/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notification Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notifications/logs/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/notifications/logs/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Notification Template",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/notifications/templates/{{template_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([204], 'DELETE /api/notifications/templates/{id}/');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "13 Analytics",
+      "item": [
+        {
+          "name": "Analytics Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/analytics/overview/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200, 204], 'GET /api/analytics/overview/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Analytics Refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/analytics/refresh/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200, 202], 'POST /api/analytics/refresh/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Analytics By Class",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/analytics/class/{{arm_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200, 204, 404], 'GET /api/analytics/class/{id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Analytics Student Trends",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/analytics/student/{{student_user_id}}/trends/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200, 204, 404], 'GET /api/analytics/student/{id}/trends/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Analytics Transcript",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/analytics/transcript/{{student_user_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200, 404], 'GET /api/analytics/transcript/{id}/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reports Transcript",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/reports/transcript/{{student_user_id}}/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200, 404], 'GET /api/reports/transcript/{id}/');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "14 Promotion",
+      "item": [
+        {
+          "name": "Create Promotion Criteria",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/promotion/criteria/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"class_level_id\":{{level_id}},\"min_subjects_to_pass\":3,\"min_average_score\":40,\"min_attendance_pct\":50,\"auto_promote_if_met\":false}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/promotion/criteria/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Promotion Criteria",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/promotion/criteria/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/promotion/criteria/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Evaluate Promotion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/promotion/evaluate/?session={{session_id}}&class_level={{level_id}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/promotion/evaluate/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Or Reuse JSS2 Class Level",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/class-levels/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"{{secondary_class_level_name}}\",\"order_index\":2,\"is_final_year\":false}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Create or reuse JSS2 class level', function (done) {",
+                  "  pm.expect([201, 400]).to.include(pm.response.code);",
+                  "  if (pm.response.code === 201) {",
+                  "    const body = jsonBody();",
+                  "    setVar('level2_id', body?.id);",
+                  "    done();",
+                  "    return;",
+                  "  }",
+                  "  send('GET', '/api/class-levels/', getVar('admin_token'), (err, res) => {",
+                  "    pm.expect(err).to.equal(null);",
+                  "    pm.expect(res.code).to.equal(200);",
+                  "    const rows = res.json();",
+                  "    const item = rows.find((entry) => entry.name === getVar('secondary_class_level_name'));",
+                  "    pm.expect(item, 'Existing JSS2 class level').to.be.ok;",
+                  "    setVar('level2_id', item.id);",
+                  "    done();",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Secondary Class Arm",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/class-arms/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"{{secondary_arm_name}}\",\"class_level\":{{level2_id}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([201], 'POST /api/class-arms/ (secondary)');",
+                  "const body = jsonBody();",
+                  "setVar('arm2_id', body?.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Execute Promotion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/promotion/execute/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "[{\"student_id\":{{student_profile_id}},\"session_id\":{{session_id}},\"to_class_id\":{{arm2_id}},\"decision\":\"promoted\",\"criteria_met\":true,\"notes\":\"Test promotion\"}]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/promotion/execute/');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "15 Parent",
+      "item": [
+        {
+          "name": "Parent OTP Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/parent/otp-request/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"phone\":\"{{parent_phone}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'POST /api/auth/parent/otp-request/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Parent OTP Verify Rejects Invalid Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/parent/otp-verify/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"phone\":\"{{parent_phone}}\",\"otp\":\"000000\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([401], 'POST /api/auth/parent/otp-verify/ rejects invalid OTP');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "16 Profile And Security",
+      "item": [
+        {
+          "name": "Teacher Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/me/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'GET /api/auth/me/ (teacher)');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Teacher Profile Update",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/auth/me/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{teacher_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"first_name\":\"Updated\",\"last_name\":\"Teacher\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([200], 'PATCH /api/auth/me/');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Student Cannot Create Staff",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/staff/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{student_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"hacker@x.com\",\"first_name\":\"H\",\"last_name\":\"X\",\"password\":\"hacked\",\"role\":\"teacher\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([401, 403], 'Student cannot create staff');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Student Cannot Create Fee Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/fees/categories/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{student_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Fake Fee\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([401, 403], 'Student cannot create fee categories');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unauthenticated Gradebook Request Rejected",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-School-Slug",
+                "value": "{{school_slug}}"
+              }
+            ],
+            "url": "{{base_url}}/api/gradebook/entries/"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "expectStatus([401], 'Unauthenticated request rejected');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
 
   db:
@@ -36,6 +34,7 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.local
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-school_portal}
       REDIS_URL: redis://redis:6379/0
+      RUN_MIGRATIONS: "true"
     ports:
       - "8000:8000"
     depends_on:
@@ -56,6 +55,7 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.local
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-school_portal}
       REDIS_URL: redis://redis:6379/0
+      RUN_MIGRATIONS: "false"
     depends_on:
       - db
       - redis
@@ -63,13 +63,14 @@ services:
 
   celery-beat:
     build: ./backend
-    command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: bash -c "bash wait_for_migrations.sh && celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
     env_file:
       - ./backend/.env
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.local
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-school_portal}
       REDIS_URL: redis://redis:6379/0
+      RUN_MIGRATIONS: "false"
     depends_on:
       - db
       - redis

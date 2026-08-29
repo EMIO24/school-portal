@@ -4,6 +4,7 @@ config/settings/base.py
 Complete base settings for the school portal.
 """
 
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -206,8 +207,10 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # ── Celery (override in production.py) ────────────────────────────────────
 
-CELERY_BROKER_URL        = "redis://localhost:6379/0"
-CELERY_RESULT_BACKEND    = "redis://localhost:6379/0"
+# Use REDIS_URL env var if set (for Docker), otherwise fallback to localhost
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+CELERY_BROKER_URL        = REDIS_URL
+CELERY_RESULT_BACKEND    = REDIS_URL
 CELERY_ACCEPT_CONTENT    = ["json"]
 CELERY_TASK_SERIALIZER   = "json"
 CELERY_RESULT_SERIALIZER = "json"

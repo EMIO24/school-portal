@@ -1,6 +1,8 @@
+COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then echo docker compose; else echo docker-compose; fi)
+
 .PHONY: dev-backend dev-frontend migrate test shell \
-        docker-dev docker-down docker-logs docker-shell docker-ps \
-        docker-migrate docker-createsuperuser
+        docker-dev docker-up docker-build docker-down docker-logs docker-shell docker-ps \
+        docker-migrate docker-createsuperuser fresh
 
 # ── Local dev (no Docker) ─────────────────────────────────────────────────
 
@@ -22,22 +24,42 @@ shell:
 # ── Docker (local dev with docker-compose) ────────────────────────────────
 
 docker-dev:
-	docker-compose up --build
+	@docker version >/dev/null 2>&1 || (echo "Docker is not available. Start Docker Desktop and enable WSL integration for this distro."; exit 1)
+	$(COMPOSE) up --build
+
+docker-up:
+	@docker version >/dev/null 2>&1 || (echo "Docker is not available. Start Docker Desktop and enable WSL integration for this distro."; exit 1)
+	$(COMPOSE) up
+
+docker-build:
+	@docker version >/dev/null 2>&1 || (echo "Docker is not available. Start Docker Desktop and enable WSL integration for this distro."; exit 1)
+	$(COMPOSE) build
 
 docker-down:
-	docker-compose down -v
+	@docker version >/dev/null 2>&1 || (echo "Docker is not available. Start Docker Desktop and enable WSL integration for this distro."; exit 1)
+	$(COMPOSE) down -v --remove-orphans
 
 docker-logs:
-	docker-compose logs -f
+	@docker version >/dev/null 2>&1 || (echo "Docker is not available. Start Docker Desktop and enable WSL integration for this distro."; exit 1)
+	$(COMPOSE) logs -f
 
 docker-ps:
-	docker-compose ps
+	@docker version >/dev/null 2>&1 || (echo "Docker is not available. Start Docker Desktop and enable WSL integration for this distro."; exit 1)
+	$(COMPOSE) ps
 
 docker-shell:
-	docker-compose exec web python manage.py shell
+	@docker version >/dev/null 2>&1 || (echo "Docker is not available. Start Docker Desktop and enable WSL integration for this distro."; exit 1)
+	$(COMPOSE) exec web python manage.py shell
 
 docker-migrate:
-	docker-compose exec web python manage.py migrate
+	@docker version >/dev/null 2>&1 || (echo "Docker is not available. Start Docker Desktop and enable WSL integration for this distro."; exit 1)
+	$(COMPOSE) exec web python manage.py migrate
 
 docker-createsuperuser:
-	docker-compose exec web python manage.py createsuperuser
+	@docker version >/dev/null 2>&1 || (echo "Docker is not available. Start Docker Desktop and enable WSL integration for this distro."; exit 1)
+	$(COMPOSE) exec web python manage.py createsuperuser
+
+fresh:
+	@docker version >/dev/null 2>&1 || (echo "Docker is not available. Start Docker Desktop and enable WSL integration for this distro."; exit 1)
+	$(COMPOSE) down -v --remove-orphans
+	$(COMPOSE) up --build
