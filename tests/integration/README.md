@@ -200,7 +200,7 @@ Use the [platform management guide](PLATFORM_GUIDE.md) for owner login, school s
 
 ## Paystack payments
 
-See [Paystack setup and test checklist](PAYSTACK_GUIDE.md), [staging deployment checklist](STAGING_DEPLOYMENT_CHECKLIST.md), and [launch pricing assumptions](SUBSCRIPTION_PRICING.md).
+See [Paystack setup and test checklist](PAYSTACK_GUIDE.md), [staging deployment checklist](STAGING_DEPLOYMENT_CHECKLIST.md), [Railway/Vercel deployment guide](RAILWAY_VERCEL_DEPLOYMENT_GUIDE.md), and [launch pricing assumptions](SUBSCRIPTION_PRICING.md).
 
 ## Plans and custom school designs
 
@@ -209,4 +209,5 @@ See [assign plans, colours and five portal layouts](PLANS_AND_DESIGNS.md). Open 
 ## User guides and mobile testing
 
 The [complete user guide](../../docs/USER_GUIDE.md) covers owners, school administrators, staff, parents and students. Read guides at `/help` or **User guide**. PDF downloads are available only in **Superadmin > User guide**. Mobile checks now cover 320px, 390px and 768px forms, timetables and navigation across all five designs.
+
 

@@ -33,7 +33,7 @@ npm --prefix frontend run build
 npm --prefix frontend audit --omit=dev
 ```
 
-Deployment preparation completed in this remediation pass includes stronger tenant/role enforcement, OTP redaction and challenge handling, exam timing/snapshot protection, grade validation, protected fee receipts, notification outbox idempotency/recovery, production preflight checks, Docker/CI dependency hardening, and a patched React Router runtime. The app is ready for a staging deployment rehearsal; use [STAGING_DEPLOYMENT_CHECKLIST.md](STAGING_DEPLOYMENT_CHECKLIST.md). The final live-production gate is operational: configure real secrets outside the repo, run migrations against the target database, verify Paystack split settlement in test mode, send controlled Termii/Brevo test messages, and complete backup/restore proof on the hosting database.
+Deployment preparation completed in this remediation pass includes stronger tenant/role enforcement, OTP redaction and challenge handling, exam timing/snapshot protection, grade validation, protected fee receipts, notification outbox idempotency/recovery, production preflight checks, Docker/CI dependency hardening, and a patched React Router runtime. The app is ready for a staging deployment rehearsal; use [STAGING_DEPLOYMENT_CHECKLIST.md](STAGING_DEPLOYMENT_CHECKLIST.md) and [RAILWAY_VERCEL_DEPLOYMENT_GUIDE.md](RAILWAY_VERCEL_DEPLOYMENT_GUIDE.md). The final live-production gate is operational: configure real secrets outside the repo, run migrations against the target database, verify Paystack split settlement in test mode, send controlled Termii/Brevo test messages, and complete backup/restore proof on the hosting database.
 ## Original baseline verification results
 
 | Check | Result |
@@ -214,6 +214,7 @@ These items require implementation or explicit operating procedures before a pil
 No live infrastructure penetration testing, real Paystack settlement, provider delivery, complete dependency vulnerability scan, full historical secret scan, load testing, PostgreSQL concurrency reproduction, or fresh all-device browser matrix was performed. These remain required staging/operational evidence, not assumed passes. Findings describe the reviewed working tree and must be rechecked after fixes.
 
 Only the audit report and disposable regression script were added by this audit. Application vulnerabilities remain open; no production-readiness claim is made.
+
 
 
 
