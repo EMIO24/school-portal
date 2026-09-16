@@ -1,17 +1,22 @@
 """Small multipage text reports for server downloads."""
 import textwrap
 
-def text_report_pdf(title, lines):
-    wrapped = [part for line in lines for part in (textwrap.wrap(str(line), 85) or [''])]
+def text_report_pdf(title, lines, branding=None):
+    branding = branding or {}
+    school_name = branding.get('school_name') or ''
+    contact_line = branding.get('school_contact_line') or ''
+    header_lines = [line for line in [school_name, contact_line] if line]
+    wrapped = [part for line in (header_lines + [title, ''] + list(lines)) for part in (textwrap.wrap(str(line), 85) or [''])]
     pages = [wrapped[i:i+40] for i in range(0,len(wrapped),40)] or [[]]
     objects = [b'', b'', b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>']
     ids = []
     def escaped(text):
         return str(text).encode('cp1252','replace').replace(b'\\',b'\\\\').replace(b'(',b'\\(').replace(b')',b'\\)').replace(b'\n',b' ').replace(b'\r',b' ')
     for page, lines in enumerate(pages,1):
-        commands = [b'BT /F1 14 Tf 40 795 Td ('+escaped(title)+b') Tj ET']
+        commands = []
         for index,line in enumerate(lines):
-            commands.append(f'BT /F1 11 Tf 40 {755-index*17} Td ('.encode()+escaped(line)+b') Tj ET')
+            size = 14 if index == 0 else (10 if index == 1 and contact_line else 11)
+            commands.append(f'BT /F1 {size} Tf 40 {795-index*17} Td ('.encode()+escaped(line)+b') Tj ET')
         commands.append(f'BT /F1 9 Tf 40 30 Td (Page {page} of {len(pages)}) Tj ET'.encode())
         stream=b'\n'.join(commands)
         page_id=len(objects)+1; ids.append(page_id)

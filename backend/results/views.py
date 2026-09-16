@@ -43,6 +43,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from tenants.mixins import TenantMixin
+from tenants.document_branding import school_branding_context
 from academics.models import Term
 from enrollment.models import ClassArm, StudentProfile
 
@@ -210,10 +211,7 @@ def _assemble_slip_data(school, student, term):
 
     return {
         # School
-        'school_name':    school.name,
-        'school_address': getattr(school, 'address', ''),
-        'school_logo':    _safe_asset_url(getattr(school, 'logo_url', '')),
-        'school_phone':   getattr(school, 'phone', ''),
+        **school_branding_context(school),
 
         # Term / session
         'term_name':      term.name,
@@ -579,8 +577,7 @@ class BroadsheetPDFView(TenantMixin, APIView):
             return Response({'detail': 'Class not found.'}, status=404)
 
         context = {
-            'school_name':    self.school.name,
-            'school_logo':    _safe_asset_url(getattr(self.school, 'logo_url', '')),
+            **school_branding_context(self.school),
             'class_name':     str(class_arm),
             'term_name':      term_obj.name,
             'session_name':   str(getattr(term_obj, 'session', '')),
@@ -696,7 +693,7 @@ class ScratchCardGenerateView(TenantMixin, APIView):
             csv_rows.append([serial, plain_pin])
 
         # Render before saving; failed exports must not leave an inaccessible PIN batch.
-        pdf = scratch_cards_pdf(self.school.name, batch_name, csv_rows[1:])
+        pdf = scratch_cards_pdf(school_branding_context(self.school), batch_name, csv_rows[1:])
         ScratchCard.objects.bulk_create(cards_to_create)
         filename = f"scratch_cards_{slugify(batch_name) or 'batch'}.pdf"
         response = HttpResponse(pdf, content_type='application/pdf')
@@ -750,7 +747,7 @@ class ScratchCardUnusedPDFView(TenantMixin, APIView):
         if not batch:
             return Response({'detail': 'batch param required.'}, status=400)
         cards = ScratchCard.objects.filter(school=self.school, batch_name=batch, is_used=False)
-        pdf = scratch_cards_pdf(self.school.name, batch, ((card.serial_number, '') for card in cards), include_pins=False)
+        pdf = scratch_cards_pdf(school_branding_context(self.school), batch, ((card.serial_number, '') for card in cards), include_pins=False)
         response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="unused_{slugify(batch) or "batch"}.pdf"'
         response['Cache-Control'] = 'no-store'

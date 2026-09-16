@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 
 from .models import AnalyticsSnapshot
 from .tasks import compute_school_analytics
+from tenants.document_branding import school_branding_context
 
 
 class AnalyticsOverviewView(APIView):
@@ -151,7 +152,7 @@ class TranscriptPDFView(APIView):
         try:
             from weasyprint import HTML
             html = render_to_string('analytics/cumulative_transcript.html', {
-                'student': student, 'school': school, 'history': history,
+                'student': student, 'school': school, 'history': history, **school_branding_context(school),
             })
             pdf  = HTML(string=html).write_pdf()
             resp = HttpResponse(pdf, content_type='application/pdf')

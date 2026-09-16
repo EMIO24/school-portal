@@ -26,7 +26,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    border-bottom: 3px solid #0f1e3c;
+    border-bottom: 3px solid {{ document_primary_color|default:"#0f1e3c" }};
     padding-bottom: 7px;
     margin-bottom: 8px;
   }
@@ -39,15 +39,15 @@
 
   .bs-logo-placeholder {
     width: 46px; height: 46px;
-    border: 2px solid #0f1e3c;
+    border: 2px solid {{ document_primary_color|default:"#0f1e3c" }};
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 6pt; color: #0f1e3c;
+    font-size: 6pt; color: {{ document_primary_color|default:"#0f1e3c" }};
   }
 
   .bs-school-info { text-align: center; flex: 1; }
-  .bs-school-name { font-size: 12pt; font-weight: bold; color: #0f1e3c; text-transform: uppercase; }
-  .bs-subtitle    { font-size: 8.5pt; font-weight: bold; color: #1e3560; margin-top: 2px; }
+  .bs-school-name { font-size: 12pt; font-weight: bold; color: {{ document_primary_color|default:"#0f1e3c" }}; text-transform: uppercase; }
+  .bs-subtitle    { font-size: 8.5pt; font-weight: bold; color: {{ document_secondary_color|default:"#1e3560" }}; margin-top: 2px; }
   .bs-meta        { font-size: 7.5pt; color: #555; margin-top: 1px; }
 
   /* ── Table ── */
@@ -58,13 +58,13 @@
   }
 
   thead th {
-    background: #0f1e3c;
+    background: {{ document_primary_color|default:"#0f1e3c" }};
     color: #e8eef8;
     padding: 5px 4px;
     text-align: center;
     font-weight: bold;
     white-space: nowrap;
-    border: 1px solid #1e3560;
+    border: 1px solid {{ document_secondary_color|default:"#1e3560" }};
     vertical-align: bottom;
   }
 
@@ -117,13 +117,13 @@
   td.col-total, td.col-avg {
     font-weight: bold;
     background: #eef1f8 !important;
-    color: #0f1e3c;
+    color: {{ document_primary_color|default:"#0f1e3c" }};
   }
 
   td.col-pos {
     font-weight: bold;
     font-size: 8.5pt;
-    color: #0f1e3c;
+    color: {{ document_primary_color|default:"#0f1e3c" }};
     background: #e8ecf4 !important;
   }
 
@@ -170,6 +170,7 @@
   <div class="bs-school-info">
     <div class="bs-school-name">{{ school_name }}</div>
     <div class="bs-subtitle">CONTINUOUS ASSESSMENT BROADSHEET</div>
+    <div class="bs-meta">{% if school_motto %}{{ school_motto }} &nbsp;|&nbsp; {% endif %}{{ school_contact_line }}{% if school_registration_number %} &nbsp;|&nbsp; Reg. No: {{ school_registration_number }}{% endif %}</div>
     <div class="bs-meta">
       Class: <strong>{{ class_name }}</strong> &nbsp;|&nbsp;
       Term: <strong>{{ term_name }}</strong> &nbsp;|&nbsp;

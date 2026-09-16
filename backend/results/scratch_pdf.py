@@ -2,6 +2,11 @@
 import io
 
 def scratch_cards_pdf(school_name, batch_name, rows, include_pins=True):
+    branding = school_name if isinstance(school_name, dict) else {'school_name': school_name}
+    school_name = branding.get('school_name') or 'School'
+    contact_line = branding.get('school_contact_line') or ''
+    motto = branding.get('school_motto') or ''
+    registration = branding.get('school_registration_number') or ''
     rows = list(rows)
     chunks = [rows[i:i + 10] for i in range(0, len(rows), 10)] or [[]]
     objects = [b'', b'', b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>']
@@ -14,13 +19,19 @@ def scratch_cards_pdf(school_name, batch_name, rows, include_pins=True):
         commands = []
         def text(x, y, value, size=11):
             commands.append(b'BT /F1 ' + str(size).encode() + b' Tf ' + f'{x} {y} Td ('.encode() + literal(value) + b') Tj ET')
-        text(36, 803, str(school_name)[:70], 16)
-        text(36, 781, ('Scratch cards: ' if include_pins else 'Unused serials: ') + str(batch_name)[:65])
-        text(36, 762, 'Keep the original PDF: PINs cannot be recovered.' if include_pins else 'Serial numbers only. Use the original download for PINs.', 10)
+        text(36, 807, str(school_name)[:70], 16)
+        if motto:
+            text(36, 789, str(motto)[:90], 9)
+        if contact_line:
+            text(36, 775, str(contact_line)[:115], 8)
+        if registration:
+            text(36, 762, ('Reg. No: ' + str(registration))[:90], 8)
+        text(36, 746, ('Scratch cards: ' if include_pins else 'Unused serials: ') + str(batch_name)[:65], 11)
+        text(36, 730, 'Keep the original PDF: PINs cannot be recovered.' if include_pins else 'Serial numbers only. Use the original download for PINs.', 9)
         for index, row in enumerate(cards):
             x = 36 + (index % 2) * 266
-            y = 613 - (index // 2) * 137
-            commands.append(f'{x} {y} 254 124 re S'.encode())
+            y = 580 - (index // 2) * 125
+            commands.append(f'{x} {y} 254 112 re S'.encode())
             text(x + 12, y + 100, 'RESULT CHECKING CARD' if include_pins else 'UNUSED SERIAL', 11)
             text(x + 12, y + 74, 'Serial:', 10)
             text(x + 12, y + 57, row[0], 10)

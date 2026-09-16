@@ -33,6 +33,7 @@ from enrollment.models import StudentProfile, ClassArm
 from .models import FeeCategory, FeeSchedule, FeePayment
 from .serializers import FeeCategorySerializer, FeeScheduleSerializer, FeePaymentSerializer
 from .services.paystack import PaystackService
+from tenants.document_branding import receipt_barcode_data_uri, school_branding_context
 
 
 def _simple_pdf_bytes(lines):
@@ -312,13 +313,19 @@ class FeeReceiptView(APIView):
         check_student_access(request.user, payment.student)
         try:
             from weasyprint import HTML
-            html = render_to_string('fees/receipt.html', {'payment': payment, 'school': school})
+            html = render_to_string('fees/receipt.html', {
+                'payment': payment,
+                'school': school,
+                'receipt_barcode': receipt_barcode_data_uri(payment),
+                **school_branding_context(school),
+            })
             pdf  = HTML(string=html).write_pdf()
             resp = HttpResponse(pdf, content_type='application/pdf')
             resp['Content-Disposition'] = f'inline; filename="{payment.receipt_number}.pdf"'
             return resp
         except Exception:
             pdf = _simple_pdf_bytes([
+                getattr(school, 'name', 'School'),
                 f'Receipt {payment.receipt_number}',
                 f'Student: {payment.student.user.full_name or payment.student.admission_number}',
                 f'Category: {payment.fee_schedule.fee_category.name}',

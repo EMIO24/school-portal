@@ -28,6 +28,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from tenants.mixins import TenantMixin
+from tenants.document_branding import school_branding_context
 from .models import AttendanceSession, AttendanceRecord
 from .serializers import (
     AttendanceSessionSerializer,
@@ -278,7 +279,7 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
 
         # Optional CSV export
         if request.query_params.get('download') in ('csv', 'pdf'):
-            return _export_class_report_pdf(rows, class_arm_id)
+            return _export_class_report_pdf(rows, class_arm_id, getattr(request, 'tenant', None))
 
         return Response(rows)
 
@@ -324,7 +325,7 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
 # CSV export helper
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _export_class_report_pdf(rows, class_arm_id):
+def _export_class_report_pdf(rows, class_arm_id, school=None):
     from results.report_pdf import text_report_pdf
     lines = []
     for row in rows:
@@ -334,6 +335,7 @@ def _export_class_report_pdf(rows, class_arm_id):
             ' | Absent: ' + str(row['absent_count']) + ' | Late: ' + str(row['late_count']),
             'Finalized: ' + ('Yes' if row['is_finalized'] else 'No'), '',
         ])
-    response = HttpResponse(text_report_pdf('Class attendance report', lines or ['No attendance records.']), content_type='application/pdf')
+    branding = school_branding_context(school) if school else {}
+    response = HttpResponse(text_report_pdf('Class attendance report', lines or ['No attendance records.'], branding=branding), content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="attendance_class_{class_arm_id}.pdf"'
     return response

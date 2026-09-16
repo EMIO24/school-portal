@@ -4,73 +4,96 @@
 <meta charset="UTF-8">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: Arial, sans-serif; font-size: 13px; color: #222; padding: 30px; }
-  .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 16px; margin-bottom: 20px; }
-  .header h1 { font-size: 20px; text-transform: uppercase; letter-spacing: 1px; }
-  .header h2 { font-size: 14px; font-weight: normal; color: #555; margin-top: 4px; }
-  .badge { display: inline-block; background: #1a6b3c; color: #fff; padding: 4px 14px; border-radius: 4px; font-size: 11px; letter-spacing: 1px; margin-top: 8px; }
-  .meta { display: flex; justify-content: space-between; margin-bottom: 20px; }
-  .meta div { line-height: 1.8; }
-  .meta label { font-weight: bold; margin-right: 6px; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-  th { background: #f0f0f0; text-align: left; padding: 8px 10px; border: 1px solid #ccc; }
-  td { padding: 8px 10px; border: 1px solid #ccc; }
-  .total-row td { font-weight: bold; background: #f9f9f9; }
-  .footer { margin-top: 30px; display: flex; justify-content: space-between; }
-  .sig-line { border-top: 1px solid #333; width: 160px; text-align: center; padding-top: 4px; font-size: 11px; color: #555; }
-  .watermark { text-align: center; margin-top: 20px; font-size: 11px; color: #aaa; }
+  body { font-family: Arial, sans-serif; font-size: 12px; color: #1f2933; padding: 28px; }
+  .receipt-shell { border: 1px solid #d7dee8; padding: 20px; border-radius: 8px; }
+  .header { display: flex; align-items: center; gap: 16px; border-bottom: 3px solid {{ document_primary_color }}; padding-bottom: 14px; margin-bottom: 16px; }
+  .logo { width: 72px; height: 72px; object-fit: contain; }
+  .logo-placeholder { width: 72px; height: 72px; border: 2px solid {{ document_primary_color }}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: {{ document_primary_color }}; font-size: 10px; font-weight: bold; }
+  .school-block { flex: 1; text-align: center; }
+  .school-block h1 { font-size: 21px; text-transform: uppercase; letter-spacing: .8px; color: {{ document_primary_color }}; }
+  .school-block .motto { font-size: 11px; color: {{ document_secondary_color }}; margin-top: 2px; font-style: italic; }
+  .school-block .contact { font-size: 10.5px; color: #52606d; margin-top: 4px; line-height: 1.45; }
+  .badge { display: inline-block; background: {{ document_primary_color }}; color: #fff; padding: 5px 16px; border-radius: 999px; font-size: 10px; letter-spacing: 1.4px; margin-top: 8px; }
+  .receipt-top { display: flex; gap: 18px; margin-bottom: 18px; }
+  .meta { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; background: #f7f9fc; border: 1px solid #e1e7ef; border-radius: 6px; padding: 12px; }
+  .meta div { line-height: 1.4; }
+  label { display: block; font-weight: bold; font-size: 10px; text-transform: uppercase; color: #64748b; letter-spacing: .4px; }
+  .value { font-weight: bold; color: #172b4d; }
+  .barcode-box { width: 126px; text-align: center; border: 1px solid #d7dee8; border-radius: 6px; padding: 8px; }
+  .barcode-box img { width: 102px; height: 102px; object-fit: contain; }
+  .barcode-label { font-size: 9px; color: #52606d; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+  th { background: {{ document_primary_color }}; color: #fff; text-align: left; padding: 9px 10px; border: 1px solid {{ document_primary_color }}; }
+  td { padding: 9px 10px; border: 1px solid #d7dee8; }
+  .total-row td { font-weight: bold; background: #f7f9fc; font-size: 13px; }
+  .verification { background: #fff8e6; border-left: 4px solid {{ document_accent_color }}; padding: 9px 12px; font-size: 10.5px; color: #594214; margin-bottom: 18px; }
+  .footer { margin-top: 28px; display: flex; justify-content: space-between; }
+  .sig-line { border-top: 1px solid #333; width: 170px; text-align: center; padding-top: 5px; font-size: 11px; color: #555; }
+  .watermark { text-align: center; margin-top: 20px; font-size: 10px; color: #8a97a8; }
 </style>
 </head>
 <body>
-
-<div class="header">
-  <h1>{{ school.name }}</h1>
-  <h2>Fee Payment Receipt</h2>
-  <span class="badge">OFFICIAL RECEIPT</span>
-</div>
-
-<div class="meta">
-  <div>
-    <div><label>Receipt No:</label>{{ payment.receipt_number }}</div>
-    <div><label>Payment Date:</label>{{ payment.payment_date }}</div>
-    <div><label>Method:</label>{{ payment.get_method_display }}</div>
-    {% if payment.paystack_reference %}
-    <div><label>Reference:</label>{{ payment.paystack_reference }}</div>
-    {% endif %}
+<div class="receipt-shell">
+  <div class="header">
+    {% if school_logo %}<img src="{{ school_logo }}" class="logo" alt="School Logo">{% else %}<div class="logo-placeholder">LOGO</div>{% endif %}
+    <div class="school-block">
+      <h1>{{ school_name }}</h1>
+      {% if school_motto %}<div class="motto">{{ school_motto }}</div>{% endif %}
+      <div class="contact">
+        {% if school_contact_line %}{{ school_contact_line }}{% endif %}
+        {% if school_registration_number %}<br>Reg. No: {{ school_registration_number }}{% endif %}
+      </div>
+      <span class="badge">OFFICIAL RECEIPT</span>
+    </div>
   </div>
-  <div>
-    <div><label>Student:</label>{{ payment.student.user.get_full_name }}</div>
-    <div><label>Admission No:</label>{{ payment.student.admission_number }}</div>
-    <div><label>Class:</label>{{ payment.student.current_class.full_name }}</div>
+
+  <div class="receipt-top">
+    <div class="meta">
+      <div><label>Receipt No</label><span class="value">{{ payment.receipt_number }}</span></div>
+      <div><label>Payment Date</label><span class="value">{{ payment.payment_date }}</span></div>
+      <div><label>Payment Method</label><span class="value">{{ payment.get_method_display }}</span></div>
+      <div><label>Reference</label><span class="value">{{ payment.paystack_reference|default:"Manual payment" }}</span></div>
+      <div><label>Student</label><span class="value">{{ payment.student.user.get_full_name }}</span></div>
+      <div><label>Admission No</label><span class="value">{{ payment.student.admission_number }}</span></div>
+      <div><label>Class</label><span class="value">{{ payment.student.current_class.full_name }}</span></div>
+      <div><label>Issued By</label><span class="value">{{ payment.recorded_by.get_full_name|default:"School Admin" }}</span></div>
+    </div>
+    <div class="barcode-box">
+      {% if receipt_barcode %}<img src="{{ receipt_barcode }}" alt="Receipt barcode">{% endif %}
+      <div class="barcode-label">Scan to identify this receipt</div>
+    </div>
   </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Term</th>
+        <th style="text-align:right">Amount (NGN)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{{ payment.fee_schedule.fee_category.name }}</td>
+        <td>{{ payment.fee_schedule.term.get_name_display }} {{ payment.fee_schedule.term.session.name }}</td>
+        <td style="text-align:right">{{ payment.amount_paid }}</td>
+      </tr>
+      <tr class="total-row">
+        <td colspan="2">Total Paid</td>
+        <td style="text-align:right">NGN {{ payment.amount_paid }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="verification">This receipt is valid only for the school, student, amount and receipt number printed above. Reprint from the portal if verification is required.</div>
+
+  <div class="footer">
+    <div class="sig-line">Cashier / Admin</div>
+    <div class="sig-line">Bursar</div>
+    <div class="sig-line">School Stamp</div>
+  </div>
+
+  <div class="watermark">Generated by School Portal &bull; {{ school_name }}</div>
 </div>
-
-<table>
-  <thead>
-    <tr>
-      <th>Description</th>
-      <th>Term</th>
-      <th style="text-align:right">Amount (₦)</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>{{ payment.fee_schedule.fee_category.name }}</td>
-      <td>{{ payment.fee_schedule.term.get_name_display }} {{ payment.fee_schedule.term.session.name }}</td>
-      <td style="text-align:right">{{ payment.amount_paid }}</td>
-    </tr>
-    <tr class="total-row">
-      <td colspan="2">Total Paid</td>
-      <td style="text-align:right">₦{{ payment.amount_paid }}</td>
-    </tr>
-  </tbody>
-</table>
-
-<div class="footer">
-  <div class="sig-line">Cashier / Admin</div>
-  <div class="sig-line">School Stamp</div>
-</div>
-
-<div class="watermark">Generated by School Portal &bull; {{ school.name }}</div>
 </body>
 </html>
