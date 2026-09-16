@@ -3,6 +3,9 @@ config/urls.py — complete root URL configuration
 """
 
 from django.contrib import admin
+from accounts.admin_mfa import MFAAdminAuthenticationForm, admin_permission
+admin.site.login_form = MFAAdminAuthenticationForm
+admin.site.has_permission = admin_permission
 from django.urls import include, path
 from django.http import JsonResponse
 from results.urls import results_urlpatterns, scratch_card_urlpatterns

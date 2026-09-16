@@ -1,3 +1,4 @@
+from accounts.school_access import SchoolModulePermission, require_assignment
 """
 backend/timetable/views.py
 
@@ -61,7 +62,7 @@ class PeriodViewSet(TenantMixin, viewsets.ModelViewSet):
     school_admin: full CRUD.  All other roles: read-only.
     """
     serializer_class   = PeriodSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get_queryset(self):
         return Period.objects.filter(school=self.school).order_by('order_index')
@@ -79,7 +80,7 @@ class TimetableEntryViewSet(TenantMixin, viewsets.ModelViewSet):
     Main CRUD for timetable entries plus specialised read endpoints.
     Write endpoints return expanded read data + optional warning.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     # ── serializer routing ────────────────────────────────────────────────────
 

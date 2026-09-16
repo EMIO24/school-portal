@@ -1,10 +1,3 @@
 import React from "react";
-
-export default function TeacherDashboard() {
-  return (
-    <main className="page-shell">
-      <h1>Teacher Dashboard</h1>
-      <p>Teacher-specific classroom insights will be added here.</p>
-    </main>
-  );
-}
+import WorkspaceHome from "../../components/common/WorkspaceHome";
+export default function TeacherDashboard(){return <main className="page-shell"><WorkspaceHome/></main>;}

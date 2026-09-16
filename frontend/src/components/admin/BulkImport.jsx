@@ -1,3 +1,4 @@
+import { downloadReport } from '../../services/pdf';
 /**
  * components/admin/BulkImport.jsx
  *
@@ -23,17 +24,39 @@ const OPTIONAL_COLS = [
 
 // ── CSV parser (client-side preview only) ─────────────────────────────────
 
-function parseCSVPreview(text, maxRows = 5) {
-  const lines   = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return { headers: [], rows: [], totalRows: 0 };
-
-  const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
-  const rows    = lines.slice(1).map(line => {
-    const vals = line.split(",").map(v => v.trim().replace(/^"|"$/g, ""));
-    return headers.reduce((obj, h, i) => { obj[h] = vals[i] || ""; return obj; }, {});
-  });
-
-  return { headers, rows: rows.slice(0, maxRows), totalRows: rows.length };
+export function parseCSVPreview(text, maxRows = 5) {
+  const records = [];
+  let record = [], value = '', quoted = false;
+  const input = text.replace(/^\uFEFF/, '');
+  for (let i = 0; i < input.length; i += 1) {
+    const char = input[i];
+    if (char === '"') {
+      if (quoted && input[i + 1] === '"') { value += '"'; i += 1; }
+      else quoted = !quoted;
+    } else if (!quoted && (char === ',' || char === '\n' || char === '\r')) {
+      record.push(value.trim()); value = '';
+      if (char !== ',') {
+        if (record.some(cell => cell !== '')) records.push(record);
+        record = [];
+        if (char === '\r' && input[i + 1] === '\n') i += 1;
+      }
+    } else value += char;
+  }
+  if (quoted) throw new Error('A quoted CSV field is not closed.');
+  record.push(value.trim());
+  if (record.some(cell => cell !== '')) records.push(record);
+  const [headers = [], ...data] = records;
+  if (headers.some(h => !h) || new Set(headers).size !== headers.length) {
+    throw new Error('CSV column names must be non-empty and unique.');
+  }
+  if (data.some(row => row.length !== headers.length)) {
+    throw new Error('Every CSV row must have the same number of columns as the header.');
+  }
+  return {
+    headers,
+    rows: data.slice(0, maxRows).map(row => Object.fromEntries(headers.map((h, i) => [h, row[i]]))),
+    totalRows: data.length,
+  };
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────
@@ -67,26 +90,26 @@ function DropZone({ onFile, dragging, onDragOver, onDragLeave, onDrop }) {
   );
 }
 
-function TemplateDownload() {
+function TemplateDownload({ columns, exampleRow, templateName }) {
   function download() {
-    const headers = [...REQUIRED_COLS, ...OPTIONAL_COLS].join(",");
-    const example = "Amaka,Okonkwo,amaka@school.edu.ng,female,2008-05-14,JSS1,Mrs Okonkwo,08012345678,Lagos,Christianity,parent@example.com,mother";
-    const blob = new Blob([headers + "\n" + example], { type: "text/csv" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href = url; a.download = "student_import_template.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+    const headers = columns.join(",");
+    const example = exampleRow;
+    downloadReport('Import file guide', [
+      'Create a CSV file with the following header and sample row.',
+      'Header:', headers, '', 'Sample row:', example,
+      '', 'Replace the sample values with your records and save as a .csv file to upload.',
+    ], templateName.replace(/\.csv$/i, '.pdf'));
+
   }
 
   return (
     <button className="btn btn-ghost btn-sm bi-template-btn" onClick={download} type="button">
-      ↓ Download Template
+      ↓ Download PDF Guide
     </button>
   );
 }
 
-function PreviewTable({ headers, rows, totalRows }) {
+function PreviewTable({ headers, rows, totalRows, requiredCols }) {
   const showing = rows.length;
   return (
     <div className="bi-preview">
@@ -101,9 +124,9 @@ function PreviewTable({ headers, rows, totalRows }) {
           <thead>
             <tr>
               {headers.map(h => (
-                <th key={h} className={REQUIRED_COLS.includes(h) ? "bi-col-required" : ""}>
+                <th key={h} className={requiredCols.includes(h) ? "bi-col-required" : ""}>
                   {h}
-                  {REQUIRED_COLS.includes(h) && <span className="bi-req-dot" title="Required" />}
+                  {requiredCols.includes(h) && <span className="bi-req-dot" title="Required" />}
                 </th>
               ))}
             </tr>
@@ -112,7 +135,7 @@ function PreviewTable({ headers, rows, totalRows }) {
             {rows.map((row, i) => (
               <tr key={i}>
                 {headers.map(h => (
-                  <td key={h} className={!row[h] && REQUIRED_COLS.includes(h) ? "bi-cell-missing" : ""}>
+                  <td key={h} className={!row[h] && requiredCols.includes(h) ? "bi-cell-missing" : ""}>
                     {row[h] || <span className="text-muted">—</span>}
                   </td>
                 ))}
@@ -179,7 +202,16 @@ function ResultPanel({ result, onReset }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function BulkImport({ onComplete }) {
+export default function BulkImport({
+  onComplete,
+  endpoint = '/api/students/bulk-import/',
+  requiredCols = REQUIRED_COLS,
+  templateCols = [...REQUIRED_COLS, ...OPTIONAL_COLS],
+  exampleRow = 'Amaka,Okonkwo,amaka@school.edu.ng,female,2008-05-14,JSS1,Mrs Okonkwo,08012345678,Lagos,Christianity,parent@example.com,mother',
+  title = 'Bulk Student Import',
+  entityLabel = 'Students',
+  templateName = 'student_import_template.csv',
+}) {
   const [file,        setFile]        = useState(null);
   const [preview,     setPreview]     = useState(null);
   const [dragging,    setDragging]    = useState(false);
@@ -187,9 +219,14 @@ export default function BulkImport({ onComplete }) {
   const [result,      setResult]      = useState(null);
   const [fileError,   setFileError]   = useState(null);
 
+  const readVersion = useRef(0);
+
   const handleFile = useCallback((f) => {
     if (!f) return;
-    if (!f.name.endsWith(".csv")) {
+    const version = ++readVersion.current;
+    setFile(null);
+    setPreview(null);
+    if (!f.name.toLowerCase().endsWith(".csv")) {
       setFileError("Only .csv files are accepted.");
       return;
     }
@@ -198,8 +235,12 @@ export default function BulkImport({ onComplete }) {
 
     const reader = new FileReader();
     reader.onload = e => {
-      const text = e.target.result;
-      setPreview(parseCSVPreview(text));
+      if (version !== readVersion.current) return;
+      try { setPreview(parseCSVPreview(e.target.result)); }
+      catch (error) { setFileError(error.message); }
+    };
+    reader.onerror = () => {
+      if (version === readVersion.current) setFileError('Could not read this file. Please select it again.');
     };
     reader.readAsText(f);
   }, []);
@@ -213,13 +254,14 @@ export default function BulkImport({ onComplete }) {
   }, [handleFile]);
 
   async function handleUpload() {
-    if (!file) return;
+    if (!file || !preview?.totalRows || uploading) return;
     setUploading(true);
+    setFileError(null);
     const fd = new FormData();
     fd.append("file", file);
 
     try {
-      const { data } = await api.post("/api/students/bulk-import/", fd, {
+      const { data } = await api.post(endpoint, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setResult(data);
@@ -235,6 +277,7 @@ export default function BulkImport({ onComplete }) {
   }
 
   function reset() {
+    readVersion.current += 1;
     setFile(null);
     setPreview(null);
     setResult(null);
@@ -243,20 +286,20 @@ export default function BulkImport({ onComplete }) {
 
   // ── Missing required columns warning ──────────────────────────────────
   const missingCols = preview
-    ? REQUIRED_COLS.filter(c => !preview.headers.includes(c))
+    ? requiredCols.filter(c => !preview.headers.includes(c))
     : [];
 
   return (
     <div className="bi-root">
       <div className="bi-header">
         <div>
-          <h2 className="bi-title">Bulk Student Import</h2>
+          <h2 className="bi-title">{title}</h2>
           <p className="bi-sub">
-            Upload a CSV to enrol multiple students at once.
-            Required columns: {REQUIRED_COLS.join(", ")}.
+            Upload multiple records from a CSV file.
+            Required columns: {requiredCols.join(", ")}.
           </p>
         </div>
-        <TemplateDownload />
+        <TemplateDownload columns={templateCols} exampleRow={exampleRow} templateName={templateName} />
       </div>
 
       {result ? (
@@ -303,6 +346,7 @@ export default function BulkImport({ onComplete }) {
               headers={preview.headers}
               rows={preview.rows}
               totalRows={preview.totalRows}
+              requiredCols={requiredCols}
             />
           )}
 
@@ -318,13 +362,13 @@ export default function BulkImport({ onComplete }) {
               <button
                 className="btn btn-primary"
                 onClick={handleUpload}
-                disabled={uploading || missingCols.length > 0}
+                disabled={uploading || !preview?.totalRows || missingCols.length > 0}
                 type="button"
               >
                 {uploading && <span className="bi-btn-spinner" />}
                 {uploading
                   ? "Importing…"
-                  : `Import ${preview?.totalRows || ""} Students`}
+                  : `Import ${preview?.totalRows || ""} ${entityLabel}`}
               </button>
             </div>
           )}

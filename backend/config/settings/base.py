@@ -1,4 +1,4 @@
-"""
+﻿"""
 config/settings/base.py
 
 Complete base settings for the school portal.
@@ -8,11 +8,11 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
-# ── Paths ──────────────────────────────────────────────────────────────────
+# â”€â”€ Paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# ── Security ───────────────────────────────────────────────────────────────
+# â”€â”€ Security â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Override SECRET_KEY in development.py and production.py
 
 SECRET_KEY = "django-insecure-change-this-in-production"
@@ -21,7 +21,7 @@ DEBUG = False  # overridden per environment
 
 ALLOWED_HOSTS = []
 
-# ── Applications ───────────────────────────────────────────────────────────
+# â”€â”€ Applications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "django_celery_beat",
 
-    # Local apps — ORDER MATTERS
+    # Local apps â€” ORDER MATTERS
     "tenants",
     "accounts",
     "academics",
@@ -56,12 +56,13 @@ INSTALLED_APPS = [
     "timetable",
 ]
 
-# ── Middleware ─────────────────────────────────────────────────────────────
+# â”€â”€ Middleware â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "tenants.middleware.TenantMiddleware",
+    "tenants.plans.SchoolPlanMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -70,12 +71,12 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-# ── URL & WSGI ─────────────────────────────────────────────────────────────
+# â”€â”€ URL & WSGI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 
-# ── Templates ──────────────────────────────────────────────────────────────
+# â”€â”€ Templates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 TEMPLATES = [
     {
@@ -93,7 +94,7 @@ TEMPLATES = [
     },
 ]
 TEMPLATES[0]['DIRS'] += [BASE_DIR / 'results' / 'pdf_templates']
-# ── Database ───────────────────────────────────────────────────────────────
+# â”€â”€ Database â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Overridden in development.py and production.py
 
 DATABASES = {
@@ -107,7 +108,7 @@ DATABASES = {
     }
 }
 
-# ── Auth ───────────────────────────────────────────────────────────────────
+# â”€â”€ Auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 AUTH_USER_MODEL = "accounts.CustomUser"
 
@@ -121,14 +122,14 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# ── Internationalisation ───────────────────────────────────────────────────
+# â”€â”€ Internationalisation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE     = "Africa/Lagos"
 USE_I18N      = True
 USE_TZ        = True
 
-# ── Static & Media ─────────────────────────────────────────────────────────
+# â”€â”€ Static & Media â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 STATIC_URL  = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
@@ -136,15 +137,15 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL  = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-# ── Default primary key ────────────────────────────────────────────────────
+# â”€â”€ Default primary key â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# ── REST Framework ─────────────────────────────────────────────────────────
+# â”€â”€ REST Framework â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "accounts.authentication.PortalJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -157,12 +158,13 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "rest_framework.views.exception_handler",
 }
 
-# ── Simple JWT ─────────────────────────────────────────────────────────────
+# â”€â”€ Simple JWT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME":    timedelta(minutes=60),
     "REFRESH_TOKEN_LIFETIME":   timedelta(days=7),
     "ROTATE_REFRESH_TOKENS":    True,
+    "CHECK_REVOKE_TOKEN": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "ALGORITHM":                "HS256",
     "AUTH_HEADER_TYPES":        ("Bearer",),
@@ -172,7 +174,7 @@ SIMPLE_JWT = {
     "AUTH_TOKEN_CLASSES":       ("rest_framework_simplejwt.tokens.AccessToken",),
 }
 
-# ── CORS ───────────────────────────────────────────────────────────────────
+# â”€â”€ CORS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -189,10 +191,11 @@ CORS_ALLOW_HEADERS = [
     "origin",
     "x-csrftoken",
     "x-requested-with",
-    "x-school-slug",  # tenant identification for cross-origin deployments
+    "x-school-slug",
+    "idempotency-key",  # tenant identification for cross-origin deployments
 ]
 
-# ── Cloudinary ─────────────────────────────────────────────────────────────
+# â”€â”€ Cloudinary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Set real values in development.py / production.py via env vars
 
 CLOUDINARY_STORAGE = {
@@ -201,11 +204,11 @@ CLOUDINARY_STORAGE = {
     "API_SECRET": "",
 }
 
-# ── Email (override in production.py) ─────────────────────────────────────
+# â”€â”€ Email (override in production.py) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-# ── Celery (override in production.py) ────────────────────────────────────
+# â”€â”€ Celery (override in production.py) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # Use REDIS_URL env var if set (for Docker), otherwise fallback to localhost
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
@@ -224,3 +227,13 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=23, minute=0),
     },
 }
+PLATFORM_MFA_KEY = os.environ.get("PLATFORM_MFA_KEY", "")
+SIMPLE_JWT["TOKEN_REFRESH_SERIALIZER"] = "accounts.authentication.PortalTokenRefreshSerializer"
+
+PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
+PAYSTACK_MODE = os.environ.get("PAYSTACK_MODE", "test")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "")
+
+CELERY_BEAT_SCHEDULE['notification-outbox'] = {'task':'notifications.tasks.deliver_outbox','schedule':30.0}
+
+

@@ -575,3 +575,8 @@
   .tt-toolbar__title { font-size: 1.3rem; }
   .tt-selector-group { flex-wrap: wrap; }
 }
+.tt-period-form { margin: 20px 0; padding: 20px; border: 1px solid var(--rule); border-radius: 12px; background: #fff; }
+.tt-period-form fieldset { border: 0; margin: 0; padding: 0; }
+.tt-period-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }
+.tt-period-form .tt-field input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; font: inherit; }
+.tt-period-form .tt-field input:focus { outline: 2px solid var(--accent); outline-offset: 2px; }

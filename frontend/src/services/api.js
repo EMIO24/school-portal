@@ -11,8 +11,9 @@
  */
 
 import axios from "axios";
+import { API_BASE_URL, TENANT_HEADERS } from "./config";
 
-const BASE_URL = process.env.REACT_APP_API_URL || "";
+const BASE_URL = API_BASE_URL;
 
 // ── Token storage helpers ──────────────────────────────────────────────────
 // Tokens live in memory (access) + localStorage (refresh only).
@@ -43,7 +44,7 @@ export const tokenStore = {
 
 export const api = axios.create({
   baseURL: BASE_URL,
-  headers: { "Content-Type": "application/json" },
+  headers: { "Content-Type": "application/json", ...TENANT_HEADERS },
   timeout: 15000,
 });
 
@@ -72,7 +73,9 @@ api.interceptors.response.use(
     // Only attempt refresh on 401 and only once per request
     if (
       error.response?.status === 401 &&
-      !original._retried &&
+      original && !original._retried &&
+      !original.url?.includes("/api/auth/login/") &&
+      !original.url?.includes("/api/platform/auth/") &&
       !original.url?.includes("/api/auth/token/refresh/")
     ) {
       original._retried = true;
@@ -126,10 +129,11 @@ export const authAPI = {
     api.post("/api/auth/login/", { email, password }),
 
   me:             ()                =>
-    api.get("/api/auth/me/"),
+    api.get(window.location.pathname.startsWith("/superadmin/") || window.location.pathname.startsWith("/platform/")
+      ? "/api/platform/me/" : "/api/auth/me/"),
 
   changePassword: (data)            =>
-    api.post("/api/auth/change-password/", data),
+    api.post(window.location.pathname.startsWith("/platform/") ? "/api/platform/password/" : "/api/auth/change-password/", data),
 
   refresh:        (refresh)         =>
     api.post("/api/auth/token/refresh/", { refresh }),

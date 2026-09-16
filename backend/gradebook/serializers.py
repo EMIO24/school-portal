@@ -1,3 +1,4 @@
+from accounts.school_access import TenantRelationsMixin
 """
 backend/gradebook/serializers.py
 
@@ -92,11 +93,26 @@ class ScoreEntryWriteSerializer(serializers.ModelSerializer):
         return self.context['request'].tenant
 
     def validate(self, attrs):
+        from accounts.school_access import require_assignment
+        merged = {f: getattr(self.instance, f, None) for f in ('student','subject','class_arm','term','session')}
+        merged.update(attrs)
+        school = self._school()
+        for key in ('student','subject','class_arm','session'):
+            if not merged.get(key) or merged[key].school_id != school.pk:
+                raise serializers.ValidationError({key: 'Select a record from this school.'})
+        student, arm, term = merged['student'], merged['class_arm'], merged.get('term')
+        if not term or term.session_id != merged['session'].pk or term.session.school_id != school.pk:
+            raise serializers.ValidationError({'term':'Select a term in this session.'})
+        if student.role != 'student' or getattr(getattr(student, 'student_profile', None), 'current_class_id', None) != arm.pk:
+            raise serializers.ValidationError({'student':'Student must belong to the selected class.'})
+        require_assignment(self.context['request'], arm.pk, term.pk, merged['subject'].pk)
+        if self.instance and self.instance.is_published:
+            raise serializers.ValidationError('Published grades are locked. Reopen through an audited correction first.')
         errors = {}
 
         # Validate each CA component against its individual maximum
         for field, max_val in CA_MAXIMA.items():
-            val = attrs.get(field, Decimal('0')) or Decimal('0')
+            val = attrs.get(field, getattr(self.instance, field, Decimal('0'))) or Decimal('0')
             if val > max_val:
                 errors[field] = f'Cannot exceed {max_val} marks.'
             if val < 0:
@@ -104,14 +120,14 @@ class ScoreEntryWriteSerializer(serializers.ModelSerializer):
 
         # Validate CA total
         ca_sum = sum(
-            attrs.get(f, Decimal('0')) or Decimal('0')
+            attrs.get(f, getattr(self.instance, f, Decimal('0'))) or Decimal('0')
             for f in CA_MAXIMA
         )
         if ca_sum > MAX_CA_TOTAL:
             errors['ca_total'] = f'CA total ({ca_sum}) exceeds maximum of {MAX_CA_TOTAL}.'
 
         # Validate exam score
-        exam = attrs.get('exam_score', Decimal('0')) or Decimal('0')
+        exam = attrs.get('exam_score', getattr(self.instance, 'exam_score', Decimal('0'))) or Decimal('0')
         if exam > MAX_EXAM:
             errors['exam_score'] = f'Exam score cannot exceed {MAX_EXAM}.'
         if exam < 0:
@@ -177,7 +193,7 @@ AFFECTIVE_FIELDS = [
     'sport_games', 'handling_of_tools',
 ]
 
-class AffectiveDomainSerializer(serializers.ModelSerializer):
+class AffectiveDomainSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     student_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -199,7 +215,7 @@ class AffectiveDomainSerializer(serializers.ModelSerializer):
 
 PSYCHOMOTOR_FIELDS = ['handwriting', 'drawing', 'verbal_fluency', 'musical_skills']
 
-class PsychomotorDomainSerializer(serializers.ModelSerializer):
+class PsychomotorDomainSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     student_name = serializers.SerializerMethodField()
 
     class Meta:

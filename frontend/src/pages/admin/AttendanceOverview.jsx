@@ -9,6 +9,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { downloadReport } from '../../services/pdf';
 import api from '../../services/api';
 import '../../styles/Attendance.css';
 
@@ -93,18 +94,17 @@ export default function AttendanceOverview() {
   const [lowLoading,    setLowLoading]    = useState(false);
 
   // Tooltip state for hovered heatmap day
-  const [tooltip, setTooltip] = useState(null);
 
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/academics/terms/'),
-      api.get('/academics/class-arms/'),
+      api.get('/api/terms/'),
+      api.get('/api/class-arms/'),
     ]).then(([t, c]) => {
       const termList = t.data.results ?? t.data;
       setTerms(termList);
       setClassArms(c.data.results ?? c.data);
-      const active = termList.find(x => x.is_active);
+      const active = termList.find(x => x.is_current);
       if (active) setSelectedTerm(String(active.id));
     });
   }, []);
@@ -115,7 +115,7 @@ export default function AttendanceOverview() {
     setLoading(true);
     try {
       const { data } = await api.get(
-        `/attendance/sessions/class-report/?class_arm=${selectedClassArm}&term=${selectedTerm}`
+        `/api/attendance/sessions/class-report/?class_arm=${selectedClassArm}&term=${selectedTerm}`
       );
       setHeatmapRows(data);
     } finally {
@@ -131,7 +131,7 @@ export default function AttendanceOverview() {
     setLowLoading(true);
     try {
       const { data } = await api.get(
-        `/attendance/sessions/low-attendance/?term=${selectedTerm}&threshold=${threshold}`
+        `/api/attendance/sessions/low-attendance/?term=${selectedTerm}&threshold=${threshold}`
       );
       setLowStudents(data.students);
       setLowCount(data.count);
@@ -143,13 +143,17 @@ export default function AttendanceOverview() {
   useEffect(() => { loadLowAttendance(); }, [loadLowAttendance]);
 
   // ── CSV export ─────────────────────────────────────────────────────────────
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!selectedTerm || !selectedClassArm) return;
-    const url = `/attendance/sessions/class-report/?class_arm=${selectedClassArm}&term=${selectedTerm}&format=csv`;
-    // Use direct window open for file download from API
-    window.open(
-      `${process.env.REACT_APP_API_BASE_URL || ''}${url}`, '_blank'
-    );
+    const url = `/api/attendance/sessions/class-report/?class_arm=${selectedClassArm}&term=${selectedTerm}`;
+    try {
+      const { data } = await api.get(url);
+      downloadReport('Class attendance report', data.flatMap(row => [
+        String(row.date) + ' | ' + (row.period_name || 'Daily attendance'),
+        'Students: ' + row.total_students + ' | Present: ' + row.present_count + ' | Absent: ' + row.absent_count + ' | Late: ' + row.late_count,
+        'Finalized: ' + (row.is_finalized ? 'Yes' : 'No'), '',
+      ]), 'attendance.pdf');
+    } catch { window.alert('Could not download attendance. Please retry.'); }
   };
 
   // ── Heatmap structure ──────────────────────────────────────────────────────
@@ -215,7 +219,7 @@ export default function AttendanceOverview() {
             onClick={handleExport}
             disabled={!selectedTerm || !selectedClassArm}
           >
-            ⬇ Export CSV
+            ⬇ Download PDF
           </button>
         </div>
       </div>
@@ -280,8 +284,6 @@ export default function AttendanceOverview() {
                           <div
                             key={day}
                             className={`att-heatmap__day ${row ? heatClass(row.present_ratio) : 'no-data'}${row?.is_finalized ? ' finalized' : ''}`}
-                            onMouseEnter={() => row && setTooltip({ day, month, year, row })}
-                            onMouseLeave={() => setTooltip(null)}
                             title={row
                               ? `${row.present_count}/${row.total_students} present (${(row.present_ratio * 100).toFixed(0)}%)`
                               : 'No session'}

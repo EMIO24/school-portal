@@ -1,3 +1,4 @@
+from accounts.school_access import SchoolModulePermission, require_assignment
 """
 backend/analytics/views.py
 
@@ -20,7 +21,7 @@ from .tasks import compute_school_analytics
 
 
 class AnalyticsOverviewView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request):
         school  = getattr(request, 'tenant', None)
@@ -38,7 +39,7 @@ class AnalyticsOverviewView(APIView):
 
 
 class AnalyticsRefreshView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def post(self, request):
         school  = getattr(request, 'tenant', None)
@@ -56,7 +57,7 @@ class AnalyticsRefreshView(APIView):
 
 
 class ClassAnalyticsView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request, pk):
         school  = getattr(request, 'tenant', None)
@@ -82,7 +83,7 @@ class ClassAnalyticsView(APIView):
 
 
 class StudentTrendsView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request, pk):
         school    = getattr(request, 'tenant', None)
@@ -101,9 +102,9 @@ class StudentTrendsView(APIView):
         terms  = list(reversed(list(Term.objects.filter(session__school=school).order_by('-session__start_date', '-name')[:num_terms])))
         result = []
         for term in terms:
-            scores     = ScoreEntry.objects.filter(student=student.user, term=term, school=school)
+            scores     = ScoreEntry.objects.filter(student=student.user, term=term, school=school, is_published=True)
             avg        = scores.aggregate(a=Avg('total_score'))['a']
-            remark     = ResultRemark.objects.filter(student=student, term=term, school=school).first()
+            remark     = ResultRemark.objects.filter(student=student.user, term=term, school=school).first()
             attend     = AttendanceRecord.objects.filter(student=student.user, attendance_session__term=term, school=school).aggregate(
                 present=Count('id', filter=Q(status='present')), total=Count('id')
             )
@@ -119,7 +120,7 @@ class StudentTrendsView(APIView):
 
 
 class TranscriptPDFView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request, pk):
         school = getattr(request, 'tenant', None)
@@ -135,11 +136,11 @@ class TranscriptPDFView(APIView):
 
         history = []
         for term in Term.objects.filter(session__school=school).order_by('session__start_date', 'name'):
-            scores = ScoreEntry.objects.filter(student=student.user, term=term, school=school)
+            scores = ScoreEntry.objects.filter(student=student.user, term=term, school=school, is_published=True)
             if not scores.exists():
                 continue
             avg    = scores.aggregate(a=Avg('total_score'))['a']
-            remark = ResultRemark.objects.filter(student=student, term=term, school=school).first()
+            remark = ResultRemark.objects.filter(student=student.user, term=term, school=school).first()
             history.append({
                 'term':     term,
                 'scores':   list(scores.select_related('subject').order_by('subject__name')),

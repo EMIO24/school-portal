@@ -1,3 +1,5 @@
+from accounts.school_access import assigned_classes
+from accounts.school_access import SchoolModulePermission, require_assignment
 """
 backend/gradebook/views.py
 
@@ -48,7 +50,7 @@ from .serializers import (
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
     http_method_names  = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def get_serializer_class(self):
@@ -70,6 +72,8 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
         if p.get('subject'):   qs = qs.filter(subject_id=p['subject'])
         if p.get('term'):      qs = qs.filter(term_id=p['term'])
         if p.get('session'):   qs = qs.filter(session_id=p['session'])
+        if self.request.user.role == "teacher":
+            qs = qs.filter(class_arm_id__in=assigned_classes(self.request))
         return qs
 
     # ── GET grade-scale ───────────────────────────────────────────────────────
@@ -105,50 +109,16 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
         term_id      = d['term']
         session_id   = d['session']
 
-        updated_ids = []
-        errors      = {}
-
+        validated = []
         for item in d['scores']:
-            sid = item['student_id']
-
-            # Per-row CA validation
-            ca_sum = sum(item.get(f, Decimal('0')) or Decimal('0') for f in CA_MAXIMA)
-            row_errors = {}
-
-            for field, max_val in CA_MAXIMA.items():
-                val = item.get(field, Decimal('0')) or Decimal('0')
-                if val > max_val:
-                    row_errors[field] = f'Max {max_val}'
-
-            if ca_sum > MAX_CA_TOTAL:
-                row_errors['ca_total'] = f'CA {ca_sum} > {MAX_CA_TOTAL}'
-
-            exam = item.get('exam_score', Decimal('0')) or Decimal('0')
-            if exam > MAX_EXAM:
-                row_errors['exam_score'] = f'Max {MAX_EXAM}'
-
-            if row_errors:
-                errors[sid] = row_errors
-                continue
-
-            entry, _ = ScoreEntry.objects.update_or_create(
-                school=school,
-                student_id=sid,
-                subject_id=subject_id,
-                class_arm_id=class_arm_id,
-                term_id=term_id,
-                session_id=session_id,
-                defaults={
-                    'teacher':     request.user,
-                    'first_test':  item.get('first_test',  Decimal('0')),
-                    'second_test': item.get('second_test', Decimal('0')),
-                    'assignment':  item.get('assignment',  Decimal('0')),
-                    'project':     item.get('project',     Decimal('0')),
-                    'practical':   item.get('practical',   Decimal('0')),
-                    'exam_score':  item.get('exam_score',  Decimal('0')),
-                },
-            )
-            updated_ids.append(entry.id)
+            instance = ScoreEntry.objects.select_for_update().filter(school=school, student_id=item['student_id'], subject_id=subject_id, term_id=term_id, session_id=session_id, class_arm_id=class_arm_id).first()
+            payload = {key: value for key, value in item.items() if key != 'student_id'}
+            payload.update(student=item['student_id'], subject=subject_id, term=term_id, session=session_id, class_arm=class_arm_id)
+            row = ScoreEntryWriteSerializer(instance, data=payload, context=self.get_serializer_context())
+            row.is_valid(raise_exception=True)
+            validated.append(row)
+        updated_ids = [row.save().pk for row in validated]
+        errors = {}
 
         rows = ScoreEntry.objects.filter(id__in=updated_ids).select_related(
             'student', 'student__student_profile',
@@ -183,13 +153,29 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
 
         return Response({'published': count})
 
+    @action(detail=False, methods=['post'], url_path='reopen')
+    @transaction.atomic
+    def reopen(self, request):
+        from rest_framework.exceptions import ValidationError, PermissionDenied
+        from tenants.models import PlatformEvent
+        if request.user.role != 'school_admin': raise PermissionDenied('Only school administrators can reopen results.')
+        reason, ids = str(request.data.get('reason','')).strip(), request.data.get('entry_ids')
+        if len(reason) < 10: raise ValidationError('Explain the correction (at least 10 characters).')
+        if not isinstance(ids,list) or not ids or len(ids)>1000: raise ValidationError('Select the entries to reopen.')
+        rows = list(ScoreEntry.objects.select_for_update().filter(school=self.school, pk__in=ids))
+        if len(rows)!=len(set(ids)): raise ValidationError('Select entries from this school.')
+        PlatformEvent.objects.create(actor=request.user, actor_email=request.user.email, action='school.results_reopened', target=str(self.school.pk), details={'school_id':self.school.pk,'reason':reason[:2000],'entries':[{'id':row.pk,'total':str(row.total_score),'grade':row.grade} for row in rows]})
+        ScoreEntry.objects.filter(pk__in=[row.pk for row in rows]).update(is_published=False)
+        return Response({'reopened':len(rows)})
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Affective Domain
 # ─────────────────────────────────────────────────────────────────────────────
 
 class AffectiveDomainViewSet(TenantMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
     serializer_class   = AffectiveDomainSerializer
 
     def get_queryset(self):
@@ -197,6 +183,8 @@ class AffectiveDomainViewSet(TenantMixin, viewsets.ModelViewSet):
         p  = self.request.query_params
         if p.get('class_arm'): qs = qs.filter(class_arm_id=p['class_arm'])
         if p.get('term'):      qs = qs.filter(term_id=p['term'])
+        if self.request.user.role == "teacher":
+            qs = qs.filter(class_arm_id__in=assigned_classes(self.request))
         return qs
 
     @action(
@@ -211,19 +199,21 @@ class AffectiveDomainViewSet(TenantMixin, viewsets.ModelViewSet):
         if not User.objects.filter(pk=student_id, school=self.school, role='student').exists():
             return Response({'detail': 'Student not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        instance, _ = AffectiveDomain.objects.get_or_create(
-            school=self.school,
-            student_id=student_id,
-            term_id=term_id,
-            defaults={'class_arm_id': request.data.get('class_arm')},
-        )
+        from academics.models import Term
+        if not Term.objects.filter(pk=term_id, session__school=self.school).exists():
+            return Response({'detail':'Term not found.'}, status=404)
+        instance = AffectiveDomain.objects.filter(school=self.school, student_id=student_id, term_id=term_id).first()
+        if request.method == 'GET':
+            if not instance: return Response({'detail':'No ratings recorded.'}, status=404)
+            require_assignment(request, instance.class_arm_id, term_id)
+            return Response(AffectiveDomainSerializer(instance).data)
         if request.method == 'PUT':
             ser = AffectiveDomainSerializer(
-                instance, data=request.data, partial=True,
+                instance, data={**request.data, 'student': student_id, 'term': term_id}, partial=instance is not None,
                 context=self.get_serializer_context()
             )
             ser.is_valid(raise_exception=True)
-            ser.save()
+            instance = ser.save()
             instance.refresh_from_db()
 
         return Response(AffectiveDomainSerializer(instance).data)
@@ -234,7 +224,7 @@ class AffectiveDomainViewSet(TenantMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class PsychomotorDomainViewSet(TenantMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
     serializer_class   = PsychomotorDomainSerializer
 
     def get_queryset(self):
@@ -242,6 +232,8 @@ class PsychomotorDomainViewSet(TenantMixin, viewsets.ModelViewSet):
         p  = self.request.query_params
         if p.get('class_arm'): qs = qs.filter(class_arm_id=p['class_arm'])
         if p.get('term'):      qs = qs.filter(term_id=p['term'])
+        if self.request.user.role == "teacher":
+            qs = qs.filter(class_arm_id__in=assigned_classes(self.request))
         return qs
 
     @action(
@@ -256,19 +248,21 @@ class PsychomotorDomainViewSet(TenantMixin, viewsets.ModelViewSet):
         if not User.objects.filter(pk=student_id, school=self.school, role='student').exists():
             return Response({'detail': 'Student not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        instance, _ = PsychomotorDomain.objects.get_or_create(
-            school=self.school,
-            student_id=student_id,
-            term_id=term_id,
-            defaults={'class_arm_id': request.data.get('class_arm')},
-        )
+        from academics.models import Term
+        if not Term.objects.filter(pk=term_id, session__school=self.school).exists():
+            return Response({'detail':'Term not found.'}, status=404)
+        instance = PsychomotorDomain.objects.filter(school=self.school, student_id=student_id, term_id=term_id).first()
+        if request.method == 'GET':
+            if not instance: return Response({'detail':'No ratings recorded.'}, status=404)
+            require_assignment(request, instance.class_arm_id, term_id)
+            return Response(PsychomotorDomainSerializer(instance).data)
         if request.method == 'PUT':
             ser = PsychomotorDomainSerializer(
-                instance, data=request.data, partial=True,
+                instance, data={**request.data, 'student': student_id, 'term': term_id}, partial=instance is not None,
                 context=self.get_serializer_context()
             )
             ser.is_valid(raise_exception=True)
-            ser.save()
+            instance = ser.save()
             instance.refresh_from_db()
 
         return Response(PsychomotorDomainSerializer(instance).data)

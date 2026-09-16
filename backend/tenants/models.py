@@ -66,6 +66,10 @@ class School(models.Model):
         choices=SUBSCRIPTION_CHOICES,
         default="free",
     )
+    approval_status = models.CharField(max_length=12, default="approved", choices=[
+        ("pending", "Pending"), ("approved", "Approved"), ("rejected", "Rejected")])
+    subscription_ends_on = models.DateField(null=True, blank=True)
+    platform_notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -85,12 +89,48 @@ class School(models.Model):
     def get_theme(self) -> dict:
         """Return theme_config with sensible Nigerian-school defaults."""
         defaults = {
-            "primary_color": "#1a5276",
-            "secondary_color": "#2e86c1",
-            "accent_color": "#f39c12",
+            "layout": "scholar",
+            "primary_color": "#173B56",
+            "secondary_color": "#256D85",
+            "accent_color": "#D8A548",
             "font_family": "Roboto, sans-serif",
         }
         return {**defaults, **self.theme_config}
 
     def __str__(self):
         return f"{self.name} ({self.subdomain})"
+
+class SchoolActivity(models.Model):
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="platform_activity")
+    actor = models.ForeignKey("accounts.CustomUser", null=True, on_delete=models.SET_NULL)
+    action = models.CharField(max_length=400)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
+class PlatformSecurity(models.Model):
+    user = models.OneToOneField("accounts.CustomUser", on_delete=models.CASCADE, related_name="platform_security")
+    access_level = models.CharField(max_length=12, choices=[("owner", "Owner"), ("viewer", "Read only")], default="owner")
+    encrypted_secret = models.TextField(blank=True)
+    enabled = models.BooleanField(default=False)
+    last_step = models.BigIntegerField(default=-1)
+    recovery_hashes = models.JSONField(default=list)
+    session_version = models.PositiveIntegerField(default=1)
+    challenge_nonce = models.CharField(max_length=64, blank=True)
+    failures = models.PositiveSmallIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+
+
+class PlatformEvent(models.Model):
+    actor = models.ForeignKey("accounts.CustomUser", null=True, on_delete=models.SET_NULL)
+    actor_email = models.EmailField(blank=True)
+    action = models.CharField(max_length=100)
+    target = models.CharField(max_length=255, blank=True)
+    details = models.JSONField(default=dict)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]

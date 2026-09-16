@@ -7,7 +7,7 @@ class TermiiService:
 
     API_URL = "https://api.ng.termii.com/api/sms/send"
 
-    def send_sms(self, phone, message, sender_id, school=None, template=None, student=None):
+    def send_sms(self, phone, message, sender_id, school=None, template=None, student=None, sensitive=False):
         from notifications.models import NotificationLog
 
         api_key = getattr(settings, 'TERMII_API_KEY', '')
@@ -36,13 +36,13 @@ class TermiiService:
             resp.raise_for_status()
             log.status  = 'sent'
             log.sent_at = timezone.now()
-            if school:
+            if school and not sensitive:
                 log.save()
             return True, ''
         except Exception as exc:
             error_msg = str(exc)
             log.status        = 'failed'
             log.error_message = error_msg
-            if school:
+            if school and not sensitive:
                 log.save()
             return False, error_msg

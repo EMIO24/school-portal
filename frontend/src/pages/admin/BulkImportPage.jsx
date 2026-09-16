@@ -15,6 +15,8 @@ import "./BulkImportPage.css";
 
 const CONFIGS = {
   students: {
+    requiredCols: ['first_name', 'last_name', 'email', 'gender', 'dob', 'class_level', 'guardian_name', 'guardian_phone'],
+    templateName: 'student_import_template.csv',
     title:        "Bulk Student Import",
     backPath:     "/admin/students",
     backLabel:    "← Back to Students",
@@ -29,6 +31,9 @@ const CONFIGS = {
       "Mrs Okonkwo,08012345678,Lagos,Christianity,parent@example.com,mother",
   },
   staff: {
+    entityLabel: 'Staff',
+    requiredCols: ['first_name', 'last_name', 'email', 'role'],
+    templateName: 'staff_import_template.csv',
     title:        "Bulk Staff Import",
     backPath:     "/admin/staff",
     backLabel:    "← Back to Staff",
@@ -68,6 +73,9 @@ export default function BulkImportPage({ type: typeProp }) {
       <div className="bip-card">
         <BulkImport
           endpoint={config.endpoint}
+          entityLabel={config.entityLabel}
+          requiredCols={config.requiredCols}
+          templateName={config.templateName}
           templateCols={config.templateCols}
           exampleRow={config.exampleRow}
           title={config.title}

@@ -13,21 +13,7 @@ from .models import School
 from .serializers import SchoolPublicSerializer, SchoolSerializer
 
 
-class IsSuperAdmin(IsAuthenticated):
-    """
-    Permission class: user must be authenticated AND have role=superadmin.
-
-    Adjust the role-check once your User model / JWT claims are in place.
-    """
-
-    def has_permission(self, request, view):
-        if not super().has_permission(request, view):
-            return False
-        user = request.user
-        # Support both a `role` field and a `is_superadmin` bool flag.
-        return getattr(user, "role", None) == "superadmin" or getattr(
-            user, "is_superadmin", False
-        )
+from accounts.permissions import IsSuperAdmin
 
 
 class SchoolOnboardingView(APIView):

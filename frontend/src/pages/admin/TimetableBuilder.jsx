@@ -15,6 +15,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import TimetableGrid, { TimetableLegend } from '../../components/timetable/TimetableGrid';
+import PeriodForm from '../../components/timetable/PeriodForm';
 import EntryModal from '../../components/timetable/EntryModal';
 import api from '../../services/api';              // project Axios instance
 import '../../styles/TimetableGrid.css';
@@ -32,6 +33,9 @@ export default function TimetableBuilder() {
   const [selectedClassArm, setSelectedClassArm] = useState('');
 
   // ── Grid data ─────────────────────────────────────────────────────────────
+  const [periodFormOpen, setPeriodFormOpen] = useState(false);
+  const [periodNotice, setPeriodNotice] = useState('');
+  const [gridError, setGridError] = useState('');
   const [periods,  setPeriods]  = useState([]);
   const [entries,  setEntries]  = useState([]);
   const [loading,  setLoading]  = useState(false);
@@ -48,18 +52,18 @@ export default function TimetableBuilder() {
   // ── Boot: load dropdown data ───────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/academics/terms/'),
-      api.get('/academics/class-arms/'),
-      api.get('/academics/subjects/'),
-      api.get('/accounts/users/?role=teacher&page_size=300'),
+      api.get('/api/terms/'),
+      api.get('/api/class-arms/'),
+      api.get('/api/subjects/'),
+      api.get('/api/staff/?role=teacher&page_size=300'),
     ]).then(([t, c, s, u]) => {
       setTerms(    t.data.results ?? t.data);
       setClassArms(c.data.results ?? c.data);
       setSubjects( s.data.results ?? s.data);
-      setTeachers( u.data.results ?? u.data);
+      setTeachers((u.data.results ?? u.data).map(staff => ({ ...staff, id: staff.user })));
 
       // Pre-select the active term if available
-      const active = (t.data.results ?? t.data).find(x => x.is_active);
+      const active = (t.data.results ?? t.data).find(x => x.is_current);
       if (active) setSelectedTerm(String(active.id));
     });
   }, []);
@@ -68,14 +72,15 @@ export default function TimetableBuilder() {
   const loadGrid = useCallback(async () => {
     if (!selectedTerm || !selectedClassArm) return;
     setLoading(true);
+    setGridError('');
     try {
       const { data } = await api.get(
-        `/timetable/entries/grid/?class_arm=${selectedClassArm}&term=${selectedTerm}`
+        `/api/timetable/entries/grid/?class_arm=${selectedClassArm}&term=${selectedTerm}`
       );
       setPeriods(data.periods);
       setEntries(data.entries);
     } catch (err) {
-      console.error('Grid load failed', err);
+      setGridError('Could not load the timetable. Reselect the class or reload the page to retry.');
     } finally {
       setLoading(false);
     }
@@ -99,9 +104,9 @@ export default function TimetableBuilder() {
 
     let response;
     if (isEdit) {
-      response = await api.patch(`/timetable/entries/${modal.entry.id}/`, body);
+      response = await api.patch(`/api/timetable/entries/${modal.entry.id}/`, body);
     } else {
-      response = await api.post('/timetable/entries/', body);
+      response = await api.post('/api/timetable/entries/', body);
     }
 
     // Handle non-blocking warning from API
@@ -123,7 +128,7 @@ export default function TimetableBuilder() {
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const handleDelete = async (entryId) => {
-    await api.delete(`/timetable/entries/${entryId}/`);
+    await api.delete(`/api/timetable/entries/${entryId}/`);
     await loadGrid();
     setModal(prev => ({ ...prev, open: false }));
   };
@@ -138,13 +143,14 @@ export default function TimetableBuilder() {
       <div className="tt-toolbar">
         <h1 className="tt-toolbar__title">
           Timetable Builder
-          <small>Drag subjects into empty slots to build the weekly schedule</small>
+          <small>Add periods, then click an empty slot to assign a lesson</small>
         </h1>
 
         <div className="tt-selector-group">
-          <label>Term</label>
+          <label htmlFor="timetable-term">Term</label>
           <select
             className="tt-select"
+            id="timetable-term"
             value={selectedTerm}
             onChange={e => setSelectedTerm(e.target.value)}
           >
@@ -156,19 +162,31 @@ export default function TimetableBuilder() {
         </div>
 
         <div className="tt-selector-group">
-          <label>Class</label>
+          <label htmlFor="timetable-class">Class</label>
           <select
             className="tt-select"
+            id="timetable-class"
             value={selectedClassArm}
             onChange={e => setSelectedClassArm(e.target.value)}
           >
             <option value="">— Select class —</option>
             {classArms.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>{c.full_name || c.name}</option>
             ))}
           </select>
         </div>
       </div>
+
+      <button type="button" className="tt-btn tt-btn--primary" disabled={periodFormOpen}
+        onClick={() => { setPeriodNotice(''); setPeriodFormOpen(true); }}>Add Period</button>
+      {periodFormOpen && <PeriodForm onCancel={() => setPeriodFormOpen(false)} onSaved={period => {
+        setPeriods(prev => [...prev.filter(item => item.id !== period.id), period].sort((a, b) => a.order_index - b.order_index));
+        setPeriodFormOpen(false);
+        setPeriodNotice(period.name + ' saved. Select a term and class, then click an empty slot to add a lesson.');
+      }} />}
+      {periodNotice && <p role="status">{periodNotice}</p>}
+      {gridError && <p role="alert">{gridError}</p>}
+      {canRender && !loading && periods.length === 0 && <p>No periods configured. Use Add Period to create the first time slot.</p>}
 
       {/* Grid */}
       {canRender ? (

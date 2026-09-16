@@ -15,11 +15,26 @@ backend/.env
 
 # Frontend specific ignores
 frontend/node_modules/
+frontend/.npm-cache/
 frontend/build/
 frontend/.pnp
 frontend/.pnp.js
 frontend/coverage/
+frontend/*-test-results.txt
+frontend/test-results.json
+frontend/api-route-*.json
 frontend/.env.local
 frontend/.env.development.local
 frontend/.env.test.local
 frontend/.env.production.local
+
+/backend-test-results.txt
+/frontend-test-results.txt
+
+/.testing/
+
+# Local database backups and restore drills
+.backups/
+.restores/
+
+.venv-release/

@@ -6,6 +6,7 @@ const DECISION_LABELS = { promoted: "Promoted", repeated: "Repeated", graduated:
 const DECISION_COLORS = { promoted: "promo-green", repeated: "promo-amber", graduated: "promo-blue", withdrawn: "promo-red" };
 
 export default function Promotion() {
+  const [destinationSession, setDestinationSession] = useState('');
   const [sessions, setSessions]       = useState([]);
   const [levels, setLevels]           = useState([]);
   const [session, setSession]         = useState("");
@@ -18,10 +19,10 @@ export default function Promotion() {
   const [toast, setToast]             = useState(null);
 
   useEffect(() => {
-    api.get("/api/academics/sessions/")
+    api.get("/api/sessions/")
       .then(({ data: d }) => setSessions(Array.isArray(d) ? d : d.results || []))
       .catch(() => {});
-    api.get("/api/enrollment/class-levels/")
+    api.get("/api/class-levels/")
       .then(({ data: d }) => setLevels(Array.isArray(d) ? d : d.results || []))
       .catch(() => {});
   }, []);
@@ -57,11 +58,13 @@ export default function Promotion() {
   };
 
   async function execute() {
+    if (!destinationSession) { setToast('Select the destination academic session.'); return; }
     setExecuting(true);
     try {
       const body = results.map(r => ({
         student_id:   r.student_id,
         session_id:   Number(session),
+        to_session_id: Number(destinationSession),
         decision:     finalDecision(r),
         criteria_met: r.criteria_met,
       }));
@@ -71,7 +74,7 @@ export default function Promotion() {
       setToast(`Done — ${data.executed} processed, ${data.graduated} graduated.`);
       setTimeout(() => setToast(null), 5000);
     } catch {
-      alert("Could not execute promotions. Please try again.");
+      setToast('Could not execute promotions. Check the destination session and class; a previous decision cannot be repeated.');
     } finally {
       setExecuting(false);
     }
@@ -88,6 +91,7 @@ export default function Promotion() {
           <option value="">— Select session —</option>
           {sessions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
+        <label>Destination session<select value={destinationSession} onChange={e => setDestinationSession(e.target.value)}><option value="">Select destination session</option>{sessions.filter(s => String(s.id) !== String(session)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
         <select value={level} onChange={e => setLevel(e.target.value)} className="promo-select">
           <option value="">All class levels</option>
           {levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}

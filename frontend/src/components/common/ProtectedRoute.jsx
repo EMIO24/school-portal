@@ -1,3 +1,6 @@
+import { useTheme } from "../../context/ThemeContext";
+import { featureForRoute, hasFeature } from "../../services/features";
+import { Link } from "react-router-dom";
 /**
  * components/common/ProtectedRoute.jsx
  *
@@ -29,6 +32,7 @@ import LoadingScreen from "./LoadingScreen";
 export default function ProtectedRoute({ allowedRoles = [], children }) {
   const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
+  const { school } = useTheme();
 
   // ── Still resolving persisted session ────────────────────────────────────
   if (isLoading) {
@@ -39,7 +43,7 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
   if (!isAuthenticated || !user) {
     return (
       <Navigate
-        to="/login"
+        to={allowedRoles.length === 1 && allowedRoles[0] === "superadmin" ? "/platform/login" : "/login"}
         replace
         state={{ from: location.pathname }} // LoginPage reads this to redirect back
       />
@@ -52,5 +56,11 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
     return <Navigate to={ownDashboard} replace />;
   }
 
+  if (user.role === "superadmin" && user.mustChangePassword && location.pathname !== "/platform/change-password") {
+    return <Navigate to="/platform/change-password" replace />;
+  }
+
+  const feature = featureForRoute(location.pathname);
+  if (user.role !== 'superadmin' && !hasFeature(school, feature)) return <main className="plan-locked"><span className="workspace-eyebrow">Your school plan</span><h1>More possibilities for your school</h1><p>{school.entitlements.labels?.[feature] || 'This feature'} is available on an upgraded plan.</p>{user.role === 'school_admin' ? <Link className="workspace-action" to="/admin/subscription">Compare plans</Link> : <p>Ask your school administrator about enabling this feature.</p>}<p><Link to={ROLE_DASHBOARDS[user.role]}>Back to dashboard</Link></p></main>;
   return children;
 }

@@ -129,7 +129,7 @@ class StaffListSerializer(serializers.ModelSerializer):
     class Meta:
         model  = StaffProfile
         fields = [
-            "id", "staff_id", "full_name", "email",
+            "id", "user", "staff_id", "full_name", "email",
             "profile_photo", "role",
             "specialization", "employment_status",
         ]

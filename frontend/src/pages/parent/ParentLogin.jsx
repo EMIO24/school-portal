@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../../context/AuthContext";
 import { tokenStore } from "../../services/api";
 import "./ParentLogin.css";
+import { API_BASE_URL, TENANT_HEADERS } from "../../services/config";
 
 export default function ParentLogin() {
   const [mode, setMode]         = useState("otp");   // "otp" | "email"
@@ -20,9 +21,9 @@ export default function ParentLogin() {
     if (!phone) return;
     setLoading(true); setError("");
     try {
-      const res  = await fetch("/api/auth/parent/otp-request/", {
+      const res  = await fetch(`${API_BASE_URL}/api/auth/parent/otp-request/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...TENANT_HEADERS },
         body: JSON.stringify({ phone }),
       });
       if (res.ok) {
@@ -39,9 +40,9 @@ export default function ParentLogin() {
     if (!otp) return;
     setLoading(true); setError("");
     try {
-      const res  = await fetch("/api/auth/parent/otp-verify/", {
+      const res  = await fetch(`${API_BASE_URL}/api/auth/parent/otp-verify/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...TENANT_HEADERS },
         body: JSON.stringify({ phone, otp }),
       });
       const data = await res.json();
@@ -59,9 +60,9 @@ export default function ParentLogin() {
   async function loginEmail() {
     setLoading(true); setError("");
     try {
-      const res  = await fetch("/api/auth/login/", {
+      const res  = await fetch(`${API_BASE_URL}/api/auth/login/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...TENANT_HEADERS },
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();

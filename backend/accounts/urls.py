@@ -12,6 +12,8 @@ from .views import (
     ParentOTPRequestView, ParentOTPVerifyView,
 )
 
+from .parent_auth import ParentOTPRequestView, ParentOTPVerifyView
+
 urlpatterns = [
     # ── Authentication ────────────────────────────────────────────────────────
     path("login/",         LoginView.as_view(),          name="auth-login"),

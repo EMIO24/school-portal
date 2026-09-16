@@ -5,6 +5,14 @@ CBT business logic extracted from views for reuse and testability.
 """
 
 from decimal import Decimal
+from types import SimpleNamespace
+
+def session_questions(session):
+    from .models import Question
+    if session.question_snapshot:
+        return {row["id"]: SimpleNamespace(**row) for row in session.question_snapshot}
+    return {q.id:q for q in Question.objects.filter(id__in=session.question_order)}
+
 
 from django.utils import timezone
 
@@ -30,7 +38,7 @@ def auto_mark(session: StudentExamSession, final_status: str = 'submitted') -> N
     from .models import Question  # local import avoids circular
 
     q_ids     = session.question_order
-    questions = {q.id: q for q in Question.objects.filter(id__in=q_ids)}
+    questions = session_questions(session)
     answers   = {a.question_id: a for a in session.answers.all()}
 
     correct = 0

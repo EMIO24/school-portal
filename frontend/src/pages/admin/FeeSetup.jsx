@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import api from "../../services/api";
 import "./FeeSetup.css";
 
@@ -8,7 +8,6 @@ export default function FeeSetup() {
   const [terms, setTerms]               = useState([]);
   const [levels, setLevels]             = useState([]);
   const [categories, setCategories]     = useState([]);
-  const [schedules, setSchedules]       = useState([]);
   const [selectedTerm, setSelectedTerm] = useState("");
   const [catModal, setCatModal]         = useState(false);
   const [editCat, setEditCat]           = useState(null);
@@ -18,23 +17,20 @@ export default function FeeSetup() {
   const [toast, setToast]               = useState(null);
 
   useEffect(() => {
-    api.get("/api/academics/terms/").then(({ data: d }) => {
+    api.get("/api/terms/").then(({ data: d }) => {
       const list = Array.isArray(d) ? d : d.results || [];
       setTerms(list);
       const cur = list.find(t => t.is_current);
       if (cur) setSelectedTerm(String(cur.id));
     }).catch(() => {});
 
-    api.get("/api/enrollment/class-levels/").then(({ data: d }) => {
+    api.get("/api/class-levels/").then(({ data: d }) => {
       setLevels(Array.isArray(d) ? d : d.results || []);
     }).catch(() => {});
 
     loadCategories();
   }, []);
 
-  useEffect(() => {
-    if (selectedTerm) loadSchedules();
-  }, [selectedTerm]);
 
   function loadCategories() {
     api.get("/api/fees/categories/").then(({ data: d }) => {
@@ -42,15 +38,19 @@ export default function FeeSetup() {
     }).catch(() => {});
   }
 
-  function loadSchedules() {
+  const loadSchedules = useCallback(() => {
     api.get(`/api/fees/schedule/?term=${selectedTerm}`).then(({ data: d }) => {
       const list = Array.isArray(d) ? d : d.results || [];
-      setSchedules(list);
       const g = {};
       list.forEach(s => { g[`${s.class_level}_${s.fee_category}`] = s.amount; });
       setGrid(g);
     }).catch(() => {});
-  }
+  }, [selectedTerm]);
+
+  useEffect(() => {
+    if (selectedTerm) loadSchedules();
+  }, [loadSchedules, selectedTerm]);
+
 
   function openNewCat() { setEditCat(null); setCatForm(EMPTY_CAT); setCatModal(true); }
   function openEditCat(c) { setEditCat(c.id); setCatForm({ name: c.name, description: c.description, is_compulsory: c.is_compulsory }); setCatModal(true); }
@@ -108,7 +108,6 @@ export default function FeeSetup() {
     }
   }
 
-  const selectedTermLabel = terms.find(t => String(t.id) === selectedTerm)?.name || "";
 
   return (
     <main className="page-shell fee-setup">

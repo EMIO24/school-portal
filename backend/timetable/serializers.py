@@ -28,12 +28,20 @@ class PeriodSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'start_time', 'end_time', 'order_index', 'is_break']
 
     def validate(self, attrs):
-        start = attrs.get('start_time')
-        end   = attrs.get('end_time')
+        start = attrs.get('start_time', getattr(self.instance, 'start_time', None))
+        end   = attrs.get('end_time', getattr(self.instance, 'end_time', None))
         if start and end and start >= end:
             raise serializers.ValidationError(
                 {'end_time': 'End time must be after start time.'}
             )
+        school = getattr(self.context.get('request'), 'tenant', None)
+        order = attrs.get('order_index', getattr(self.instance, 'order_index', None))
+        if school is not None and order is not None:
+            existing = Period.objects.filter(school=school, order_index=order)
+            if self.instance:
+                existing = existing.exclude(pk=self.instance.pk)
+            if existing.exists():
+                raise serializers.ValidationError({'order_index': 'A period already uses this display order. Choose another number.'})
         return attrs
 
 

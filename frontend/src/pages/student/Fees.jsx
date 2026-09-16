@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useCallback } from "react";
 import { AuthContext } from "../../context/AuthContext";
 import api from "../../services/api";
+import { downloadFile } from "../../services/download";
 import "./Fees.css";
 
-export default function Fees() {
+export default function Fees({ studentId: requestedStudentId }) {
   const { user } = useContext(AuthContext);
-  const studentId = user?.student_id || user?.id;
+  const studentId = requestedStudentId ?? user?.student_id;
 
   const [terms, setTerms]       = useState([]);
   const [selectedTerm, setSelectedTerm] = useState("");
@@ -15,7 +16,7 @@ export default function Fees() {
   const [selected, setSelected] = useState({});
 
   useEffect(() => {
-    api.get("/api/academics/terms/").then(({ data }) => {
+    api.get("/api/terms/").then(({ data }) => {
       const list = Array.isArray(data) ? data : data.results || [];
       setTerms(list);
       const cur = list.find(t => t.is_current);
@@ -23,16 +24,18 @@ export default function Fees() {
     }).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (selectedTerm && studentId) loadFees();
-  }, [selectedTerm, studentId]);
 
-  function loadFees() {
+  const loadFees = useCallback(() => {
     setLoading(true);
     api.get(`/api/fees/student/${studentId}/?term=${selectedTerm}`)
       .then(({ data }) => { setFeeData(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => setLoading(false));
-  }
+  }, [selectedTerm, studentId]);
+
+  useEffect(() => {
+    if (selectedTerm && studentId) loadFees();
+  }, [loadFees, selectedTerm, studentId]);
+
 
   function toggleSelect(scheduleId) {
     setSelected(s => ({ ...s, [scheduleId]: !s[scheduleId] }));
@@ -51,8 +54,10 @@ export default function Fees() {
       if (data.authorization_url) {
         window.location.href = data.authorization_url;
       }
-    } catch {
-      alert("Payment initiation failed. Please try again.");
+    } catch (error) {
+      const reference = error.response?.data?.reference;
+      alert((error.response?.data?.error || "Payment initiation failed. Please try again.") + (reference ? " Reference: " + reference : ""));
+      if (reference) window.location.assign("/payments/return?reference=" + encodeURIComponent(reference));
     } finally {
       setPaying(false);
     }
@@ -106,14 +111,13 @@ export default function Fees() {
                       <span>{p.payment_date}</span>
                       <span>{p.method}</span>
                       <span>₦{Number(p.amount_paid).toLocaleString()}</span>
-                      <a
-                        href={`/api/fees/receipts/${p.id}/`}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => downloadFile(`/api/fees/receipts/${p.id}/`, `receipt-${p.id}.pdf`)}
                         className="receipt-link"
                       >
                         Receipt
-                      </a>
+                      </button>
                     </div>
                   ))}
                 </div>

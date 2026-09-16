@@ -1,0 +1,349 @@
+[
+  {
+    "id": "start",
+    "title": "Getting started",
+    "intro": "Start here if you are using the portal for the first time.",
+    "sections": [
+      {
+        "title": "Sign in to the correct school",
+        "steps": [
+          "Use the school login link supplied by your school. Schools share the platform but have separate accounts and records.",
+          "Enter your own email and password. A platform owner uses the separate platform login page.",
+          "If you are asked to change a temporary password, complete that step before continuing. Do not share accounts."
+        ]
+      },
+      {
+        "title": "Find your way around",
+        "steps": [
+          "On a phone or tablet, tap Explore portal to open the menu. Tap a destination to open its page.",
+          "Tap Close menu or the shaded area outside the menu to close it. Keyboard users can press Escape.",
+          "Scholar, Campus, Studio, Executive and Heritage arrange navigation differently on larger screens. They use the same page names and school records.",
+          "Open User guide in the menu whenever you need help. Choose your role below. Downloadable copies are managed from Superadmin > User guide."
+        ]
+      },
+      {
+        "title": "Save, search and download",
+        "steps": [
+          "Complete required fields before selecting Save or Submit. Wait for a success message before leaving the page.",
+          "Use school year, term, class and subject filters when available. An empty list may mean the selected filter has no records.",
+          "On a narrow screen, swipe inside a wide table or timetable to see its remaining columns. The whole page should not need sideways scrolling.",
+          "Downloaded PDF receipts and reports normally appear in your device Downloads folder. Allow downloads if your browser asks."
+        ]
+      },
+      {
+        "title": "Understand plans",
+        "steps": [
+          "Setup gives the school access to people, academic setup and subscription controls.",
+          "Basic enables attendance, scores/results, fees, timetables and notification tools.",
+          "Premium also enables CBT, DOCX questions, advanced analytics, bulk imports, promotion and scratch cards.",
+          "A missing tool may be excluded by your school plan or your account role. Ask your school administrator; changing the web address does not grant access.",
+          "SMS and other provider usage are separate from the subscription. Renewal dates are currently managed by the platform owner."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "superadmin",
+    "title": "Superadmin / platform owner",
+    "intro": "Manage schools and platform access from the owner panel. These accounts are separate from school administrators.",
+    "sections": [
+      {
+        "title": "Sign in with two-factor authentication",
+        "steps": [
+          "Open the platform login page and enter your owner email and password.",
+          "For first-time setup, scan the QR code using an authenticator app, or enter its setup key in that app. Enter the current six-digit authenticator code into the portal.",
+          "Save the recovery codes privately when shown. Never share the setup key, password or recovery codes with school users.",
+          "If a code is rejected, enable automatic time on your phone, wait for a fresh code and retry. Use the most recently configured authenticator entry.",
+          "Read-only platform staff can inspect permitted records but cannot activate schools, change payment settings or assign designs."
+        ]
+      },
+      {
+        "title": "Review and activate a school",
+        "steps": [
+          "Open Schools and filter for pending registrations. Select Manage for the school.",
+          "Check the school identity and contact details before choosing Approve. Reject a registration if it should not be activated.",
+          "Use Create a school when onboarding a school yourself. Supply its own school administrator account.",
+          "In school management, add or enable the appropriate administrator. Send temporary credentials privately.",
+          "Suspend blocks school access while retaining records. Activate restores an approved school. A plan payment or design assignment does not undo suspension."
+        ]
+      },
+      {
+        "title": "Assign a design and plan",
+        "steps": [
+          "Open Portal designs and choose the school.",
+          "Choose Scholar, Campus, Studio, Executive or Heritage. Selecting a design loads its suggested colours.",
+          "Set primary, secondary and accent colours, typography, logo URL and motto. Review the sample preview.",
+          "Choose Setup, Basic or Premium and read the included feature list.",
+          "Select Save design and activate plan. This is a manual activation and does not charge the school.",
+          "Use Preview school sign-in to inspect its login page while keeping your owner session. School users should reload their pages to see new branding and menus."
+        ]
+      },
+      {
+        "title": "Manage payments and subscriptions",
+        "steps": [
+          "Open Payments to view prices, settlement accounts and recent payment orders.",
+          "Set the price, number of months and availability for Basic and Premium. New checkouts use the new settings; pending orders retain their original price.",
+          "Create and verify each school beneficiary in Paystack, then connect that school subaccount code in Payments. Check the displayed beneficiary and bank suffix carefully.",
+          "School fee money goes to the connected school account, less provider charges. Subscription money goes to the platform account.",
+          "Use Verify with Paystack to recheck a recent order. An order requiring review must be reconciled before credit or refund decisions; do not mark it successful without verification.",
+          "Paystack keys and public webhook setup are deployment tasks. Keep secret keys out of frontend files and user messages. Test mode and live mode use separate configurations."
+        ]
+      },
+      {
+        "title": "Manage platform staff and activity",
+        "steps": [
+          "Open Platform staff and activity. Give each platform colleague a separate account.",
+          "Choose owner access only for people authorised to make platform changes. Use read-only access for reviewers.",
+          "Disable an account when access is no longer needed. Do not reuse another person's account.",
+          "Review activity records when investigating school, account, plan or payment changes.",
+          "Arrange regular backups and restoration checks with the deployment administrator. The owner panel does not replace a tested recovery procedure."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "school_admin",
+    "title": "School administrator",
+    "intro": "Set up your school and manage its daily operations. You can work only within your own school.",
+    "sections": [
+      {
+        "title": "Prepare a school for use",
+        "steps": [
+          "Open Calendar and create the academic session and terms. Check the current session and current term.",
+          "Create the class levels, class arms and subjects needed by your school.",
+          "Add staff accounts and assign teachers to classes or subjects where applicable.",
+          "Add students with the correct admission details and current class. Check names and contact details before saving.",
+          "Make sure parent accounts are linked to the correct students. If a family cannot see a child, investigate the account/link rather than giving them another person's login."
+        ]
+      },
+      {
+        "title": "Manage students and staff",
+        "steps": [
+          "Open Students or Staff to search, filter and open a record.",
+          "Use Add student or Add staff to create an individual record. Supply a unique email where an account is required.",
+          "The student form generates the admission number when saved; the form identifies it as the student's initial password. Share initial credentials privately and have the student change the password.",
+          "Office staff who need administration tools must have an authorised school administrator account. A teacher account has teaching permissions.",
+          "On Premium, use Import students or Import staff for batch entry. Follow the displayed CSV format, review validation errors, correct the source file and retry.",
+          "The downloadable import guide may be a PDF, but the upload file must still be the format requested by the import screen."
+        ]
+      },
+      {
+        "title": "Attendance, timetable and results",
+        "steps": [
+          "Use Attendance to review registers by term, class and date. Teachers record the class attendance they are authorised to manage.",
+          "Open Timetable, add periods with start/end times, then assign lessons to the correct day, class, teacher and subject. Resolve conflicts before saving.",
+          "Use Results to manage the selected session, term and class. Check score completeness and remarks before publishing results or downloading reports.",
+          "Teachers enter scores through their own accounts. Ask them to correct missing or inaccurate entries before publication."
+        ]
+      },
+      {
+        "title": "Collect and record school fees",
+        "steps": [
+          "Open Fee setup to create fee categories and schedules for the correct term and class level. Enter the amount and due date where needed.",
+          "Use Fee collection to review balances. Confirm the student and fee before recording a cash or bank-transfer payment.",
+          "Record only money actually received. Online Paystack payments are credited by verification, not by entering them as a manual payment.",
+          "Ask the platform owner to connect your school settlement account before families use Paystack checkout.",
+          "Use the available PDF receipt/report download controls. If a family has paid but the balance is unchanged, keep the payment reference and request verification."
+        ]
+      },
+      {
+        "title": "CBT and questions on Premium",
+        "steps": [
+          "Open Question bank and select the appropriate subject/topic. Create questions manually with their options and correct answers.",
+          "To import a Word file, use the DOCX upload option and follow the supplied question template. Each recognised question becomes a separate question record.",
+          "Review the parsed question count, text, options and answers before completing the import. For 40 valid questions, confirm that 40 were recognised and saved.",
+          "Open Exams to create an exam, set its class/subject, schedule, duration and question-selection rule. Save and review the configuration before making it available.",
+          "Use Exam results to review submitted attempts. Do not change an active exam without considering students already taking it."
+        ]
+      },
+      {
+        "title": "Notifications and other Premium tools",
+        "steps": [
+          "In Notifications, choose the intended recipients and channel, write or select the message, review it and send. Check the history/status afterwards.",
+          "SMS/email delivery requires configured providers and any required credit. A send request does not guarantee delivery.",
+          "Use Scratch cards to generate the intended result-access cards and download the PDF. Keep unused PINs private.",
+          "Use Promotion only after checking the academic period and student destination classes. Review results of the operation.",
+          "Advanced analytics summarises recorded school data. Select the correct term and use Refresh Analytics; incomplete source data produces incomplete summaries."
+        ]
+      },
+      {
+        "title": "Renew the portal subscription",
+        "steps": [
+          "Open Portal subscription to compare available plans, prices and billing periods.",
+          "Choose a plan and continue to Paystack. Return to the portal after checkout and check the payment status.",
+          "A verified subscription payment updates the plan and paid-through date. Payments are one-time renewals; the card is not automatically charged.",
+          "A plan change during an existing paid period may require the platform owner. Ask the owner about renewal dates, suspension, design changes or unavailable features."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "staff",
+    "title": "Staff / teachers",
+    "intro": "Teaching staff use teacher accounts. Administrative staff use school administrator accounts when authorised; there is no separate cashier or generic office-staff role.",
+    "sections": [
+      {
+        "title": "Prepare your account",
+        "steps": [
+          "Sign in with your own school account. Change a temporary password when required.",
+          "Check that the school and your account name are correct.",
+          "If assigned classes or subjects are missing, ask the school administrator to correct your assignments."
+        ]
+      },
+      {
+        "title": "Take attendance",
+        "steps": [
+          "Open Take attendance. Select the correct class, academic period and date.",
+          "Review the student list and mark the appropriate attendance status for each student.",
+          "Save or submit the register and check that it was recorded. Review the date before correcting an existing register."
+        ]
+      },
+      {
+        "title": "Enter scores",
+        "steps": [
+          "Open Scores and select the correct class, subject and term.",
+          "Enter assessment and examination scores in the supplied fields. Keep within the configured maximum marks.",
+          "Review the names and scores before saving. Correct validation errors and check the success message.",
+          "Use Student development to record supported skills/behavioural assessments where enabled.",
+          "School administrators manage publication and school-wide result settings."
+        ]
+      },
+      {
+        "title": "Use your timetable",
+        "steps": [
+          "Open My timetable to see assigned lessons. Use the available day or period view.",
+          "On a phone, swipe inside the timetable if all columns are not visible.",
+          "Report missing lessons or clashes to the school administrator; do not use another teacher's login."
+        ]
+      },
+      {
+        "title": "Know your permissions",
+        "steps": [
+          "Teacher accounts do not manage platform billing, school plans or portal designs.",
+          "If you also need administrative access, the school must authorise the appropriate account role.",
+          "A missing tool can be caused by the school plan, account role or class/subject assignment. Contact the school administrator with the page name and error message."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "parent",
+    "title": "Parent / guardian",
+    "intro": "View and pay for students linked to your own parent account.",
+    "sections": [
+      {
+        "title": "Open your child's dashboard",
+        "steps": [
+          "Use your school login link and sign in to your parent account.",
+          "Choose the child you want to view when more than one is linked.",
+          "Check the displayed name and class before opening results or making a payment.",
+          "If a child is missing or the wrong child appears, stop and contact the school administrator to correct the link."
+        ]
+      },
+      {
+        "title": "Review progress and messages",
+        "steps": [
+          "The dashboard shows available result, attendance, fee and timetable information for the selected child.",
+          "Open the child's results for available report details. Results may not appear until the school publishes them.",
+          "Use the notification/message control to read messages delivered to your account.",
+          "Contact the school about incorrect attendance, marks or class assignments. Parents cannot edit those records."
+        ]
+      },
+      {
+        "title": "Pay school fees",
+        "steps": [
+          "Open the selected child's Fees page. Select the academic term and unpaid fee items.",
+          "Check the outstanding amount and choose Pay Online via Paystack. Use the secure Paystack checkout options offered.",
+          "Return to the portal and wait for verification. If signed out, sign in using the account that started the payment.",
+          "When payment is verified, download the PDF receipt. Keep the payment reference.",
+          "If the status is pending or verification is unavailable, use Check again later. Do not pay again simply because the browser closed or the balance has not yet updated.",
+          "If online payment is unavailable, ask the school whether its settlement account has been connected. Use only payment alternatives the school confirms."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "student",
+    "title": "Student",
+    "intro": "Use your own school account to view learning information, take available exams and check fees.",
+    "sections": [
+      {
+        "title": "Find your school information",
+        "steps": [
+          "Sign in through your school link. Check your name and class.",
+          "Open Your timetable for lessons and Attendance for recorded attendance.",
+          "Open Results to view results made available by the school. Download the offered PDF report when available.",
+          "Premium schools may offer Performance for a more detailed view of your progress. Ask your school if a feature is unavailable."
+        ]
+      },
+      {
+        "title": "Take a computer-based exam",
+        "steps": [
+          "Open Exams and check the available exam name, subject, start/end time and duration.",
+          "Start only when you are ready, have a reliable connection and have read the exam instructions.",
+          "Answer each question and use the question navigation to review your work. Watch the timer.",
+          "Avoid leaving the exam tab; the system can record tab changes according to the school's exam rules.",
+          "Use Submit when finished and check the submission confirmation. Do not repeatedly start new attempts if the connection fails; contact the invigilator and follow the existing attempt's status.",
+          "Open the available exam result or review after the school permits it."
+        ]
+      },
+      {
+        "title": "View or pay fees",
+        "steps": [
+          "Open Fees, select the term and review outstanding items.",
+          "If you are paying yourself, follow Paystack checkout and return for verification. Otherwise ask your parent/guardian to use their linked account.",
+          "Save the PDF receipt after verification. Keep the reference if verification is pending and contact the school before paying again."
+        ]
+      },
+      {
+        "title": "Protect your account",
+        "steps": [
+          "Keep your password private and sign out on shared devices.",
+          "Tell the school administrator about an incorrect profile, class, result or payment record.",
+          "Students cannot change school records, publish results or activate a plan."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "help",
+    "title": "Troubleshooting and support",
+    "intro": "Use these checks before asking for help.",
+    "sections": [
+      {
+        "title": "Cannot sign in",
+        "steps": [
+          "Check the school link and account email. A platform owner signs in at the platform login page.",
+          "Check for a required temporary-password change or owner authenticator step.",
+          "If access is disabled or the school is suspended, contact the school administrator or platform owner. Paying again does not undo a suspension.",
+          "Do not send your password, authenticator key or recovery codes to support."
+        ]
+      },
+      {
+        "title": "A page is empty or a feature is missing",
+        "steps": [
+          "Check the term, class, subject and date filters first.",
+          "Confirm that the school has entered/published the relevant records and assigned your account correctly.",
+          "Check whether the feature needs Basic or Premium. Only the platform owner or a verified subscription can activate the relevant plan.",
+          "Reload the page after a plan or design change. On a phone, close the menu to return to the page."
+        ]
+      },
+      {
+        "title": "Payment or download problems",
+        "steps": [
+          "Keep the payment reference and check its status before attempting another payment. Only a verified payment produces credit.",
+          "Look in Downloads for a PDF and allow the browser to download files.",
+          "For support, provide your school, page name, approximate time, reference where applicable and a description of the problem. Mask sensitive details in screenshots."
+        ]
+      },
+      {
+        "title": "Who to contact",
+        "steps": [
+          "Students, parents and teachers: contact your school administrator first.",
+          "School administrators: contact the platform owner for plans, design assignments, settlement setup or school suspension.",
+          "Platform staff: contact the platform owner or deployment administrator for two-factor recovery, provider configuration and backups."
+        ]
+      }
+    ]
+  }
+]

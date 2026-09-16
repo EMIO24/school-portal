@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
+import { downloadFile } from '../../services/download';
 import '../../styles/Results.css';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ function RemarkDrawer({ student, termId, onSaved, onClose }) {
     setSaving(true);
     try {
       await api.patch(
-        `/results/remarks/${student.student}/?term=${termId}`,
+        `/api/results/remarks/${student.student}/?term=${termId}`,
         { class_teacher_remark: ctRemark, principal_remark: prinRemark }
       );
       onSaved(student.student, ctRemark, prinRemark);
@@ -104,8 +105,8 @@ export default function ResultManagement() {
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/academics/terms/'),
-      api.get('/enrollment/class-arms/'),
+      api.get('/api/terms/'),
+      api.get('/api/class-arms/'),
     ]).then(([t, c]) => {
       const termList = t.data.results ?? t.data;
       setTerms(termList);
@@ -122,7 +123,7 @@ export default function ResultManagement() {
     setAlert(null);
     try {
       const { data } = await api.get(
-        `/results/class-results/?class_arm=${selClass}&term=${selTerm}`
+        `/api/results/class-results/?class_arm=${selClass}&term=${selTerm}`
       );
       setStudents(data);
     } catch {
@@ -141,7 +142,7 @@ export default function ResultManagement() {
     setAlert(null);
     try {
       const { data } = await api.post(
-        `/results/positions/compute/?class_arm=${selClass}&term=${selTerm}`
+        `/api/results/positions/compute/?class_arm=${selClass}&term=${selTerm}`
       );
       setAlert({ type: 'success', msg: `Positions computed for ${data.computed} students.` });
       await load();
@@ -153,18 +154,17 @@ export default function ResultManagement() {
   };
 
   // ── PDF/ZIP downloads ────────────────────────────────────────────────────────
-  const apiBase = process.env.REACT_APP_API_BASE_URL || '';
 
   const downloadBroadsheet = () => {
-    window.open(`${apiBase}/api/results/broadsheet/${selClass}/?term=${selTerm}`, '_blank');
+    downloadFile(`/api/results/broadsheet/${selClass}/?term=${selTerm}`, 'broadsheet.pdf');
   };
 
   const downloadAllSlips = () => {
-    window.open(`${apiBase}/api/results/all-slips/${selClass}/?term=${selTerm}`, '_blank');
+    downloadFile(`/api/results/all-slips/${selClass}/?term=${selTerm}`, 'result-slips.zip');
   };
 
   const downloadSlip = (studentId) => {
-    window.open(`${apiBase}/api/results/slip/${studentId}/?term=${selTerm}`, '_blank');
+    downloadFile(`/api/results/slip/${studentId}/?term=${selTerm}`, 'result.pdf');
   };
 
   // ── Remark saved callback ────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import api from "../../services/api";
 import "./Notifications.css";
 
@@ -7,7 +7,10 @@ const VARIABLE_HINTS = ["{student_name}", "{school_name}", "{class_name}", "{adm
 const STATUS_LABEL = { sent: "Sent", failed: "Failed", pending: "Pending" };
 
 export default function Notifications() {
-  const [channel, setChannel]           = useState("sms");
+  const [students, setStudents] = useState([]);
+  const [studentIds, setStudentIds] = useState([]);
+  const [captureOnly, setCaptureOnly] = useState(false);
+  const [channel, setChannel]           = useState("email");
   const [recipientType, setRecipientType] = useState("all_parents");
   const [classArmId, setClassArmId]     = useState("");
   const [classArms, setClassArms]       = useState([]);
@@ -20,7 +23,19 @@ export default function Notifications() {
   const [toast, setToast]               = useState(null);
 
   useEffect(() => {
-    api.get("/api/enrollment/class-arms/")
+    api.get('/api/notifications/send/').then(({ data }) => setCaptureOnly(Boolean(data.capture_only))).catch(() => {});
+    async function loadStudents() {
+      let url = '/api/students/?status=active';
+      const list = [];
+      while (url) {
+        const { data } = await api.get(url);
+        list.push(...(data.results ?? data));
+        url = Array.isArray(data) ? null : data.next;
+      }
+      setStudents(list);
+    }
+    loadStudents().catch(() => setToast('Could not load student recipients. Reload to retry.'));
+    api.get("/api/class-arms/")
       .then(({ data: d }) => setClassArms(Array.isArray(d) ? d : d.results || []))
       .catch(() => {});
     api.get("/api/notifications/templates/")
@@ -39,30 +54,40 @@ export default function Notifications() {
   const messageBody = selectedTemplate ? selectedTemplate.body : customMessage;
   const charCount   = messageBody.length;
 
+  const requestKey = useRef(null);
   async function handleSend() {
+    if (recipientType === 'individual' && !studentIds.length) { setToast('Select at least one student.'); return; }
+    if (recipientType === 'class' && !classArmId) { setToast('Select a class.'); return; }
+    if (!messageBody.trim()) { setToast('Enter a message or select a template.'); return; }
     setSending(true);
     const body = {
       channel,
       recipient_type: recipientType,
+      ...(recipientType === 'individual' ? { student_ids: studentIds } : {}),
       ...(recipientType === "class" && classArmId ? { class_arm_id: Number(classArmId) } : {}),
       ...(templateId ? { template_id: Number(templateId) } : { message: customMessage, subject }),
     };
     try {
-      const { data } = await api.post("/api/notifications/send/", body);
-      setToast(`${data.sent} sent, ${data.failed} failed`);
+      if (!requestKey.current) requestKey.current = crypto.randomUUID();
+      const { data } = await api.post("/api/notifications/send/", body, { headers: { "Idempotency-Key": requestKey.current } });
+      requestKey.current = null;
+      setToast((data.capture_only ? (data.captured || 0) + ' captured locally (not delivered)' : data.queued ? data.queued + ' queued; check Send History for progress' : data.sent + ' sent') +
+        ', ' + data.failed + ' failed, ' + (data.skipped || 0) + ' skipped (missing contact).' +
+        (data.errors?.length ? ' ' + data.errors.join(' ') : ''));
       loadLogs();
-    } catch {
-      setToast("Network error");
+    } catch (err) {
+      setToast(err.response?.data?.error || err.response?.data?.detail || "Could not send the notification. Check the connection.");
     } finally {
       setSending(false);
-      setTimeout(() => setToast(null), 4000);
+
     }
   }
 
   return (
     <main className="page-shell notif-page">
       <h1 className="page-title">Notifications</h1>
-      {toast && <div className="notif-toast">{toast}</div>}
+      {captureOnly && <p role="status">Test mode: messages are captured in Send History. No SMS or email leaves this sandbox.</p>}
+      {toast && <div role="alert" className="notif-feedback">{toast}</div>}
 
       <div className="notif-layout">
         {/* ── Compose ── */}
@@ -89,6 +114,12 @@ export default function Notifications() {
             ))}
           </div>
 
+          {recipientType === 'individual' && <label className="field-label">Students (messages go to their guardians)
+            <select multiple className="notif-select" value={studentIds.map(String)}
+              onChange={e => setStudentIds(Array.from(e.target.selectedOptions, option => Number(option.value)))}>
+              {students.map(student => <option key={student.id} value={student.id}>{student.full_name} - {student.admission_number}</option>)}
+            </select>
+          </label>}
           {recipientType === "class" && (
             <select className="notif-select" value={classArmId} onChange={e => setClassArmId(e.target.value)}>
               <option value="">— Select class —</option>
@@ -171,8 +202,8 @@ export default function Notifications() {
                     <td>{log.sent_at ? new Date(log.sent_at).toLocaleString() : "—"}</td>
                     <td>{log.channel.toUpperCase()}</td>
                     <td>{log.recipient_phone || log.recipient_email || log.student_name || "—"}</td>
-                    <td><span className={`status-badge status-${log.status}`}>{STATUS_LABEL[log.status]}</span></td>
-                    <td className="msg-preview">{log.message_body?.slice(0, 80)}{log.message_body?.length > 80 ? "…" : ""}</td>
+                    <td><span className={`status-badge status-${log.status}`}>{log.error_message?.startsWith('Captured locally') ? 'Captured locally' : STATUS_LABEL[log.status]}</span></td>
+                    <td className="msg-preview" title={log.error_message || ""}>{log.message_body?.slice(0, 80)}{log.message_body?.length > 80 ? "…" : ""}</td>
                   </tr>
                 ))}
               </tbody>

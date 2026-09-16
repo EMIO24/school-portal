@@ -1,3 +1,5 @@
+from accounts.school_access import assigned_classes
+from accounts.school_access import SchoolModulePermission, require_assignment
 """
 backend/attendance/views.py
 
@@ -78,7 +80,7 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
     """
     Core attendance CRUD + marking + reporting actions.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
     http_method_names  = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def get_serializer_class(self):
@@ -91,6 +93,8 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
         term = self.request.query_params.get('term')
         if term:
             qs = qs.filter(term_id=term)
+        if self.request.user.role == "teacher":
+            qs = qs.filter(class_arm_id__in=assigned_classes(self.request))
         return qs
 
     # ── POST sessions/start/ ─────────────────────────────────────────────────
@@ -142,9 +146,12 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
         from django.contrib.auth import get_user_model
         User = get_user_model()
         valid_ids = set(
-            User.objects.filter(pk__in=student_ids, school=self.school)
+            User.objects.filter(pk__in=student_ids, school=self.school, role='student', student_profile__current_class=session.class_arm)
             .values_list('id', flat=True)
         )
+
+        if valid_ids != set(student_ids):
+            return Response({'detail':'All students must belong to this class.'}, status=400)
 
         # Bulk upsert using update_or_create
         updated, created = 0, 0
@@ -155,7 +162,7 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
             _, was_created = AttendanceRecord.objects.update_or_create(
                 attendance_session=session,
                 student_id=sid,
-                defaults={'status': item['status'], 'remark': item.get('remark', '')},
+                defaults={'school':self.school, 'status': item['status'], 'remark': item.get('remark', '')},
             )
             if was_created:
                 created += 1
@@ -230,7 +237,7 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
         """
         Daily attendance summary for an entire class in a term.
         Returns list of sessions with counts — used to build the admin heatmap.
-        Also supports ?format=csv for CSV download.
+        Also supports ?download=pdf for PDF download (legacy csv requests return PDF).
         """
         class_arm_id = request.query_params.get('class_arm')
         term_id      = request.query_params.get('term')
@@ -270,8 +277,8 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
             })
 
         # Optional CSV export
-        if request.query_params.get('format') == 'csv':
-            return _export_class_report_csv(rows, class_arm_id)
+        if request.query_params.get('download') in ('csv', 'pdf'):
+            return _export_class_report_pdf(rows, class_arm_id)
 
         return Response(rows)
 
@@ -317,18 +324,16 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
 # CSV export helper
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _export_class_report_csv(rows, class_arm_id):
-    buf = StringIO()
-    writer = csv.DictWriter(buf, fieldnames=[
-        'date', 'period_name', 'total_students',
-        'present_count', 'absent_count', 'late_count', 'is_finalized',
-    ])
-    writer.writeheader()
+def _export_class_report_pdf(rows, class_arm_id):
+    from results.report_pdf import text_report_pdf
+    lines = []
     for row in rows:
-        writer.writerow({k: row[k] for k in writer.fieldnames})
-
-    response = HttpResponse(buf.getvalue(), content_type='text/csv')
-    response['Content-Disposition'] = (
-        f'attachment; filename="attendance_class_{class_arm_id}.csv"'
-    )
+        lines.extend([
+            str(row['date']) + ' | ' + (row['period_name'] or 'Daily attendance'),
+            'Students: ' + str(row['total_students']) + ' | Present: ' + str(row['present_count']) +
+            ' | Absent: ' + str(row['absent_count']) + ' | Late: ' + str(row['late_count']),
+            'Finalized: ' + ('Yes' if row['is_finalized'] else 'No'), '',
+        ])
+    response = HttpResponse(text_report_pdf('Class attendance report', lines or ['No attendance records.']), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="attendance_class_{class_arm_id}.pdf"'
     return response

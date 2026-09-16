@@ -17,6 +17,7 @@ const DIFFICULTY_LABELS = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 const TYPE_LABELS       = { mcq: 'MCQ', true_false: 'True/False', fill_blank: 'Fill Blank' };
 
 export default function QuestionBank() {
+  const [filtersOpen, setFiltersOpen] = useState(false);
   // Reference data
   const [subjects,     setSubjects]    = useState([]);
   const [classLevels,  setClassLevels] = useState([]);
@@ -40,9 +41,9 @@ export default function QuestionBank() {
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/enrollment/subjects/'),
-      api.get('/enrollment/class-levels/'),
-      api.get('/cbt/questions/stats/'),
+      api.get('/api/subjects/'),
+      api.get('/api/class-levels/'),
+      api.get('/api/cbt/questions/stats/'),
     ]).then(([s, c, st]) => {
       setSubjects(s.data.results    ?? s.data);
       setClassLevels(c.data.results ?? c.data);
@@ -53,7 +54,7 @@ export default function QuestionBank() {
   // Load topics when subject + class_level filters change
   useEffect(() => {
     if (!filters.subject || !filters.class_level) { setTopics([]); return; }
-    api.get(`/cbt/topics/?subject=${filters.subject}&class_level=${filters.class_level}`)
+    api.get(`/api/cbt/topics/?subject=${filters.subject}&class_level=${filters.class_level}`)
       .then(({ data }) => setTopics(data.results ?? data));
   }, [filters.subject, filters.class_level]);
 
@@ -65,7 +66,7 @@ export default function QuestionBank() {
     if (search.trim()) params.append('search', search.trim());
 
     try {
-      const { data } = await api.get(`/cbt/questions/?${params}`);
+      const { data } = await api.get(`/api/cbt/questions/?${params}`);
       setQuestions(data.results ?? data);
     } finally {
       setLoading(false);
@@ -76,7 +77,7 @@ export default function QuestionBank() {
 
   // Refresh stats after any mutation
   const refreshStats = () => {
-    api.get('/cbt/questions/stats/').then(({ data }) => setStats(data));
+    api.get('/api/cbt/questions/stats/').then(({ data }) => setStats(data));
   };
 
   // ── Filter helpers ───────────────────────────────────────────────────────────
@@ -97,7 +98,7 @@ export default function QuestionBank() {
   // ── Delete ───────────────────────────────────────────────────────────────────
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this question? This cannot be undone.')) return;
-    await api.delete(`/cbt/questions/${id}/`);
+    await api.delete(`/api/cbt/questions/${id}/`);
     setQuestions(qs => qs.filter(q => q.id !== id));
     refreshStats();
   };
@@ -123,7 +124,9 @@ export default function QuestionBank() {
     <div className="qb-page">
 
       {/* ── Sidebar ── */}
-      <aside className="qb-sidebar">
+      <button type="button" className="qb-filter-toggle" aria-expanded={filtersOpen} aria-controls="question-filters"
+        onClick={() => setFiltersOpen(value => !value)}>{filtersOpen ? 'Hide filters' : 'Show filters'}</button>
+      <aside id="question-filters" className={'qb-sidebar' + (filtersOpen ? ' is-open' : '')}>
         <div className="qb-sidebar-head"><h2>Filters</h2></div>
 
         <div className="qb-filter-group">
@@ -236,6 +239,7 @@ export default function QuestionBank() {
           subjects={subjects}
           classLevels={classLevels}
           onSaved={handleSaved}
+          onImported={() => { setEditorOpen(false); loadQuestions(); refreshStats(); }}
           onClose={() => setEditorOpen(false)}
         />
       )}

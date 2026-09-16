@@ -58,3 +58,19 @@ class NotificationLog(models.Model):
 
     def __str__(self):
         return f"{self.channel.upper()} → {self.recipient_phone or self.recipient_email} [{self.status}]"
+
+
+class NotificationBatch(models.Model):
+    school = models.ForeignKey('tenants.School', on_delete=models.CASCADE)
+    key = models.CharField(max_length=64)
+    digest = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['school','key'], name='unique_notification_batch_key')]
+
+class NotificationOutbox(models.Model):
+    batch = models.ForeignKey(NotificationBatch, on_delete=models.CASCADE)
+    log = models.OneToOneField(NotificationLog, on_delete=models.PROTECT)
+    subject = models.CharField(max_length=200, blank=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)

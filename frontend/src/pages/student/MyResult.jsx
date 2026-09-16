@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect, useContext, useCallback } from 'react';
 import api from '../../services/api';
+import { downloadFile } from '../../services/download';
 import { AuthContext } from '../../context/AuthContext';
 import '../../styles/Results.css';
 
@@ -49,8 +50,9 @@ function RatingPips({ value }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function MyResult() {
+export default function MyResult({ studentId: requestedStudentId }) {
   const { user } = useContext(AuthContext);
+  const studentId = requestedStudentId ?? user?.id;
 
   const [terms,        setTerms]        = useState([]);
   const [selectedTerm, setSelectedTerm] = useState('');
@@ -60,7 +62,7 @@ export default function MyResult() {
 
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    api.get('/api/academics/terms/').then(({ data: d }) => {
+    api.get('/api/terms/').then(({ data: d }) => {
       const list   = d.results ?? d;
       setTerms(list);
       const current = list.find(t => t.is_current);
@@ -70,13 +72,13 @@ export default function MyResult() {
 
   // ── Fetch slip data ──────────────────────────────────────────────────────────
   const load = useCallback(async () => {
-    if (!selectedTerm || !user?.id) return;
+    if (!selectedTerm || !studentId) return;
     setLoading(true);
     setError(null);
     setData(null);
     try {
       const { data: d } = await api.get(
-        `/api/results/slip-data/${user.id}/?term=${selectedTerm}`
+        `/api/results/slip-data/${studentId}/?term=${selectedTerm}`
       );
       setData(d);
     } catch (err) {
@@ -88,16 +90,13 @@ export default function MyResult() {
     } finally {
       setLoading(false);
     }
-  }, [selectedTerm, user?.id]);
+  }, [selectedTerm, studentId]);
 
   useEffect(() => { load(); }, [load]);
 
-  const apiBase = process.env.REACT_APP_API_URL || '';
 
   const downloadPDF = () => {
-    window.open(
-      `${apiBase}/api/results/slip/${user.id}/?term=${selectedTerm}`, '_blank'
-    );
+    downloadFile(`/api/results/slip/${studentId}/?term=${selectedTerm}`, `result-${studentId}.pdf`);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────────

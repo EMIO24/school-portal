@@ -1,3 +1,5 @@
+import { useTheme } from "../../context/ThemeContext";
+import { hasFeature } from "../../services/features";
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
@@ -15,6 +17,8 @@ const GRADE = (avg) => {
 const STATUS_DOT = { present: "#1a6b3c", absent: "#c0392b", late: "#e67e22", excused: "#888" };
 
 export default function ParentDashboard() {
+  const {school}=useTheme();
+  const operational=hasFeature(school,"results");
   const [children, setChildren]   = useState([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [dashboard, setDashboard] = useState(null);
@@ -23,6 +27,7 @@ export default function ParentDashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!operational) return;
     api.get("/api/parent/children/")
       .then(({ data }) => {
         const list = Array.isArray(data) ? data : [];
@@ -30,7 +35,7 @@ export default function ParentDashboard() {
         if (list.length > 0) loadDashboard(list[0].student_id);
       })
       .catch(() => {});
-  }, []);
+  }, [operational]);
 
   function loadDashboard(studentId) {
     setLoading(true);
@@ -47,6 +52,7 @@ export default function ParentDashboard() {
   const child = children[activeIdx];
   const d     = dashboard;
 
+  if (!operational) return <main className="plan-locked"><h1>Your school is getting ready</h1><p>Your school administrator can activate a plan to enable results, attendance and fee payments.</p></main>;
   return (
     <div className="parent-app">
       {/* Top bar */}

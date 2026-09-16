@@ -120,8 +120,6 @@ export default function ExamRoom() {
 
   // ── Exam data ────────────────────────────────────────────────────────────────
   const [questions,    setQuestions]    = useState([]);
-  const [allowReview,  setAllowReview]  = useState(true);
-  const [sessionId,    setSessionId]    = useState(null);
 
   // ── Current position ─────────────────────────────────────────────────────────
   const [currentIdx,   setCurrentIdx]   = useState(0);
@@ -150,8 +148,6 @@ export default function ExamRoom() {
     api.post(`/api/cbt/exams/${examId}/start/`)
       .then(({ data }) => {
         setQuestions(data.questions);
-        setAllowReview(data.allow_review);
-        setSessionId(data.session_id);
         setTimeLeft(data.time_remaining_seconds);
         setPhase('exam');
 

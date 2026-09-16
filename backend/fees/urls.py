@@ -17,3 +17,6 @@ urlpatterns = [
     path('receipts/<int:pk>/',   FeeReceiptView.as_view()),
     path('outstanding/',         OutstandingFeesView.as_view()),
 ]
+
+from .payments import SchoolSubscription
+urlpatterns += [path('subscription/', SchoolSubscription.as_view())]

@@ -1,7 +1,10 @@
+import WorkspaceHome from "../../components/common/WorkspaceHome";
+import { useTheme } from "../../context/ThemeContext";
+import { hasFeature } from "../../services/features";
 import React, { useState, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, Legend,
+  PieChart, Pie, Cell,
 } from "recharts";
 import api from "../../services/api";
 import "./AdminDashboard.css";
@@ -19,39 +22,60 @@ function KPICard({ label, value, sub, color }) {
 }
 
 export default function AdminDashboard() {
+  const {school}=useTheme();
+  const analyticsEnabled=hasFeature(school,"analytics");
   const [snap, setSnap]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [terms, setTerms]     = useState([]);
   const [term, setTerm]       = useState("");
+  const [error, setError] = useState("");
+  const [summary, setSummary] = useState(null);
+  const [summaryError, setSummaryError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    api.get("/api/academics/terms/").then(({ data: d }) => {
-      const list = Array.isArray(d) ? d : d.results || [];
-      setTerms(list);
-      const cur = list.find(t => t.is_current);
-      if (cur) setTerm(String(cur.id));
-    }).catch(() => {});
+    let active = true;
+    Promise.all(["students", "staff", "class-arms", "subjects"].map(resource =>
+      api.get("/api/" + resource + "/?page_size=1").then(({ data }) =>
+        Array.isArray(data) ? data.length : data.count ?? data.results?.length ?? 0)
+    )).then(counts => { if (active) setSummary(counts); })
+      .catch(() => { if (active) setSummaryError("Could not load school counts. Reload to retry."); });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
-    if (!term) return;
-    setLoading(true);
-    api.get(`/api/analytics/overview/?term=${term}`)
-      .then(({ data: d, status }) => { setSnap(status === 204 ? null : d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [term]);
+    api.get("/api/terms/").then(({ data: d }) => {
+      const list = Array.isArray(d) ? d : d.results || [];
+      setTerms(list);
+      const cur = list.find(t => t.is_current);
+      if (cur || list[0]) setTerm(String((cur || list[0]).id));
+      else setLoading(false);
+    }).catch(() => { setError("Could not load terms. Reload this page to retry."); setLoading(false); });
+  }, []);
+
+  useEffect(() => {
+    if (!term || !analyticsEnabled) {setLoading(false);return;}
+    let active = true;
+    setLoading(true); setSnap(null); setError(""); setNotice("");
+    api.get("/api/analytics/overview/?term=" + term)
+      .then(({ data, status }) => { if (active) setSnap(status === 204 ? null : data); })
+      .catch(() => { if (active) setError("Could not load analytics. Try Refresh Analytics or reload the page."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [term, analyticsEnabled]);
 
   async function refresh() {
+    setRefreshing(true); setError(""); setNotice("");
     try {
-      await api.post(`/api/analytics/refresh/?term=${term}`);
-      setLoading(true);
-      setTimeout(() => {
-        api.get(`/api/analytics/overview/?term=${term}`)
-          .then(({ data: d, status }) => { setSnap(status === 204 ? null : d); setLoading(false); })
-          .catch(() => setLoading(false));
-      }, 2000);
+      await api.post("/api/analytics/refresh/?term=" + term);
+      const { data, status } = await api.get("/api/analytics/overview/?term=" + term);
+      setSnap(status === 204 ? null : data);
+      setNotice("Refresh requested. Background processing may take a moment; refresh again to check for updated figures.");
     } catch {
-      alert("Could not trigger analytics refresh. Please try again.");
+      setError("Could not refresh analytics. Please try again.");
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -61,20 +85,30 @@ export default function AdminDashboard() {
 
   return (
     <main className="page-shell admin-dash">
+      <WorkspaceHome compact/>
       <div className="dash-header-row">
         <h1 className="page-title">Dashboard</h1>
-        <div className="dash-controls">
-          <select value={term} onChange={e => setTerm(e.target.value)} className="dash-select">
+        {analyticsEnabled && <div className="dash-controls">
+          <select aria-label="Academic term" disabled={refreshing} value={term} onChange={e => setTerm(e.target.value)} className="dash-select">
+            <option value="" disabled>Select a term</option>
             {terms.map(t => <option key={t.id} value={t.id}>{t.name} {t.is_current ? "(current)" : ""}</option>)}
           </select>
-          <button className="btn-secondary btn-sm" onClick={refresh}>↻ Refresh Analytics</button>
-        </div>
+          <button className="btn-secondary btn-sm" onClick={refresh} disabled={!term || refreshing}>↻ Refresh Analytics</button>
+        </div>}
       </div>
 
+      {summaryError && <p role="alert">{summaryError}</p>}
+      {summary && <div className="kpi-row">
+        {["Enrolled Students", "Staff Members", "Classes", "Subjects"].map((label, index) =>
+          <KPICard key={label} label={label} value={summary[index]} />)}
+      </div>}
+      {error && <p role="alert">{error}</p>}
+      {notice && <p role="status">{notice}</p>}
+      {!loading && !term && !error && <p>No academic terms found. Add a session and term in Academic Calendar.</p>}
       {loading && <p className="loading-msg">Loading analytics…</p>}
-      {!loading && !snap && (
+      {analyticsEnabled && !loading && term && !snap && !error && (
         <div className="no-snap">
-          No analytics computed yet. Click <strong>↻ Refresh Analytics</strong> to generate.
+          Your term overview is ready to prepare. Select <strong>↻ Refresh Analytics</strong> to summarise results, attendance and fee collection for this term.
         </div>
       )}
 
@@ -82,9 +116,9 @@ export default function AdminDashboard() {
         <>
           {/* Row 1 — KPI cards */}
           <div className="kpi-row">
-            <KPICard label="Total Students"  value={snap.total_students}                       color="#1a6b3c" />
-            <KPICard label="School Average"  value={`${snap.school_average}%`}                color="#3498db" />
-            <KPICard label="Pass Rate"       value={`${snap.overall_pass_rate}%`}             color="#f39c12" />
+            <KPICard label="Total Students"  value={snap.total_students}                       color="var(--primary)" />
+            <KPICard label="School Average"  value={`${snap.school_average}%`}                color="var(--secondary)" />
+            <KPICard label="Pass Rate"       value={`${snap.overall_pass_rate}%`}             color="var(--accent)" />
             <KPICard label="Fee Collection"  value={`${snap.fee_collection_rate}%`} sub="of expected" color="#9b59b6" />
           </div>
 
@@ -124,7 +158,7 @@ export default function AdminDashboard() {
                   <XAxis dataKey="class_arm" tick={{ fontSize: 11 }} />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar dataKey="avg" fill="#3498db" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="avg" fill="var(--secondary)" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

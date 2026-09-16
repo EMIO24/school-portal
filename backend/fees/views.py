@@ -14,8 +14,10 @@ GET      /api/fees/outstanding/?term=&class_arm=
 
 import uuid
 from decimal import Decimal
+from requests.exceptions import RequestException
 
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Sum
 from django.http import HttpResponse
 from django.template.loader import render_to_string
@@ -25,7 +27,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsSchoolAdmin
+from accounts.permissions import IsSchoolAdmin, IsAuthenticatedTenantUser
+from .access import payment_student, check_student_access
 from enrollment.models import StudentProfile, ClassArm
 from .models import FeeCategory, FeeSchedule, FeePayment
 from .serializers import FeeCategorySerializer, FeeScheduleSerializer, FeePaymentSerializer
@@ -75,7 +78,7 @@ def _simple_pdf_bytes(lines):
 # ── Category CRUD ─────────────────────────────────────────────────────────────
 
 class FeeCategoryListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedTenantUser]
 
     def get_permissions(self):
         if self.request.method == 'POST':
@@ -97,7 +100,7 @@ class FeeCategoryListView(APIView):
 
 
 class FeeCategoryDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedTenantUser]
 
     def get_permissions(self):
         if self.request.method in ('PUT', 'DELETE'):
@@ -128,6 +131,8 @@ class FeeCategoryDetailView(APIView):
         obj = self._obj(pk, getattr(request, 'tenant', None))
         if not obj:
             return Response(status=404)
+        if FeePayment.objects.filter(fee_schedule__fee_category=obj).exists():
+            return Response({'detail': 'This category has receipts and must be retained.'}, status=409)
         obj.delete()
         return Response(status=204)
 
@@ -135,7 +140,10 @@ class FeeCategoryDetailView(APIView):
 # ── Schedule ──────────────────────────────────────────────────────────────────
 
 class FeeScheduleView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedTenantUser]
+
+    def get_permissions(self):
+        return [IsSchoolAdmin()] if self.request.method == "POST" else super().get_permissions()
 
     def get(self, request):
         school     = getattr(request, 'tenant', None)
@@ -154,10 +162,21 @@ class FeeScheduleView(APIView):
         term_id   = request.data.get('term_id')
         schedules = request.data.get('schedules', [])
 
+        from academics.models import Term
+        from enrollment.models import ClassLevel
+        if not Term.objects.filter(pk=term_id, session__school=school).exists():
+            return Response({'error': 'Select a term belonging to this school.'}, status=400)
+        if not isinstance(schedules, list):
+            return Response({'error': 'Schedules must be a list.'}, status=400)
         created = []
         errors  = []
         for i, item in enumerate(schedules):
             try:
+                if not ClassLevel.objects.filter(pk=item.get('class_level_id'), school=school).exists() or not FeeCategory.objects.filter(pk=item.get('fee_category_id'), school=school).exists():
+                    raise ValueError('Class and fee category must belong to this school.')
+                value = Decimal(str(item.get('amount')))
+                if not value.is_finite() or value <= 0 or value != value.quantize(Decimal('0.01')):
+                    raise ValueError('Enter a positive fee amount with at most two decimal places.')
                 obj, _ = FeeSchedule.objects.update_or_create(
                     school=school,
                     term_id=term_id,
@@ -179,14 +198,14 @@ class FeeScheduleView(APIView):
 # ── Student fee summary ───────────────────────────────────────────────────────
 
 class StudentFeesView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedTenantUser]
 
     def get(self, request, pk):
         school  = getattr(request, 'tenant', None)
         term_id = request.query_params.get('term')
 
         try:
-            student = StudentProfile.objects.get(pk=pk, school=school)
+            student = payment_student(request, pk)
         except StudentProfile.DoesNotExist:
             return Response(status=404)
 
@@ -223,89 +242,16 @@ class StudentFeesView(APIView):
 
 # ── Paystack ──────────────────────────────────────────────────────────────────
 
-class PaystackInitiateView(APIView):
-    permission_classes = [IsAuthenticated]
+from .payments import PaystackInitiateView, PaystackVerifyView
 
-    def post(self, request):
-        school           = getattr(request, 'tenant', None)
-        student_id       = request.data.get('student_id')
-        fee_schedule_ids = request.data.get('fee_schedule_ids', [])
-
-        try:
-            student = StudentProfile.objects.get(pk=student_id, school=school)
-        except StudentProfile.DoesNotExist:
-            return Response({'error': 'Student not found'}, status=404)
-
-        schedules = FeeSchedule.objects.filter(id__in=fee_schedule_ids, school=school)
-        total_naira = schedules.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-        total_kobo  = int(total_naira * 100)
-
-        reference = f"SCH-{uuid.uuid4().hex[:12].upper()}"
-        email     = student.guardian_email or student.user.email
-        callback  = request.build_absolute_uri(f'/api/fees/pay/verify/?reference={reference}')
-
-        try:
-            ps    = PaystackService()
-            url, ref = ps.initialize(email, total_kobo, reference, callback)
-        except ValueError as exc:
-            return Response({'error': str(exc)}, status=502)
-
-        # Store pending payment in Redis cache (JWT clients don't send session cookies)
-        cache.set(f'ps_pending:{ref}', {
-            'student_id':       student.id,
-            'fee_schedule_ids': fee_schedule_ids,
-        }, timeout=3600)
-
-        return Response({'authorization_url': url, 'reference': ref})
-
-
-class PaystackVerifyView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        school    = getattr(request, 'tenant', None)
-        reference = request.query_params.get('reference', '')
-
-        try:
-            ps   = PaystackService()
-            data = ps.verify(reference)
-        except ValueError as exc:
-            return Response({'error': str(exc)}, status=502)
-
-        if data.get('status') != 'success':
-            return Response({'error': 'Payment not successful'}, status=400)
-
-        pending = cache.get(f'ps_pending:{reference}')
-        if not pending:
-            return Response({'error': 'No pending payment found for this reference'}, status=404)
-        cache.delete(f'ps_pending:{reference}')
-
-        student    = StudentProfile.objects.get(pk=pending['student_id'], school=school)
-        schedules  = FeeSchedule.objects.filter(id__in=pending['fee_schedule_ids'])
-        created    = []
-        for sched in schedules:
-            p = FeePayment.objects.create(
-                school=school,
-                student=student,
-                fee_schedule=sched,
-                amount_paid=sched.amount,
-                payment_date=timezone.now().date(),
-                method='paystack',
-                paystack_reference=reference,
-                paystack_status='success',
-            )
-            created.append(p.receipt_number)
-
-        return Response({'status': 'success', 'receipts': created})
-
-
-# ── Manual payment ────────────────────────────────────────────────────────────
 
 class ManualPaymentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsSchoolAdmin]
 
+    @transaction.atomic
     def post(self, request):
-        school = getattr(request, 'tenant', None)
+        from tenants.models import School
+        school = School.objects.select_for_update().get(pk=request.tenant.pk)
         d      = request.data
 
         # Validate required fields before touching the DB
@@ -325,6 +271,17 @@ class ManualPaymentView(APIView):
         if payment_date is None:
             return Response({'error': 'payment_date must be a valid YYYY-MM-DD date.'}, status=400)
 
+        if d.get('method', 'cash') not in ('cash', 'bank_transfer'):
+            return Response({'error': 'Online payments must be verified through Paystack.'}, status=400)
+        try:
+            amount = Decimal(str(d['amount_paid']))
+            if not amount.is_finite() or amount <= 0 or amount != amount.quantize(Decimal('0.01')):
+                raise ValueError()
+        except Exception:
+            return Response({'error': 'Enter a positive amount with at most two decimal places.'}, status=400)
+        paid = FeePayment.objects.filter(student=student, fee_schedule=schedule).aggregate(total=Sum('amount_paid'))['total'] or Decimal(0)
+        if not student.current_class or schedule.class_level_id != student.current_class.class_level_id or amount > schedule.amount - paid:
+            return Response({'error': 'Payment must match this student and cannot exceed the outstanding balance.'}, status=400)
         payment = FeePayment(
             school=school,
             student=student,
@@ -341,7 +298,7 @@ class ManualPaymentView(APIView):
 # ── Receipt PDF ───────────────────────────────────────────────────────────────
 
 class FeeReceiptView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedTenantUser]
 
     def get(self, request, pk):
         school = getattr(request, 'tenant', None)
@@ -352,6 +309,7 @@ class FeeReceiptView(APIView):
         except FeePayment.DoesNotExist:
             return Response(status=404)
 
+        check_student_access(request.user, payment.student)
         try:
             from weasyprint import HTML
             html = render_to_string('fees/receipt.html', {'payment': payment, 'school': school})
@@ -374,7 +332,7 @@ class FeeReceiptView(APIView):
 # ── Outstanding fees ──────────────────────────────────────────────────────────
 
 class OutstandingFeesView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsSchoolAdmin]
 
     def get(self, request):
         school       = getattr(request, 'tenant', None)

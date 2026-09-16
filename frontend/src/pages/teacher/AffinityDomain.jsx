@@ -103,8 +103,8 @@ export default function AffinityDomain() {
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/academics/terms/'),
-      api.get('/enrollment/class-arms/'),
+      api.get('/api/terms/'),
+      api.get('/api/class-arms/'),
     ]).then(([t, c]) => {
       const termList = t.data.results ?? t.data;
       setTerms(termList);
@@ -122,14 +122,14 @@ export default function AffinityDomain() {
     try {
       // Students
       const { data: stuData } = await api.get(
-        `/enrollment/students/?class_arm=${selClass}`
+        `/api/students/?class_arm=${selClass}`
       );
-      const stuList = stuData.results ?? stuData;
+      const stuList = (stuData.results ?? stuData).map(stu => ({ ...stu, id: stu.user }));
       setStudents(stuList);
 
       // Existing ratings
       const { data: ratingData } = await api.get(
-        `/gradebook/${endpoint}/?class_arm=${selClass}&term=${selTerm}`
+        `/api/gradebook/${endpoint}/?class_arm=${selClass}&term=${selTerm}`
       );
       const existing = ratingData.results ?? ratingData;
 
@@ -173,7 +173,7 @@ export default function AffinityDomain() {
     for (const stu of students) {
       try {
         await api.put(
-          `/gradebook/${endpoint}/student/${stu.id}/term/${selTerm}/`,
+          `/api/gradebook/${endpoint}/student/${stu.id}/term/${selTerm}/`,
           { ...ratings[stu.id], class_arm: Number(selClass) }
         );
       } catch {

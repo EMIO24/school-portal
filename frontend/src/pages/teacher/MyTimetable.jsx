@@ -24,10 +24,10 @@ export default function MyTimetable() {
 
   // Boot: load terms, pre-select active
   useEffect(() => {
-    api.get('/academics/terms/').then(({ data }) => {
+    api.get('/api/terms/').then(({ data }) => {
       const list   = data.results ?? data;
       setTerms(list);
-      const active = list.find(t => t.is_active);
+      const active = list.find(t => t.is_current);
       if (active) setSelectedTerm(String(active.id));
     });
   }, []);
@@ -37,8 +37,8 @@ export default function MyTimetable() {
     setLoading(true);
     try {
       const [pRes, eRes] = await Promise.all([
-        api.get('/timetable/periods/'),
-        api.get(`/timetable/entries/my-timetable/?term=${selectedTerm}`),
+        api.get('/api/timetable/periods/'),
+        api.get(`/api/timetable/entries/my-timetable/?term=${selectedTerm}`),
       ]);
       setPeriods(pRes.data.results ?? pRes.data);
       setEntries(eRes.data.results ?? eRes.data);

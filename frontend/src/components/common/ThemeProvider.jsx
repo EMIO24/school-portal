@@ -10,6 +10,7 @@
  */
 
 import React from "react";
+import { useLocation } from "react-router-dom";
 import { ThemeProvider as ThemeContextProvider, useTheme } from "../../context/ThemeContext";
 import LoadingScreen from "./LoadingScreen";
 import "./ThemeProvider.css";
@@ -18,6 +19,8 @@ import "./ThemeProvider.css";
 
 function ThemeGate({ children }) {
   const { school, loading, error, refetch } = useTheme();
+  const { pathname } = useLocation();
+  if (pathname === "/help" || pathname === "/register-school" || pathname.startsWith("/platform/") || pathname.startsWith("/superadmin/")) return <>{children}</>;
 
   // Show full-page loader only on first load with no cached data
   if (loading && !school) {

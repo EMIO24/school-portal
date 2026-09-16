@@ -13,6 +13,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import DocxQuestionUpload from './DocxQuestionUpload';
 import api from '../../services/api';
 import '../../styles/QuestionEditor.css';
 
@@ -77,7 +78,8 @@ function Preview({ form }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function QuestionEditor({ question, subjects, classLevels, onSaved, onClose }) {
+export default function QuestionEditor({ question, subjects, classLevels, onSaved, onImported, onClose }) {
+  const [importBusy, setImportBusy] = useState(false);
   const isEdit = Boolean(question?.id);
 
   const [topics,  setTopics]  = useState([]);
@@ -113,7 +115,7 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
   // Load topics when subject + class_level change
   useEffect(() => {
     if (!form.subject || !form.class_level) { setTopics([]); return; }
-    api.get(`/cbt/topics/?subject=${form.subject}&class_level=${form.class_level}`)
+    api.get(`/api/cbt/topics/?subject=${form.subject}&class_level=${form.class_level}`)
       .then(({ data }) => setTopics(data.results ?? data))
       .catch(() => setTopics([]));
   }, [form.subject, form.class_level]);
@@ -151,8 +153,8 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
 
     try {
       const { data } = isEdit
-        ? await api.patch(`/cbt/questions/${question.id}/`, payload)
-        : await api.post('/cbt/questions/', payload);
+        ? await api.patch(`/api/cbt/questions/${question.id}/`, payload)
+        : await api.post('/api/cbt/questions/', payload);
       onSaved(data);
     } catch (err) {
       const detail = err?.response?.data;
@@ -165,13 +167,13 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
   const showOptions = form.question_type !== 'fill_blank';
 
   return (
-    <div className="qe-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="qe-overlay" onClick={e => e.target === e.currentTarget && !importBusy && !saving && onClose()}>
       <div className="qe-modal">
 
         {/* Header */}
         <div className="qe-header">
           <h2>{isEdit ? 'Edit Question' : 'New Question'}</h2>
-          <button className="qe-close" onClick={onClose}>✕</button>
+          <button className="qe-close" onClick={onClose} disabled={importBusy || saving}>✕</button>
         </div>
 
         <div className="qe-body">
@@ -230,6 +232,8 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
               </div>
             </div>
 
+            {!isEdit && <DocxQuestionUpload defaults={form} onBusy={setImportBusy} onImported={onImported} />}
+            {!isEdit && <h3>Or add a question manually</h3>}
             {/* Question text */}
             <div className="qe-field">
               <label className="qe-label">Question Text *</label>
@@ -323,8 +327,8 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
 
         {/* Footer */}
         <div className="qe-footer">
-          <button className="qe-btn qe-btn--ghost" onClick={onClose}>Cancel</button>
-          <button className="qe-btn qe-btn--navy" onClick={handleSave} disabled={saving}>
+          <button className="qe-btn qe-btn--ghost" onClick={onClose} disabled={importBusy || saving}>Cancel</button>
+          <button className="qe-btn qe-btn--navy" onClick={handleSave} disabled={saving || importBusy}>
             {saving ? 'Saving…' : isEdit ? 'Update Question' : 'Save Question'}
           </button>
         </div>

@@ -46,25 +46,15 @@ def compute_school_analytics(school_id, term_id):
     # Class arm averages
     class_avgs = []
     for arm in ClassArm.objects.filter(school=school):
-        arm_scores = scores.filter(student__student_profile__current_class=arm)
+        arm_scores = scores.filter(class_arm=arm)
         avg = arm_scores.aggregate(a=Avg('total_score'))['a']
         if avg:
             class_avgs.append({'class_arm': arm.full_name, 'avg': round(float(avg), 1)})
 
     # Grade distribution (Nigerian scale)
     grade_dist = {}
-    for entry in scores.values('total_score'):
-        ts = float(entry['total_score'])
-        if ts >= 70:   g = 'A1'
-        elif ts >= 65: g = 'B2'
-        elif ts >= 60: g = 'B3'
-        elif ts >= 55: g = 'C4'
-        elif ts >= 50: g = 'C5'
-        elif ts >= 45: g = 'C6'
-        elif ts >= 40: g = 'D7'
-        elif ts >= 30: g = 'E8'
-        else:          g = 'F9'
-        grade_dist[g] = grade_dist.get(g, 0) + 1
+    for row in scores.values('grade').annotate(count=Count('id')):
+        grade_dist[row['grade']] = row['count']
 
     # Attendance school avg
     attend_pct = 0
@@ -81,7 +71,7 @@ def compute_school_analytics(school_id, term_id):
         attend_pct = round(attend_data['present'] / attend_data['total'] * 100, 1)
 
     # Fee collection rate
-    fee_expected = FeeSchedule.objects.filter(school=school, term=term).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+    fee_expected = sum((schedule.amount * StudentProfile.objects.filter(school=school, current_class__class_level=schedule.class_level, status='active').count() for schedule in FeeSchedule.objects.filter(school=school, term=term)), Decimal('0'))
     fee_paid     = FeePayment.objects.filter(school=school, fee_schedule__term=term).aggregate(t=Sum('amount_paid'))['t'] or Decimal('0')
     fee_rate     = round(float(fee_paid) / float(fee_expected) * 100, 1) if fee_expected else 0
 

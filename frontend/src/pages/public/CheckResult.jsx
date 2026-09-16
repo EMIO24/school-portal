@@ -10,7 +10,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import '../../styles/CheckResult.css';
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+import { API_BASE_URL as API_BASE, TENANT_HEADERS } from '../../services/config';
 
 const RATING_DESC = { 1: 'Poor', 2: 'Below Avg', 3: 'Average', 4: 'Good', 5: 'Excellent' };
 
@@ -64,7 +64,8 @@ export default function CheckResult() {
           admission_number: form.admission_number.trim().toUpperCase(),
           serial_number:    form.serial_number.trim().toUpperCase(),
           pin:              form.pin.trim(),
-        }
+        },
+        { headers: TENANT_HEADERS }
       );
       setResult(data);
     } catch (err) {

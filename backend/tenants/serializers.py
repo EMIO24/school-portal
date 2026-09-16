@@ -48,15 +48,8 @@ class SchoolSerializer(serializers.ModelSerializer):
     # ── Validation ────────────────────────────────────────────────────────────
 
     def validate_theme_config(self, value: dict) -> dict:
-        """Accept only the expected keys in theme_config."""
-        allowed_keys = {"primary_color", "secondary_color", "accent_color", "font_family"}
-        unknown = set(value.keys()) - allowed_keys
-        if unknown:
-            raise serializers.ValidationError(
-                f"Unexpected keys in theme_config: {unknown}. "
-                f"Allowed keys: {allowed_keys}"
-            )
-        return value
+        from .branding import validate_theme
+        return validate_theme(value)
 
     def validate_subdomain(self, value: str) -> str:
         """Ensure subdomain is lowercase and alphanumeric-hyphen only."""
@@ -76,11 +69,16 @@ class SchoolPublicSerializer(serializers.ModelSerializer):
     (e.g., login page branding — no sensitive fields).
     """
 
+    entitlements = serializers.SerializerMethodField()
     theme = serializers.SerializerMethodField()
 
     class Meta:
         model = School
-        fields = ["name", "slug", "subdomain", "logo", "theme", "motto"]
+        fields = ["name", "slug", "subdomain", "logo", "theme", "motto", "entitlements"]
+
+    def get_entitlements(self, obj):
+        from .plans import entitlements
+        return entitlements(obj)
 
     def get_theme(self, obj: School) -> dict:
         return obj.get_theme()

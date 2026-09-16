@@ -20,6 +20,9 @@ import "./styles/variables.css";
 import "./styles/global.css";
 
 import App from "./App";
+import "./styles/mobile.css";
+import "./styles/workspace.css";
+import "./styles/mobile-workspace.css";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 

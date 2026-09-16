@@ -1,3 +1,4 @@
+from accounts.school_access import TenantRelationsMixin
 """
 backend/cbt/serializers.py
 """
@@ -6,7 +7,7 @@ from rest_framework import serializers
 from .models import Topic, Question, CBTExam, StudentExamSession, StudentAnswer
 
 
-class TopicSerializer(serializers.ModelSerializer):
+class TopicSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     class Meta:
         model  = Topic
         fields = ['id', 'name', 'subject', 'class_level']
@@ -52,6 +53,13 @@ class QuestionWriteSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request')
+        if request is not None:
+            for name in ('subject', 'class_level', 'topic'):
+                self.fields[name].queryset = self.fields[name].queryset.filter(school=getattr(request, 'tenant', None))
+
     def validate_options(self, value):
         if not isinstance(value, list):
             raise serializers.ValidationError('options must be a list.')
@@ -94,6 +102,32 @@ class CBTExamWriteSerializer(serializers.ModelSerializer):
             'allow_review', 'show_score_immediately', 'status',
         ]
         read_only_fields = ['id']
+
+    def validate(self, attrs):
+        exam = self.instance
+        value = lambda key, default=None: attrs.get(key, getattr(exam, key, default))
+        rules = value('random_config', [])
+        if not isinstance(rules, list):
+            raise serializers.ValidationError({'random_config': 'Rules must be a list.'})
+        for rule in rules:
+            if not isinstance(rule, dict) or type(rule.get('count')) is not int or not 1 <= rule['count'] <= 100:
+                raise serializers.ValidationError({'random_config': 'Each rule needs a whole question count between 1 and 100.'})
+            if rule.get('difficulty') not in (None, '', 'easy', 'medium', 'hard'):
+                raise serializers.ValidationError({'random_config': 'Choose a valid difficulty.'})
+            if rule.get('topic_id'):
+                from .models import Topic
+                request = self.context.get('request')
+                school = getattr(request, 'tenant', None)
+                if not str(rule['topic_id']).isdigit() or not Topic.objects.filter(pk=rule['topic_id'], school=school, subject=value('subject')).exists():
+                    raise serializers.ValidationError({'random_config': 'Choose a topic belonging to the selected subject and school.'})
+        if value('selection_mode') == 'random_from_bank' and not rules:
+            raise serializers.ValidationError({'random_config': 'Add at least one question rule.'})
+        if value('start_datetime') and value('end_datetime') and value('end_datetime') <= value('start_datetime'):
+            raise serializers.ValidationError({'end_datetime': 'End time must be after start time.'})
+        term, session = value('term'), value('session')
+        if term and session and term.session_id != session.id:
+            raise serializers.ValidationError({'term': 'Choose a term from the selected session.'})
+        return attrs
 
 
 # ── Student-facing question (no correct_answer) ───────────────────────────────

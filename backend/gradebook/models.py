@@ -76,14 +76,14 @@ class GradeScale(models.Model):
 # Default Nigerian WAEC grading scale — seeded per school on creation
 DEFAULT_NIGERIAN_SCALE = [
     {'min_score': 75, 'max_score': 100, 'grade': 'A1', 'remark': 'Excellent'},
-    {'min_score': 70, 'max_score': 74,  'grade': 'B2', 'remark': 'Very Good'},
-    {'min_score': 65, 'max_score': 69,  'grade': 'B3', 'remark': 'Good'},
-    {'min_score': 60, 'max_score': 64,  'grade': 'C4', 'remark': 'Credit'},
-    {'min_score': 55, 'max_score': 59,  'grade': 'C5', 'remark': 'Credit'},
-    {'min_score': 50, 'max_score': 54,  'grade': 'C6', 'remark': 'Credit'},
-    {'min_score': 45, 'max_score': 49,  'grade': 'D7', 'remark': 'Pass'},
-    {'min_score': 40, 'max_score': 44,  'grade': 'E8', 'remark': 'Pass'},
-    {'min_score':  0, 'max_score': 39,  'grade': 'F9', 'remark': 'Fail'},
+    {'min_score': 70, 'max_score': Decimal('74.99'),  'grade': 'B2', 'remark': 'Very Good'},
+    {'min_score': 65, 'max_score': Decimal('69.99'),  'grade': 'B3', 'remark': 'Good'},
+    {'min_score': 60, 'max_score': Decimal('64.99'),  'grade': 'C4', 'remark': 'Credit'},
+    {'min_score': 55, 'max_score': Decimal('59.99'),  'grade': 'C5', 'remark': 'Credit'},
+    {'min_score': 50, 'max_score': Decimal('54.99'),  'grade': 'C6', 'remark': 'Credit'},
+    {'min_score': 45, 'max_score': Decimal('49.99'),  'grade': 'D7', 'remark': 'Pass'},
+    {'min_score': 40, 'max_score': Decimal('44.99'),  'grade': 'E8', 'remark': 'Pass'},
+    {'min_score':  0, 'max_score': Decimal('39.99'),  'grade': 'F9', 'remark': 'Fail'},
 ]
 
 

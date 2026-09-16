@@ -1,0 +1,82 @@
+import React from 'react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { renderPage } from '../../../testSupport/renderPage';
+import Students from '../../../pages/admin/Students';
+import ScratchCards from '../../../pages/admin/ScratchCards';
+import DocxQuestionUpload from '../../../components/cbt/DocxQuestionUpload';
+import api from '../../../services/api';
+jest.mock('../../../services/api', () => ({ __esModule: true, default: { get: jest.fn(), post: jest.fn() } }));
+jest.mock('../../../services/download', () => ({ downloadFile: jest.fn() }));
+const student = { id: 71, full_name: 'Ada Test', email: 'ada@test.example', admission_number: 'QA-001', current_class_name: 'JSS1A', status: 'active' };
+beforeEach(() => { jest.resetAllMocks(); });
+test('student list shows profile links, search and pagination', async () => {
+  api.get.mockImplementation(async url => {
+    if (url === '/api/class-arms/') return { data: [] };
+    return { data: { results: [student], count: 30, next: '/api/students/?page=2' } };
+  });
+  renderPage(<Students />);
+  expect(await screen.findByRole('link', { name: 'Ada Test' })).toHaveAttribute('href', '/admin/students/71');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('page=2')));
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Ada' } });
+  await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('search=Ada')));
+  expect(api.get.mock.calls.at(-1)[0]).toContain('page=1');
+});
+test('student load failures offer a working retry', async () => {
+  api.get.mockRejectedValue(new Error('offline'));
+  renderPage(<Students />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not load students');
+  api.get.mockResolvedValue({ data: [] });
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(await screen.findByText(/No students match/)).toBeVisible();
+});
+const question = { question_text: 'What is 2 + 2?', question_type: 'mcq', options: [{ id: 'A', text: '4' }, { id: 'B', text: '5' }], correct_answer: 'A', explanation: '' };
+test('DOCX preview sends multipart data and imports only after review', async () => {
+  api.post.mockResolvedValueOnce({ data: { questions: [question] } }).mockResolvedValueOnce({ data: { imported: 1, errors: [] } });
+  const onImported = jest.fn();
+  renderPage(<DocxQuestionUpload defaults={{ subject: '2', class_level: '3', difficulty: 'medium', cognitive_level: 'knowledge' }} onImported={onImported} />);
+  fireEvent.change(screen.getByLabelText('Upload Word (.docx)'), { target: { files: [new File(['document'], 'questions.docx')] } });
+  expect(await screen.findByLabelText('Question 1 text')).toHaveValue('What is 2 + 2?');
+  expect(api.post).toHaveBeenCalledTimes(1);
+  expect(api.post.mock.calls[0][1]).toBeInstanceOf(FormData);
+  expect(api.post.mock.calls[0][2].headers['Content-Type']).toBe('multipart/form-data');
+  fireEvent.click(screen.getByRole('button', { name: 'Save all 1 questions' }));
+  await waitFor(() => expect(onImported).toHaveBeenCalled());
+  expect(api.post.mock.calls[1][1][0]).toEqual(expect.objectContaining({ subject: 2, class_level: 3, question_text: question.question_text }));
+});
+test('a document with 40 questions fills 40 editable forms and saves all 40', async () => {
+  const questions = Array.from({ length: 40 }, (_, index) => ({ ...question, question_text: 'Question number ' + (index + 1) }));
+  api.post.mockResolvedValueOnce({ data: { questions } }).mockResolvedValueOnce({ data: { imported: 40, errors: [] } });
+  const onImported = jest.fn();
+  renderPage(<DocxQuestionUpload defaults={{ subject: '2', class_level: '3', difficulty: 'medium', cognitive_level: 'knowledge' }} onImported={onImported} />);
+  fireEvent.change(screen.getByLabelText('Upload Word (.docx)'), { target: { files: [new File(['doc'], 'questions.docx')] } });
+  expect(await screen.findByLabelText('Question 40 text')).toHaveValue('Question number 40');
+  expect(screen.getAllByLabelText(/^Question [0-9]+ text$/)).toHaveLength(40);
+  expect(screen.getByLabelText('Question 40 option A')).toHaveValue('4');
+  expect(screen.getByLabelText('Question 40 correct answer')).toHaveValue('A');
+  fireEvent.change(screen.getByLabelText('Question 1 text'), { target: { value: 'Edited question' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save all 40 questions' }));
+  await waitFor(() => expect(onImported).toHaveBeenCalled());
+  expect(api.post.mock.calls[1][1]).toHaveLength(40);
+  expect(api.post.mock.calls[1][1][0].question_text).toBe('Edited question');
+});
+test('DOCX rejects unsupported uploads locally', async () => {
+  renderPage(<DocxQuestionUpload defaults={{}} />);
+  fireEvent.change(screen.getByLabelText('Upload Word (.docx)'), { target: { files: [new File(['text'], 'questions.csv')] } });
+  expect(await screen.findByRole('alert')).toHaveTextContent('.docx');
+  expect(api.post).not.toHaveBeenCalled();
+});
+test('scratch-card generation downloads a PDF', async () => {
+  api.get.mockResolvedValue({ data: [] });
+  api.post.mockResolvedValue({ data: new Blob(['%PDF-1.4']) });
+  URL.createObjectURL = jest.fn(() => 'blob:pdf');
+  URL.revokeObjectURL = jest.fn();
+  const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  renderPage(<ScratchCards />);
+  fireEvent.change(screen.getByPlaceholderText('e.g. 2024/25 First Term'), { target: { value: 'Test batch' } });
+  fireEvent.click(screen.getByRole('button', { name: /Generate & Download PDF/ }));
+  await waitFor(() => expect(click).toHaveBeenCalled());
+  expect(click.mock.instances[0].download).toBe('scratch_cards_Test_batch.pdf');
+  expect(URL.createObjectURL.mock.calls[0][0].type).toBe('application/pdf');
+  click.mockRestore();
+});

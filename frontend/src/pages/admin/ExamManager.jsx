@@ -21,6 +21,13 @@ const STATUS_META = {
   completed: { label: 'Completed', cls: 'em-badge--completed' },
 };
 
+function localDateTime(iso) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
 function formatDT(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('en-GB', {
@@ -57,16 +64,16 @@ function RandomRule({ rule, topics, onChange, onRemove }) {
         min={1}
         max={100}
         value={rule.count}
-        onChange={e => onChange({ ...rule, count: parseInt(e.target.value, 10) || 1 })}
+        onChange={e => onChange({ ...rule, count: e.target.value })}
         placeholder="Count"
       />
-      <button className="em-rule-remove" onClick={onRemove}>✕</button>
+      <button type="button" aria-label="Remove rule" className="em-rule-remove" onClick={onRemove}>✕</button>
     </div>
   );
 }
 
 // ── Exam form modal ────────────────────────────────────────────────────────────
-function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved, onClose }) {
+export function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved, onClose }) {
   const isEdit = Boolean(exam?.id);
 
   const blank = {
@@ -80,7 +87,10 @@ function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved, onClos
   };
 
   const [form,    setForm]    = useState(() => exam ? { ...blank, ...exam,
-    class_arms: exam.class_arms_ids ?? [],
+    class_arms: exam.class_arms ?? exam.class_arms_ids ?? [],
+    start_datetime: localDateTime(exam.start_datetime),
+    end_datetime: localDateTime(exam.end_datetime),
+    random_config: Array.isArray(exam.random_config) ? exam.random_config : [],
   } : blank);
   const [topics,  setTopics]  = useState([]);
   const [questions, setQuestions] = useState([]);
@@ -92,7 +102,7 @@ function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved, onClos
   // Load topics when subject changes
   useEffect(() => {
     if (!form.subject) { setTopics([]); return; }
-    api.get(`/cbt/topics/?subject=${form.subject}`)
+    api.get(`/api/cbt/topics/?subject=${form.subject}`)
       .then(({ data }) => setTopics(data.results ?? data))
       .catch(() => setTopics([]));
   }, [form.subject]);
@@ -100,7 +110,7 @@ function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved, onClos
   // Load questions for manual picker
   useEffect(() => {
     if (form.selection_mode !== 'manual' || !form.subject) return;
-    api.get(`/cbt/questions/?subject=${form.subject}&is_active=true`)
+    api.get(`/api/cbt/questions/?subject=${form.subject}&is_active=true`)
       .then(({ data }) => setQuestions(data.results ?? data))
       .catch(() => setQuestions([]));
   }, [form.selection_mode, form.subject]);
@@ -139,18 +149,25 @@ function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved, onClos
     if (!form.start_datetime)   { setError('Start date/time required.');   return; }
     if (!form.end_datetime)     { setError('End date/time required.');     return; }
 
+    if (!form.class_arms.length) { setError('Select at least one class.'); return; }
+    if (form.selection_mode === 'random_from_bank' && (!form.random_config.length ||
+        form.random_config.some(rule => !Number.isInteger(Number(rule.count)) || Number(rule.count) < 1 || Number(rule.count) > 100))) {
+      setError('Add at least one rule with a question count between 1 and 100.'); return;
+    }
+    if (new Date(form.end_datetime) <= new Date(form.start_datetime)) { setError('End time must be after start time.'); return; }
     setSaving(true);
     setError('');
 
     const payload = {
       ...form,
+      random_config: form.random_config.map(rule => ({ ...rule, count: Number(rule.count), topic_id: rule.topic_id ? Number(rule.topic_id) : null })),
       status: publishNow ? 'published' : form.status,
     };
 
     try {
       const { data } = isEdit
-        ? await api.patch(`/cbt/exams/${exam.id}/`, payload)
-        : await api.post('/cbt/exams/', payload);
+        ? await api.patch(`/api/cbt/exams/${exam.id}/`, payload)
+        : await api.post('/api/cbt/exams/', payload);
       onSaved(data);
     } catch (err) {
       const d = err?.response?.data;
@@ -282,7 +299,7 @@ function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved, onClos
                   />
                 ))}
               </div>
-              <button className="em-add-rule-btn" onClick={addRule}>+ Add Rule</button>
+              <button type="button" className="em-add-rule-btn" onClick={addRule}>+ Add Rule</button>
               <p className="em-hint">
                 Total questions = sum of all rule counts. Leave topic/difficulty blank to draw from all.
               </p>
@@ -365,11 +382,11 @@ export default function ExamManager() {
   const loadAll = useCallback(() => {
     setLoading(true);
     Promise.all([
-      api.get('/cbt/exams/'),
-      api.get('/enrollment/subjects/'),
-      api.get('/enrollment/class-arms/'),
-      api.get('/academics/terms/'),
-      api.get('/academics/sessions/'),
+      api.get('/api/cbt/exams/'),
+      api.get('/api/subjects/'),
+      api.get('/api/class-arms/'),
+      api.get('/api/terms/'),
+      api.get('/api/sessions/'),
     ]).then(([e, s, a, t, ses]) => {
       setExams(e.data.results ?? e.data);
       setSubjects(s.data.results ?? s.data);
@@ -382,7 +399,12 @@ export default function ExamManager() {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   const openNew  = () => { setEditingExam(null); setModalOpen(true); };
-  const openEdit = (exam) => { setEditingExam(exam); setModalOpen(true); };
+  const openEdit = async (exam) => {
+    try {
+      const { data } = await api.get('/api/cbt/exams/' + exam.id + '/configuration/');
+      setEditingExam(data); setModalOpen(true);
+    } catch { window.alert('Could not load the saved exam settings. Please retry.'); }
+  };
 
   const handleSaved = (saved) => {
     setExams(prev => {
@@ -391,16 +413,17 @@ export default function ExamManager() {
       return [saved, ...prev];
     });
     setModalOpen(false);
+    loadAll();
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this exam? This cannot be undone.')) return;
-    await api.delete(`/cbt/exams/${id}/`);
+    await api.delete(`/api/cbt/exams/${id}/`);
     setExams(prev => prev.filter(e => e.id !== id));
   };
 
   const handlePublish = async (exam) => {
-    const { data } = await api.patch(`/cbt/exams/${exam.id}/`, { status: 'published' });
+    const { data } = await api.patch(`/api/cbt/exams/${exam.id}/`, { status: 'published' });
     setExams(prev => prev.map(e => e.id === data.id ? data : e));
   };
 

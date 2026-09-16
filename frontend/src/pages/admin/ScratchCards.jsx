@@ -4,7 +4,7 @@
  * Admin scratch card management:
  *   - Generate batch form (quantity, batch name, term, price)
  *   - Batch table: name | total | used | unused | generated date
- *   - Download unused serials CSV per batch
+ *   - Download unused serials PDF per batch
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -50,20 +50,12 @@ export default function ScratchCards() {
   });
 
   // ── Boot ────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    api.get('/academics/terms/').then(({ data }) => {
-      const list = data.results ?? data;
-      setTerms(list);
-      const cur = list.find(t => t.is_current);
-      if (cur) setForm(f => ({ ...f, term_id: String(cur.id) }));
-    });
-    loadBatches();
-  }, []);
+
 
   const loadBatches = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/scratch-cards/batch-stats/');
+      const { data } = await api.get('/api/scratch-cards/batch-stats/');
       setBatches(data);
     } catch {
       setAlert({ type: 'error', msg: 'Failed to load batches.' });
@@ -71,6 +63,16 @@ export default function ScratchCards() {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    api.get('/api/terms/').then(({ data }) => {
+      const list = data.results ?? data;
+      setTerms(list);
+      const cur = list.find(t => t.is_current);
+      if (cur) setForm(f => ({ ...f, term_id: String(cur.id) }));
+    });
+    loadBatches();
+  }, [loadBatches]);
 
   // ── Generate ─────────────────────────────────────────────────────────────────
   const handleGenerate = async e => {
@@ -83,24 +85,24 @@ export default function ScratchCards() {
     setAlert(null);
 
     try {
-      const response = await api.post('/scratch-cards/generate/', {
+      const response = await api.post('/api/scratch-cards/generate/', {
         quantity:   Number(form.quantity),
         batch_name: form.batch_name.trim(),
         term_id:    form.term_id || null,
         price:      form.price,
-      }, { responseType: 'blob' });
+      }, { responseType: 'blob', timeout: 180000 });
 
-      // Trigger CSV download
-      const url      = window.URL.createObjectURL(new Blob([response.data]));
+      // Trigger PDF download
+      const url      = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const link     = document.createElement('a');
       link.href      = url;
-      link.download  = `scratch_cards_${form.batch_name.replace(/\s+/g, '_')}.csv`;
+      link.download  = `scratch_cards_${form.batch_name.replace(/\s+/g, '_')}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      setAlert({ type: 'success', msg: `${form.quantity} cards generated. CSV downloaded — keep it safe, PINs cannot be recovered.` });
+      setAlert({ type: 'success', msg: `${form.quantity} cards generated. PDF downloaded — keep it safe, PINs cannot be recovered.` });
       setForm(f => ({ ...f, batch_name: '' }));
       await loadBatches();
     } catch (err) {
@@ -114,13 +116,13 @@ export default function ScratchCards() {
   const downloadUnused = async (batchName) => {
     try {
       const response = await api.get(
-        `/scratch-cards/unused-csv/?batch=${encodeURIComponent(batchName)}`,
+        `/api/scratch-cards/unused-pdf/?batch=${encodeURIComponent(batchName)}`,
         { responseType: 'blob' }
       );
-      const url  = window.URL.createObjectURL(new Blob([response.data]));
+      const url  = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const link = document.createElement('a');
       link.href  = url;
-      link.download = `unused_${batchName.replace(/\s+/g, '_')}.csv`;
+      link.download = `unused_${batchName.replace(/\s+/g, '_')}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -137,7 +139,7 @@ export default function ScratchCards() {
       <p style={S.sub}>Generate PIN batches for result checking · Track usage per batch</p>
 
       {alert && (
-        <div style={{
+        <div role="alert" style={{
           ...S.alert,
           background: alert.type === 'success' ? '#dcfce7' : '#fee2e2',
           color:      alert.type === 'success' ? '#166534' : '#991b1b',
@@ -210,12 +212,12 @@ export default function ScratchCards() {
                 style={{ ...S.btn, background: '#0c1c40', color: '#fff' }}
                 disabled={generating}
               >
-                {generating ? '⏳ Generating…' : '🪙 Generate & Download CSV'}
+                {generating ? '⏳ Generating…' : '🪙 Generate & Download PDF'}
               </button>
             </div>
 
             <p style={{ fontSize: '.76rem', color: '#6b7280', marginTop: 10 }}>
-              ⚠ The CSV with plain PINs downloads immediately. Store it securely — PINs are hashed in the database and cannot be recovered.
+              ⚠ The PDF with plain PINs downloads immediately. Store it securely — PINs are hashed in the database and cannot be recovered.
             </p>
           </form>
         </div>
@@ -275,7 +277,7 @@ export default function ScratchCards() {
                         disabled={b.unused === 0}
                         title={b.unused === 0 ? 'No unused cards in this batch' : 'Download unused serial numbers'}
                       >
-                        📥 Unused CSV
+                        📥 Unused Serials PDF
                       </button>
                     </td>
                   </tr>

@@ -154,7 +154,7 @@ class CBTExam(models.Model):
                 topic_id   = rule.get('topic_id')
                 count      = int(rule.get('count', 0))
                 difficulty = rule.get('difficulty')
-                pool = Question.objects.filter(school=self.school, is_active=True)
+                pool = Question.objects.filter(school=self.school, subject=self.subject, is_active=True).exclude(pk__in=[question.pk for question in qs])
                 if topic_id:
                     pool = pool.filter(topic_id=topic_id)
                 if difficulty:
@@ -185,6 +185,8 @@ class StudentExamSession(models.Model):
     )
 
     # Ordered list of question IDs as the student will see them
+    question_snapshot = models.JSONField(default=list, blank=True)
+    deadline_at = models.DateTimeField(null=True, blank=True)
     question_order = models.JSONField(default=list)
     # {str(question_id): {"A": "C", "B": "A", ...}} — maps original option id → shuffled position
     option_maps    = models.JSONField(default=dict)
@@ -209,8 +211,8 @@ class StudentExamSession(models.Model):
 
 class StudentAnswer(models.Model):
     exam_session    = models.ForeignKey(StudentExamSession, on_delete=models.CASCADE, related_name='answers')
-    question        = models.ForeignKey(Question,           on_delete=models.CASCADE, related_name='student_answers')
-    selected_option = models.CharField(max_length=10, blank=True, default='')
+    question        = models.ForeignKey(Question,           on_delete=models.PROTECT, related_name='student_answers')
+    selected_option = models.CharField(max_length=1000, blank=True, default='')
     is_correct      = models.BooleanField(null=True, blank=True)   # null until submitted
     time_spent_seconds = models.IntegerField(default=0)
 

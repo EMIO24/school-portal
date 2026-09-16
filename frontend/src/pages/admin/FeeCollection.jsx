@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { downloadReport } from "../../services/pdf";
 import api from "../../services/api";
 import "./FeeCollection.css";
 
@@ -10,16 +11,14 @@ function statusOf(paid, total) {
   return "unpaid";
 }
 
-function exportCSV(rows) {
-  const header = "Student,Class,Total Fees,Paid,Outstanding\n";
-  const body   = rows
-    .filter(r => statusOf(r.paid, r.total_fees) !== "paid")
-    .map(r => `"${r.student_name}","${r.class}",${r.total_fees},${r.paid},${r.outstanding}`)
-    .join("\n");
-  const blob = new Blob([header + body], { type: "text/csv" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a"); a.href = url; a.download = "debtors.csv"; a.click();
-  URL.revokeObjectURL(url);
+function exportPDF(rows) {
+  const debtors = rows.filter(row => Number(row.outstanding) > 0);
+  const lines = debtors.length ? debtors.flatMap(row => [
+    row.student_name + ' | Class: ' + row.class,
+    'Total fees: NGN ' + row.total_fees + ' | Paid: NGN ' + row.paid + ' | Outstanding: NGN ' + row.outstanding,
+    '',
+  ]) : ['No outstanding balances in the selected term/class.'];
+  downloadReport('Outstanding school fees', lines, 'debtors.pdf');
 }
 
 export default function FeeCollection() {
@@ -38,30 +37,32 @@ export default function FeeCollection() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.get("/api/academics/terms/").then(({ data: d }) => {
+    api.get("/api/terms/").then(({ data: d }) => {
       const list = Array.isArray(d) ? d : d.results || [];
       setTerms(list);
       const cur = list.find(t => t.is_current);
       if (cur) setSelectedTerm(String(cur.id));
     }).catch(() => {});
 
-    api.get("/api/enrollment/class-arms/").then(({ data: d }) => {
+    api.get("/api/class-arms/").then(({ data: d }) => {
       setClassArms(Array.isArray(d) ? d : d.results || []);
     }).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (selectedTerm) loadOutstanding();
-  }, [selectedTerm, selectedArm]);
 
-  function loadOutstanding() {
+  const loadOutstanding = useCallback(() => {
     setLoading(true);
     let url = `/api/fees/outstanding/?term=${selectedTerm}`;
     if (selectedArm) url += `&class_arm=${selectedArm}`;
     api.get(url)
       .then(({ data: d }) => { setOutstanding(Array.isArray(d) ? d : d.results || []); setLoading(false); })
       .catch(() => setLoading(false));
-  }
+  }, [selectedTerm, selectedArm]);
+
+  useEffect(() => {
+    if (selectedTerm) loadOutstanding();
+  }, [loadOutstanding, selectedTerm]);
+
 
   async function openPayModal(student) {
     setModal(student);
@@ -119,7 +120,7 @@ export default function FeeCollection() {
           <option value="">All Classes</option>
           {classArms.map(c => <option key={c.id} value={c.id}>{c.full_name || c.name}</option>)}
         </select>
-        <button className="btn-secondary btn-sm" onClick={() => exportCSV(outstanding)}>Export Debtors CSV</button>
+        <button className="btn-secondary btn-sm" onClick={() => exportPDF(outstanding)}>Download Debtors PDF</button>
       </div>
 
       <div className="card table-wrap">

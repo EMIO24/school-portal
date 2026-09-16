@@ -33,6 +33,12 @@ from .serializers import (
 )
 
 
+from rest_framework.throttling import AnonRateThrottle
+
+class LoginThrottle(AnonRateThrottle):
+    rate = "20/min"
+
+
 class LoginView(APIView):
     """
     POST /api/auth/login/
@@ -57,6 +63,8 @@ class LoginView(APIView):
     """
 
     permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [LoginThrottle]
 
     def post(self, request):
         # Auth paths are exempt from TenantMiddleware, so resolve tenant here
@@ -73,6 +81,9 @@ class LoginView(APIView):
             )
 
         user   = serializer.validated_data["user"]
+        if user.role == "superadmin":
+            from tenants.security import start_challenge
+            return start_challenge(user, request)
         tokens = serializer.get_tokens(user)
 
         # Build theme from the user's school (None for superadmin)
@@ -194,99 +205,7 @@ def _extract_subdomain_from_host(request):
     return None
 
 
-class ParentOTPRequestView(APIView):
-    """
-    POST /api/auth/parent/otp-request/
-    body: { phone: "080xxxxxxxx" }
-
-    Generates a 6-digit OTP, stores it in cache for 10 min,
-    and sends via Termii SMS.
-    """
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        phone  = request.data.get('phone', '').strip().replace(' ', '')
-        school = _resolve_tenant_from_request(request)
-
-        if not phone:
-            return Response({'error': 'Phone number required.'}, status=400)
-
-        otp      = _make_otp()
-        cache_key = f'parent_otp:{phone}'
-        cache.set(cache_key, otp, timeout=600)
-
-        school_name = school.name if school else 'Your School'
-        message     = f'Your {school_name} login code is {otp}. Valid for 10 minutes.'
-
-        try:
-            from notifications.services.termii import TermiiService
-            sender_id = school.slug[:11] if school else 'SCHOOL'
-            TermiiService().send_sms(phone, message, sender_id, school=school)
-        except Exception:
-            logger.exception("OTP SMS failed for phone %s school %s", phone, getattr(school, 'id', None))
-            # still return success — don't leak whether the phone number exists
-
-        return Response({'detail': 'OTP sent.'})
-
-
-class ParentOTPVerifyView(APIView):
-    """
-    POST /api/auth/parent/otp-verify/
-    body: { phone: "080xxxxxxxx", otp: "123456" }
-
-    Returns JWT tokens on success.
-    Creates a parent user account if one doesn't exist for this phone.
-    """
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        from .models import CustomUser
-
-        phone  = request.data.get('phone', '').strip().replace(' ', '')
-        otp    = request.data.get('otp', '').strip()
-        school = _resolve_tenant_from_request(request)
-
-        if not phone or not otp:
-            return Response({'error': 'Phone and OTP required.'}, status=400)
-
-        cache_key  = f'parent_otp:{phone}'
-        stored_otp = cache.get(cache_key)
-
-        if not stored_otp or stored_otp != otp:
-            return Response({'error': 'Invalid or expired OTP.'}, status=401)
-
-        cache.delete(cache_key)
-
-        # Namespace email by school slug so the same phone at two schools
-        # doesn't collide on the unique email constraint.
-        school_slug = school.slug if school else 'noschl'
-        otp_email   = f'{phone}_{school_slug}@otp.schoolportal.ng'
-
-        user = CustomUser.objects.filter(phone_number=phone, role='parent', school=school).first()
-        if not user:
-            # create_user(password=None) already stores an unusable password hash;
-            # no extra set_unusable_password() / save() needed.
-            user = CustomUser.objects.create_user(
-                email=otp_email,
-                password=None,
-                role='parent',
-                school=school,
-                phone_number=phone,
-            )
-
-        refresh = RefreshToken.for_user(user)
-        theme   = SchoolPublicSerializer(school).data if school else None
-
-        return Response({
-            'access':  str(refresh.access_token),
-            'refresh': str(refresh),
-            'role':    user.role,
-            'user':    UserProfileSerializer(user).data,
-            'theme':   theme,
-        })
-
-
-# ── Parent data views ──────────────────────────────────────────────────────
+# Parent OTP endpoints are implemented in accounts.parent_auth.
 
 class ParentChildrenView(APIView):
     """GET /api/parent/children/ — list linked students."""
@@ -306,6 +225,7 @@ class ParentChildrenView(APIView):
             s = link.student
             data.append({
                 'student_id':   s.id,
+                'user_id':      s.user_id,
                 'name':         s.user.get_full_name(),
                 'admission_no': s.admission_number,
                 'class':        s.current_class.full_name if s.current_class else '',
@@ -439,3 +359,4 @@ class ParentStudentDashboardView(APIView):
             'timetable_today':    today_schedule,
             'recent_notifications': list(recent_notifs),
         })
+from .parent_auth import ParentOTPRequestView, ParentOTPVerifyView

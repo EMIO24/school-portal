@@ -36,6 +36,29 @@ ensure('period_name', \`Period \${suffix}\`);
 ensure('period_order_index', String(1000 + Number(suffix)));
 ensure('batch_label', \`TEST-BATCH-\${suffix}\`);
 ensure('parent_phone', '08012345678');
+ensure('student_name', '{{student_name}}');
+
+(function validateVariables() {
+  const reqStr = JSON.stringify(pm.request);
+  const unresolvedRegex = /\\{\\{\\s*([a-zA-Z0-9_]+)\\s*\\}\\}/g;
+  let match;
+  const missingVars = new Set();
+
+  while ((match = unresolvedRegex.exec(reqStr)) !== null) {
+    const varName = match[1];
+    const val = pm.variables.get(varName);
+    if (val === undefined || val === null || val === '') {
+      missingVars.add(varName);
+    }
+  }
+
+  if (missingVars.size > 0) {
+    const missingList = Array.from(missingVars).map(function (v) { return "'{{' + v + '}}'"; }).join(', ');
+    const msg = '[PRE-REQUEST GUARD] Request \\'' + pm.info.requestName + '\\' requires unresolved variable(s): ' + missingList + '. Please ensure prerequisite folders (00 Bootstrap, 01 Auth, 02 Academics, 03 Enrollment) are included and run first in sequence!';
+    console.error(msg);
+    throw new Error(msg);
+  }
+})();
 `;
 
 const collectionTests = `
@@ -135,7 +158,10 @@ function jsonRequest({ name, method, route, authVar, body, tests }) {
   return {
     name,
     request,
-    event: [makeEvent('test', tests)],
+    // Postman/Newman executes each request's test script in its own sandbox.
+    // Include the helpers in every request script; collection-level test
+    // functions are not visible here.
+    event: [makeEvent('test', `${collectionTests}\n${tests}`)],
   };
 }
 
@@ -239,6 +265,68 @@ expectStatus([200], 'POST /api/auth/login/ (restore check)');
 const body = jsonBody();
 setVar('admin_token', body?.access);
 setVar('refresh_token', body?.refresh);
+`,
+    }),
+  ]),
+
+  folder('01.5 Test Data Cleanup', [
+    jsonRequest({
+      name: 'Remove Prior Generated Fixtures',
+      method: 'GET',
+      route: '/health/',
+      authVar: 'admin_token',
+      tests: `
+expectStatus([200], 'Cleanup preflight');
+
+pm.test('Prior generated fixtures are removed', function (done) {
+  const token = getVar('admin_token');
+  const resources = [
+    // Sessions cascade to terms, holidays, attendance, gradebook, results,
+    // fee schedules, CBT attempts, and timetable entries.
+    { route: '/api/sessions/', match: (row) => /^2024\\/2025-\\d{4}$/.test(row.name || '') },
+    { route: '/api/students/', match: (row) => /^student\\.\\d+@testschool\\.ng$/.test(row.email || '') },
+    { route: '/api/staff/', match: (row) => /^teacher\\.\\d+@testschool\\.ng$/.test(row.email || '') },
+    { route: '/api/subjects/', match: (row) => /^Mathematics \\d{4}$/.test(row.name || '') },
+    { route: '/api/class-arms/', match: (row) => /^[AB]\\d{4}$/.test(row.name || '') },
+    { route: '/api/class-levels/', match: (row) => ['JSS1', 'JSS2'].includes(row.name) },
+    { route: '/api/fees/categories/', match: (row) => /^School Fees \\d{4}$/.test(row.name || '') },
+    { route: '/api/notifications/templates/', match: (row) => /^Test Template \\d{4}$/.test(row.name || '') },
+    { route: '/api/timetable/periods/', match: (row) => /^Period \\d{4}$/.test(row.name || '') },
+  ];
+
+  function fail(error) {
+    done(error instanceof Error ? error : new Error(String(error)));
+  }
+
+  function removeRows(resource, ids, index, next) {
+    if (index >= ids.length) return next();
+    send('DELETE', \`\${resource.route}\${ids[index]}/\`, token, (error, response) => {
+      if (error) return fail(error);
+      if (response.code !== 204) {
+        return fail(new Error(\`Could not delete \${resource.route}\${ids[index]}/ (HTTP \${response.code})\`));
+      }
+      removeRows(resource, ids, index + 1, next);
+    });
+  }
+
+  function cleanResource(index) {
+    if (index >= resources.length) return done();
+    const resource = resources[index];
+    send('GET', resource.route, token, (error, response) => {
+      if (error) return fail(error);
+      if (response.code !== 200) {
+        return fail(new Error(\`Could not list \${resource.route} (HTTP \${response.code})\`));
+      }
+      let body;
+      try { body = response.json(); } catch (parseError) { return fail(parseError); }
+      const rows = Array.isArray(body) ? body : (body.results || []);
+      const ids = rows.filter(resource.match).map((row) => row.id);
+      removeRows(resource, ids, 0, () => cleanResource(index + 1));
+    });
+  }
+
+  cleanResource(0);
+});
 `,
     }),
   ]),
@@ -1311,7 +1399,6 @@ const collection = {
   },
   event: [
     makeEvent('prerequest', collectionPrerequest),
-    makeEvent('test', collectionTests),
   ],
   variable: [
     { key: 'school_slug', value: 'testschool' },

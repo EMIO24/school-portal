@@ -5,6 +5,7 @@
  * Branding (logo, name, colours) comes from useTheme() — CSS vars handle colours.
  */
 
+import PlatformMFA from "../platform/PlatformMFA";
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
@@ -33,13 +34,14 @@ const EyeClosed = () => (
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export default function Login() {
+export default function Login({ platform = false, preview = false }) {
   const { school } = useTheme();
   const { login, isAuthenticated, isLoading, user, error, clearError } = useAuth();
   const navigate   = useNavigate();
   const location   = useLocation();
   const emailRef   = useRef(null);
 
+  const [mfa, setMfa] = useState(null);
   const [email,       setEmail]       = useState("");
   const [password,    setPassword]    = useState("");
   const [showPass,    setShowPass]    = useState(false);
@@ -57,12 +59,13 @@ export default function Login() {
 
   // Already authenticated — redirect to dashboard
   useEffect(() => {
-    if (isAuthenticated && user && !isLoading) {
-      const intended = location.state?.from;
+    if (!preview && isAuthenticated && user && !isLoading) {
+      const savedPayment = sessionStorage.getItem("payment_return");
+      const intended = user.role !== "superadmin" && savedPayment?.startsWith("/payments/return?") ? savedPayment : location.state?.from;
       const dest     = intended || ROLE_DASHBOARDS[user.role] || "/";
       navigate(dest, { replace: true });
     }
-  }, [isAuthenticated, isLoading, user, navigate, location]);
+  }, [isAuthenticated, isLoading, user, navigate, location, preview]);
 
   // ── Validation ────────────────────────────────────────────────────────────
 
@@ -77,6 +80,7 @@ export default function Login() {
   // ── Submit ─────────────────────────────────────────────────────────────────
 
   async function handleSubmit(e) {
+    if (preview) {e.preventDefault();return;}
     e.preventDefault();
 
     const errs = validate();
@@ -87,16 +91,19 @@ export default function Login() {
     setFieldErrors({});
     setSubmitting(true);
 
-    await login(email.trim().toLowerCase(), password);
+    const result = await login(email.trim().toLowerCase(), password);
+    if (result?.mfa) { setMfa(result.mfa); setPassword(""); }
     // Navigation is handled inside AuthContext.login()
     setSubmitting(false);
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const schoolName = school?.name || "School Portal";
-  const logoUrl    = school?.logo || null;
-  const motto      = school?.motto || null;
+  if (mfa) return <PlatformMFA challenge={mfa} onCancel={() => setMfa(null)} />;
+
+  const schoolName = platform ? "Platform owner" : school?.name || "School Portal";
+  const logoUrl    = platform ? null : school?.logo || null;
+  const motto      = platform ? null : school?.motto || null;
 
   return (
     <div className="login-root">
@@ -132,6 +139,8 @@ export default function Login() {
         )}
 
         {/* ── Form ── */}
+        <>{preview && <p role="status" className="design-help">School sign-in preview. This view does not sign you out of the owner panel.</p>}</>
+        <p className="login-guide-link"><a href="/help">Read the user guide</a></p>
         <form className="login-form" onSubmit={handleSubmit} noValidate>
 
           <div className="login-field">
@@ -145,7 +154,7 @@ export default function Login() {
               onChange={e => setEmail(e.target.value)}
               placeholder="you@school.edu.ng"
               className={fieldErrors.email ? "input--error" : ""}
-              disabled={submitting}
+              disabled={submitting || preview}
               aria-describedby={fieldErrors.email ? "email-err" : undefined}
             />
             {fieldErrors.email && (
@@ -166,7 +175,7 @@ export default function Login() {
                 onChange={e => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 className={fieldErrors.password ? "input--error" : ""}
-                disabled={submitting}
+                disabled={submitting || preview}
                 aria-describedby={fieldErrors.password ? "pw-err" : undefined}
               />
               <button
@@ -189,7 +198,7 @@ export default function Login() {
           <button
             type="submit"
             className="login-submit-btn"
-            disabled={submitting}
+            disabled={submitting || preview}
           >
             {submitting
               ? <span className="login-btn-spinner" aria-hidden="true" />
@@ -201,6 +210,7 @@ export default function Login() {
         </form>
 
         <footer className="login-footer">
+          <p><a href="/register-school">Register a school</a> | <a href="/platform/login">Platform owner sign in</a></p>
           <p>Forgot your password? Contact your school administrator.</p>
         </footer>
 

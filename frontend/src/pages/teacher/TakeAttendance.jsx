@@ -15,7 +15,7 @@
  * detects the 400 conflict and offers to reload the existing session.
  */
 
-import React, { useState, useEffect, useReducer, useCallback } from 'react';
+import React, { useState, useEffect, useReducer } from 'react';
 import api from '../../services/api';
 import '../../styles/Attendance.css';
 
@@ -83,10 +83,10 @@ export default function TakeAttendance() {
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/academics/terms/'),
-      api.get('/academics/class-arms/'),
-      api.get('/timetable/periods/'),
-      api.get('/schools/settings/'),       // includes attendance_mode
+      api.get('/api/terms/'),
+      api.get('/api/class-arms/'),
+      api.get('/api/timetable/periods/'),
+      api.get('/api/school/me/'),       // includes attendance_mode
     ]).then(([t, c, p, s]) => {
       const termList = t.data.results ?? t.data;
       setTerms(termList);
@@ -94,7 +94,7 @@ export default function TakeAttendance() {
       setPeriods(p.data.results ?? p.data);
       setSchoolMode(s.data?.attendance_mode ?? 'daily');
 
-      const active = termList.find(x => x.is_active);
+      const active = termList.find(x => x.is_current);
       if (active) setSelectedTerm(String(active.id));
     });
   }, []);
@@ -120,7 +120,7 @@ export default function TakeAttendance() {
     };
 
     try {
-      const { data } = await api.post('/attendance/sessions/start/', body);
+      const { data } = await api.post('/api/attendance/sessions/start/', body);
       loadSession(data);
     } catch (err) {
       const detail = err?.response?.data?.detail ?? '';
@@ -140,10 +140,10 @@ export default function TakeAttendance() {
     try {
       const params = new URLSearchParams({ class_arm, term, date_exact: date, mode });
       if (period) params.set('period', period);
-      const { data } = await api.get(`/attendance/sessions/?${params}`);
+      const { data } = await api.get(`/api/attendance/sessions/?${params}`);
       const existing = (data.results ?? data)[0];
       if (existing) {
-        const full = await api.get(`/attendance/sessions/${existing.id}/`);
+        const full = await api.get(`/api/attendance/sessions/${existing.id}/`);
         loadSession(full.data);
         setError(null);
       }
@@ -174,7 +174,7 @@ export default function TakeAttendance() {
           remark:     rec.remark,
         })),
       };
-      const { data } = await api.patch(`/attendance/sessions/${session.id}/submit/`, payload);
+      const { data } = await api.patch(`/api/attendance/sessions/${session.id}/submit/`, payload);
       loadSession(data);
       setSuccess('Attendance saved successfully.');
       setTimeout(() => setSuccess(null), 3000);
@@ -191,7 +191,7 @@ export default function TakeAttendance() {
     setFinalizing(true);
     setError(null);
     try {
-      await api.patch(`/attendance/sessions/${session.id}/finalize/`);
+      await api.patch(`/api/attendance/sessions/${session.id}/finalize/`);
       setSession(prev => ({ ...prev, is_finalized: true }));
       setSuccess('Register locked successfully.');
     } catch (err) {

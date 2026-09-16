@@ -150,7 +150,7 @@ class StaffViewSet(TenantMixin, viewsets.ModelViewSet):
 
         if not csv_file:
             return Response({"error": "No file uploaded."}, status=400)
-        if not csv_file.name.endswith(".csv"):
+        if not csv_file.name.lower().endswith(".csv"):
             return Response({"error": "Only .csv files accepted."}, status=400)
 
         try:

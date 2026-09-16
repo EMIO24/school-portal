@@ -30,7 +30,7 @@ export default function ExamReview() {
   const [error,   setError]   = useState('');
 
   useEffect(() => {
-    api.get(`/cbt/exams/${examId}/review/`)
+    api.get(`/api/cbt/exams/${examId}/review/`)
       .then(({ data }) => setData(data))
       .catch(err => setError(err?.response?.data?.detail || 'Could not load review.'))
       .finally(() => setLoading(false));

@@ -63,9 +63,12 @@ class LoginSerializer(serializers.Serializer):
         attrs["user"] = user
         return attrs
 
-    def get_tokens(self, user) -> dict:
+    def get_tokens(self, user, mfa_version=None) -> dict:
         """Generate JWT token pair with custom claims."""
         refresh = RefreshToken.for_user(user)
+        if mfa_version is not None:
+            refresh["mfa"] = True
+            refresh["mfa_version"] = mfa_version
 
         # Extra claims embedded in the token payload
         refresh["role"]      = user.role
@@ -89,17 +92,27 @@ class UserProfileSerializer(serializers.ModelSerializer):
     Excludes password and sensitive Django internals.
     """
 
+    platform_access = serializers.SerializerMethodField()
+
+    def get_platform_access(self, obj):
+        return getattr(getattr(obj, "platform_security", None), "access_level", "owner") if obj.role == "superadmin" else None
+
     full_name = serializers.ReadOnlyField()
     school    = SchoolPublicSerializer(read_only=True)
+    student_id = serializers.IntegerField(source="student_profile.id", read_only=True, default=None)
+    class_arm_id = serializers.IntegerField(source="student_profile.current_class_id", read_only=True, default=None)
 
     class Meta:
         model  = CustomUser
         fields = [
             "id",
+            "student_id",
+            "class_arm_id",
             "email",
             "first_name",
             "last_name",
             "full_name",
+            "platform_access",
             "role",
             "school",
             "phone_number",
@@ -117,6 +130,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "must_change_password",
             "date_joined",
             "full_name",
+            "platform_access",
         ]
 
 

@@ -1,3 +1,4 @@
+import { useLocation } from "react-router-dom";
 /**
  * context/ThemeContext.js
  *
@@ -10,17 +11,19 @@
  *   3. Update CSS variables + refresh cache
  */
 
+import { API_BASE_URL as API_URL, TENANT_HEADERS } from "../services/config";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const CACHE_KEY = "school_theme";
-const API_URL = process.env.REACT_APP_API_URL || "";
+export const THEME_CACHE_KEY = "school_theme:" + (TENANT_HEADERS["X-School-Slug"] || window.location.hostname);
+const CACHE_KEY = THEME_CACHE_KEY;
+
 
 // When deployed to Vercel (different domain from Railway backend),
 // the backend can't detect the school from the Host subdomain.
 // Set REACT_APP_SCHOOL_SLUG so requests carry X-School-Slug header instead.
-const SCHOOL_SLUG = process.env.REACT_APP_SCHOOL_SLUG || "";
+const SCHOOL_SLUG = TENANT_HEADERS["X-School-Slug"] || "";
 
 /** Default fallback theme — matches variables.css :root defaults */
 const DEFAULT_THEME = {
@@ -44,7 +47,7 @@ const DEFAULT_THEME = {
  *
  * @param {object} schoolData  — response from /api/school/me/
  */
-function applyThemeToDom(schoolData) {
+export function applyThemeToDom(schoolData) {
   const root = document.documentElement;
   const t = schoolData?.theme || {};
 
@@ -52,6 +55,20 @@ function applyThemeToDom(schoolData) {
   root.style.setProperty("--color-secondary", t.secondary_color || DEFAULT_THEME.theme.secondary_color);
   root.style.setProperty("--color-accent", t.accent_color || DEFAULT_THEME.theme.accent_color);
   root.style.setProperty("--font-main", t.font_family || DEFAULT_THEME.theme.font_family);
+  // Older modules used shorter token names. Keep all screens on the same palette.
+  const primary = t.primary_color || DEFAULT_THEME.theme.primary_color;
+  const secondary = t.secondary_color || DEFAULT_THEME.theme.secondary_color;
+  const accent = t.accent_color || DEFAULT_THEME.theme.accent_color;
+  const contrast = hex => {
+    const rgb = hex.replace('#', '').match(/../g).map(v => parseInt(v,16)/255).map(v => v <= .04045 ? v/12.92 : ((v+.055)/1.055)**2.4);
+    const luminance = rgb[0]*.2126 + rgb[1]*.7152 + rgb[2]*.0722;
+    return luminance > .179 ? '#10202B' : '#FFFFFF';
+  };
+  for (const [name,value] of Object.entries({primary, secondary, accent, 'on-primary':contrast(primary), 'on-accent':contrast(accent),
+    'primary-light':'color-mix(in srgb, '+primary+' 10%, white)', 'primary-dark':'color-mix(in srgb, '+primary+' 80%, black)',
+    'bg':'#F4F6FA', 'surface':'#FFFFFF', 'text':'#172B3A', 'text-muted':'#627381', 'border':'#DEE5EA'})) root.style.setProperty('--'+name,value);
+  root.dataset.portalLayout = ['scholar','campus','studio','executive','heritage'].includes(t.layout) ? t.layout : 'scholar';
+
   root.style.setProperty("--school-name", `"${schoolData?.name || ""}"`);
   root.style.setProperty("--school-logo", schoolData?.logo ? `url("${schoolData.logo}")` : "none");
 }
@@ -83,6 +100,8 @@ export function useTheme() {
  *   - Exposes { school, loading, error, refetch } via context
  */
 export function ThemeProvider({ children }) {
+  const { pathname } = useLocation();
+  const platform = pathname.startsWith("/platform/") || pathname.startsWith("/superadmin/") || pathname === "/register-school";
   const [school, setSchool] = useState(() => {
     // Hydrate from localStorage synchronously so CSS vars are set before paint
     try {
@@ -137,8 +156,14 @@ export function ThemeProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    fetchTheme();
-  }, [fetchTheme]);
+    if (platform) { applyThemeToDom(DEFAULT_THEME); document.documentElement.dataset.portalLayout = 'platform'; setLoading(false); }
+    else fetchTheme();
+  }, [fetchTheme, platform]);
+  useEffect(() => {
+    if (platform) { applyThemeToDom(DEFAULT_THEME); document.documentElement.dataset.portalLayout = 'platform'; }
+    else if (school) applyThemeToDom(school);
+  }, [school, platform]);
+
 
   return (
     <ThemeContext.Provider

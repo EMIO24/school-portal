@@ -1,3 +1,10 @@
+import hashlib
+import json
+import uuid
+from django.db import transaction
+from rest_framework.exceptions import ValidationError
+from .models import NotificationBatch, NotificationOutbox
+from accounts.school_access import SchoolModulePermission, require_assignment
 """
 backend/notifications/views.py
 
@@ -8,6 +15,8 @@ GET/PUT/DELETE /api/notifications/templates/{id}/
 """
 
 from django.utils import timezone
+from django.conf import settings
+from accounts.permissions import IsSchoolAdmin
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -31,8 +40,13 @@ def _resolve_students(school, recipient_type, class_arm_id=None, student_ids=Non
 
 
 class NotificationSendView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsSchoolAdmin]
 
+    def get(self, request):
+        return Response({'capture_only': getattr(settings, 'NOTIFICATIONS_CAPTURE_ONLY', False)})
+
+
+    @transaction.atomic
     def post(self, request):
         school         = getattr(request, 'tenant', None)
         channel        = request.data.get('channel', 'sms')
@@ -43,6 +57,23 @@ class NotificationSendView(APIView):
         raw_message    = request.data.get('message', '')
         raw_subject    = request.data.get('subject', '')
 
+        if channel not in ('sms', 'email', 'both'):
+            return Response({'error': 'Choose SMS, email or both.'}, status=400)
+        if recipient_type not in ('all_parents', 'class', 'individual'):
+            return Response({'error': 'Choose a valid recipient group.'}, status=400)
+        if recipient_type == 'class':
+            if not str(class_arm_id).isdigit() or not ClassArm.objects.filter(pk=class_arm_id, school=school).exists():
+                return Response({'error': 'Select a class in this school.'}, status=400)
+        if recipient_type == 'individual':
+            if not isinstance(student_ids, list) or not student_ids or any(type(i) is not int for i in student_ids):
+                return Response({'error': 'Select at least one student.'}, status=400)
+            if StudentProfile.objects.filter(school=school, pk__in=student_ids, status='active').count() != len(set(student_ids)):
+                return Response({'error': 'Select active students from this school.'}, status=400)
+        if not template_id and (not isinstance(raw_message, str) or not raw_message.strip()):
+            return Response({'error': 'Enter a message or select a template.'}, status=400)
+        if channel in ('email', 'both') and not template_id and not raw_subject.strip():
+            return Response({'error': 'Enter an email subject.'}, status=400)
+
         template = None
         if template_id:
             try:
@@ -50,11 +81,25 @@ class NotificationSendView(APIView):
             except NotificationTemplate.DoesNotExist:
                 return Response({'error': 'Template not found'}, status=404)
 
+        if template and channel in ('email', 'both') and not template.subject.strip():
+            return Response({'error': 'The selected template needs an email subject.'}, status=400)
         students = _resolve_students(school, recipient_type, class_arm_id, student_ids)
 
+        batch_key = request.headers.get('Idempotency-Key') or uuid.uuid4().hex
+        if len(batch_key) > 64: raise ValidationError('Invalid request key.')
+        digest = hashlib.sha256(json.dumps(request.data, sort_keys=True).encode()).hexdigest()
+        batch, created = NotificationBatch.objects.get_or_create(school=school, key=batch_key, defaults={'digest':digest})
+        if not created:
+            if batch.digest != digest: raise ValidationError('This request key belongs to a different message.')
+            return Response({'queued':batch.notificationoutbox_set.count(),'sent':0,'failed':0,'skipped':0,'batch_id':batch.pk}, status=202)
+        queued = 0
         termii  = TermiiService()
         sent    = 0
         failed  = 0
+        captured = 0
+        skipped = 0
+        errors = []
+        capture_only = getattr(settings, 'NOTIFICATIONS_CAPTURE_ONLY', False)
         sender_id = school.slug[:11] if school else 'SCHOOL'
 
         for student in students:
@@ -70,27 +115,31 @@ class NotificationSendView(APIView):
             channels = [channel] if channel != 'both' else ['sms', 'email']
 
             for ch in channels:
-                if ch == 'sms' and student.guardian_phone:
-                    ok, _ = termii.send_sms(
-                        student.guardian_phone, body, sender_id,
-                        school=school, template=template, student=student,
+                contact = student.guardian_phone if ch == 'sms' else student.guardian_email
+                if not contact:
+                    skipped += 1
+                    continue
+                if capture_only:
+                    NotificationLog.objects.create(
+                        school=school, template=template, student=student, channel=ch,
+                        recipient_phone=contact if ch == 'sms' else '',
+                        recipient_email=contact if ch == 'email' else '',
+                        message_body=body, status='pending',
+                        error_message='Captured locally; no SMS/email was delivered.',
                     )
-                    sent += 1 if ok else 0
-                    failed += 0 if ok else 1
+                    captured += 1
+                    continue
+                log = NotificationLog.objects.create(school=school, template=template, student=student, channel=ch,
+                    recipient_phone=contact if ch == 'sms' else '', recipient_email=contact if ch == 'email' else '',
+                    message_body=body, status='pending')
+                NotificationOutbox.objects.create(batch=batch, log=log, subject=subject)
+                queued += 1
 
-                elif ch == 'email' and student.guardian_email:
-                    ok, _ = send_email(
-                        student.guardian_email, subject, body, school,
-                        template=template, student=student,
-                    )
-                    sent += 1 if ok else 0
-                    failed += 0 if ok else 1
-
-        return Response({'sent': sent, 'failed': failed})
+        return Response({'queued':queued, 'batch_id':batch.pk, 'sent': sent, 'failed': failed, 'captured': captured, 'skipped': skipped, 'errors': errors, 'capture_only': capture_only}, status=200 if capture_only else 202)
 
 
 class NotificationLogListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request):
         school  = getattr(request, 'tenant', None)
@@ -106,7 +155,7 @@ class NotificationLogListView(APIView):
 
 
 class NotificationTemplateListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request):
         school = getattr(request, 'tenant', None)
@@ -123,7 +172,7 @@ class NotificationTemplateListView(APIView):
 
 
 class NotificationTemplateDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def _get(self, pk, school):
         try:

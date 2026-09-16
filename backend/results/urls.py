@@ -31,6 +31,7 @@ from .views import (
     ScratchCardListView,
     ScratchCardBatchStatsView,
     ScratchCardUnusedCSVView,
+    ScratchCardUnusedPDFView,
 )
 
 results_urlpatterns = [
@@ -45,6 +46,7 @@ results_urlpatterns = [
 ]
 
 scratch_card_urlpatterns = [
+    path('unused-pdf/', ScratchCardUnusedPDFView.as_view(), name='scratch-card-unused-pdf'),
     path('generate/',    ScratchCardGenerateView.as_view(),  name='scratch-card-generate'),
     path('',             ScratchCardListView.as_view(),      name='scratch-card-list'),
     path('batch-stats/', ScratchCardBatchStatsView.as_view(),name='scratch-card-batch-stats'),

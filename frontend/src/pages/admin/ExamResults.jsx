@@ -55,7 +55,7 @@ export default function ExamResults() {
 
   // Load exam list
   useEffect(() => {
-    api.get('/cbt/exams/').then(({ data }) => {
+    api.get('/api/cbt/exams/').then(({ data }) => {
       const list = data.results ?? data;
       setExams(list);
       if (list.length > 0) setSelectedId(String(list[0].id));
@@ -70,8 +70,8 @@ export default function ExamResults() {
     setPushResult(null);
 
     Promise.all([
-      api.get(`/cbt/exams/${selectedId}/results/`),
-      api.get(`/cbt/exams/${selectedId}/question-analysis/`),
+      api.get(`/api/cbt/exams/${selectedId}/results/`),
+      api.get(`/api/cbt/exams/${selectedId}/question-analysis/`),
     ]).then(([r, a]) => {
       setResults(r.data);
       setAnalysis(a.data);
@@ -85,7 +85,7 @@ export default function ExamResults() {
     setPushing(true);
     setPushResult(null);
     try {
-      const { data } = await api.post(`/cbt/exams/${selectedId}/push-to-gradebook/`);
+      const { data } = await api.post(`/api/cbt/exams/${selectedId}/push-to-gradebook/`);
       setPushResult(data);
     } catch (err) {
       setPushResult({ error: err?.response?.data?.detail || 'Push failed.' });

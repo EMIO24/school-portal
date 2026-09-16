@@ -1,0 +1,5 @@
+.portal-navigation { display: flex; flex-wrap: wrap; gap: .5rem; padding: 1rem; border-bottom: 1px solid #dce3df; background: var(--surface, #fff); }
+.portal-navigation a, .portal-navigation button { padding: .5rem .75rem; border-radius: .375rem; color: var(--primary, #1a6b3c); font: inherit; }
+.portal-navigation a.active { background: var(--primary, #1a6b3c); color: #fff; }
+.portal-navigation button { border: 1px solid currentColor; background: transparent; cursor: pointer; }
+.portal-navigation a:focus-visible, .portal-navigation button:focus-visible { outline: 3px solid #2684ff; outline-offset: 2px; }

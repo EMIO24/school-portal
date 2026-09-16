@@ -222,3 +222,16 @@ class ParentStudentLink(models.Model):
 
     def __str__(self):
         return f"{self.parent.full_name} → {self.student} ({self.relationship})"
+
+
+class ParentLoginChallenge(models.Model):
+    school = models.ForeignKey('tenants.School', on_delete=models.CASCADE)
+    phone = models.CharField(max_length=20)
+    code_hash = models.CharField(max_length=128)
+    expires_at = models.DateTimeField()
+    requested_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    consumed = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['school', 'phone'], name='unique_parent_challenge')]

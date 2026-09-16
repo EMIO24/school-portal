@@ -18,6 +18,7 @@ from .models import School
 
 # Paths where tenant resolution is NOT required.
 EXEMPT_PATH_PREFIXES = (
+    "/api/platform/",  # Owner permissions are enforced by each platform view.
     "/superadmin/",
     "/health/",
     "/api/auth/login/",          # resolves tenant itself

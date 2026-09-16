@@ -167,16 +167,20 @@ export default function StaffForm() {
     setSaving(true);
 
     try {
+      const payload = { ...form, dob: form.dob || null, date_employed: form.date_employed || null };
+      if (isEdit) {
+        delete payload.new_email;
+        delete payload.new_first_name;
+        delete payload.new_last_name;
+        delete payload.new_role;
+      }
       let staffId = id;
       if (isEdit) {
-        await api.patch(`/api/staff/${id}/`, form);
-        // Sync M2M assignments via dedicated endpoints
-        await api.post(`/api/staff/${id}/assign-subjects/`, { subjects: form.subjects_taught });
-        await api.post(`/api/staff/${id}/assign-classes/`, { classes: form.assigned_classes });
+        await api.patch(`/api/staff/${id}/`, payload);
         showToast("Staff member updated.");
         setTimeout(() => navigate(`/admin/staff/${id}`), 1200);
       } else {
-        const { data } = await api.post("/api/staff/", form);
+        const { data } = await api.post("/api/staff/", payload);
         staffId = data.id;
         navigate(`/admin/staff/${staffId}`, { replace: true });
       }

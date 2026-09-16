@@ -1,22 +1,27 @@
+﻿from django.db import transaction
+from datetime import timedelta
+from copy import deepcopy
+from .services import session_questions
+from accounts.school_access import SchoolModulePermission, require_assignment
 """
 backend/cbt/views.py
 
 Endpoint map:
-  GET/POST              /api/cbt/topics/                        → TopicViewSet
-  GET/POST              /api/cbt/questions/                     → QuestionViewSet
-  GET                   /api/cbt/questions/stats/               → question counts
-  POST                  /api/cbt/questions/bulk-import/         → JSON array import
-  GET/POST              /api/cbt/exams/                         → CBTExamViewSet
-  GET                   /api/cbt/exams/available/               → student's upcoming exams
-  POST                  /api/cbt/exams/{id}/start/              → begin exam, get questions
-  POST                  /api/cbt/exams/{id}/save-answer/        → auto-save one answer
-  GET                   /api/cbt/exams/{id}/status/             → time + saved answers
-  POST                  /api/cbt/exams/{id}/submit/             → final submission + scoring
-  POST                  /api/cbt/exams/{id}/log-tab-switch/     → increment tab switch counter
-  POST                  /api/cbt/exams/{id}/push-to-gradebook/  → write scores to ScoreEntry
-  GET                   /api/cbt/exams/{id}/review/             → student post-exam review
-  GET                   /api/cbt/exams/{id}/results/            → admin per-student table
-  GET                   /api/cbt/exams/{id}/question-analysis/  → per-question stats
+  GET/POST              /api/cbt/topics/                        â†’ TopicViewSet
+  GET/POST              /api/cbt/questions/                     â†’ QuestionViewSet
+  GET                   /api/cbt/questions/stats/               â†’ question counts
+  POST                  /api/cbt/questions/bulk-import/         â†’ JSON array import
+  GET/POST              /api/cbt/exams/                         â†’ CBTExamViewSet
+  GET                   /api/cbt/exams/available/               â†’ student's upcoming exams
+  POST                  /api/cbt/exams/{id}/start/              â†’ begin exam, get questions
+  POST                  /api/cbt/exams/{id}/save-answer/        â†’ auto-save one answer
+  GET                   /api/cbt/exams/{id}/status/             â†’ time + saved answers
+  POST                  /api/cbt/exams/{id}/submit/             â†’ final submission + scoring
+  POST                  /api/cbt/exams/{id}/log-tab-switch/     â†’ increment tab switch counter
+  POST                  /api/cbt/exams/{id}/push-to-gradebook/  â†’ write scores to ScoreEntry
+  GET                   /api/cbt/exams/{id}/review/             â†’ student post-exam review
+  GET                   /api/cbt/exams/{id}/results/            â†’ admin per-student table
+  GET                   /api/cbt/exams/{id}/question-analysis/  â†’ per-question stats
 """
 
 import random
@@ -44,7 +49,7 @@ from .services import auto_mark
 
 class TopicViewSet(TenantMixin, ModelViewSet):
     serializer_class   = TopicSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get_queryset(self):
         qs = Topic.objects.filter(school=self.school).select_related('subject', 'class_level')
@@ -61,7 +66,7 @@ class TopicViewSet(TenantMixin, ModelViewSet):
 
 
 class QuestionViewSet(TenantMixin, ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
@@ -145,7 +150,26 @@ class QuestionViewSet(TenantMixin, ModelViewSet):
             'by_type':       by_type,
         })
 
-    @action(detail=False, methods=['post'], url_path='bulk-import')
+    @action(detail=False, methods=['get'], url_path='docx-template', permission_classes=[IsSchoolAdminOrTeacher])
+    def docx_template(self, request):
+        from django.http import HttpResponse
+        from .docx_import import question_template
+        response = HttpResponse(question_template(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        response['Content-Disposition'] = 'attachment; filename="questions-template.docx"'
+        return response
+
+    @action(detail=False, methods=['post'], url_path='docx-preview', permission_classes=[IsSchoolAdminOrTeacher])
+    def docx_preview(self, request):
+        from .docx_import import parse_questions
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response({'detail': 'Choose a Word .docx file.'}, status=400)
+        try:
+            return Response({'questions': parse_questions(upload)})
+        except ValueError as error:
+            return Response({'detail': str(error)}, status=400)
+
+    @action(detail=False, methods=['post'], url_path='bulk-import', permission_classes=[IsSchoolAdminOrTeacher])
     def bulk_import(self, request):
         """
         Import a JSON array of question objects.
@@ -153,14 +177,14 @@ class QuestionViewSet(TenantMixin, ModelViewSet):
         Returns {imported: N, errors: [{index, detail}]}.
         """
         items = request.data
-        if not isinstance(items, list):
-            return Response({'detail': 'Expected a JSON array.'}, status=400)
+        if not isinstance(items, list) or not 1 <= len(items) <= 200:
+            return Response({'detail': 'Expected an array of 1 to 200 questions.'}, status=400)
 
         imported = 0
         errors   = []
 
         for i, item in enumerate(items):
-            ser = QuestionWriteSerializer(data=item)
+            ser = QuestionWriteSerializer(data=item, context=self.get_serializer_context())
             if ser.is_valid():
                 ser.save(school=self.school, created_by=request.user)
                 imported += 1
@@ -173,10 +197,14 @@ class QuestionViewSet(TenantMixin, ModelViewSet):
         )
 
 
-# ── CBT Exam ViewSet ──────────────────────────────────────────────────────────
+# â”€â”€ CBT Exam ViewSet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class CBTExamViewSet(TenantMixin, ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
+
+    @action(detail=True, methods=['get'], permission_classes=[IsSchoolAdminOrTeacher])
+    def configuration(self, request, pk=None):
+        return Response(CBTExamWriteSerializer(self.get_object(), context=self.get_serializer_context()).data)
 
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
@@ -189,7 +217,7 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(school=self.school, created_by=self.request.user)
 
-    # ── /exams/available/ ─────────────────────────────────────────────────────
+    # â”€â”€ /exams/available/ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @action(detail=False, methods=['get'])
     def available(self, request):
@@ -225,14 +253,15 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
             session = sessions_map.get(exam.id)
             item = CBTExamListSerializer(exam).data
             item['session_status'] = session.status if session else None
-            item['score']          = float(session.score) if session and session.score is not None else None
+            item['score']          = float(session.score) if exam.show_score_immediately and session and session.score is not None else None
             result.append(item)
 
         return Response(result)
 
-    # ── /exams/{id}/start/ ────────────────────────────────────────────────────
+    # â”€â”€ /exams/{id}/start/ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def start(self, request, pk=None):
         """
         Begin the exam for the current student.
@@ -244,6 +273,11 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
         user = request.user
         now  = timezone.now()
 
+        if user.role != 'student' or user.school_id != exam.school_id or not exam.class_arms.filter(pk=getattr(getattr(user, 'student_profile', None), 'current_class_id', None)).exists():
+            return Response({'detail': 'You are not assigned to this exam.'}, status=403)
+        if now < exam.start_datetime or now >= exam.end_datetime:
+            return Response({'detail': 'This exam is outside its scheduled time.'}, status=400)
+        exam = CBTExam.objects.select_for_update().get(pk=exam.pk)
         if exam.status not in ('published', 'ongoing'):
             return Response({'detail': 'This exam is not available.'}, status=400)
 
@@ -257,6 +291,11 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
 
         if created or session.status == 'not_started':
             questions = exam.resolve_questions()
+            requested_count = sum(rule.get('count', 0) for rule in exam.random_config) if exam.selection_mode != 'manual' else len(questions)
+            if not questions or len(questions) != requested_count:
+                return Response({'detail':'The exam does not have enough active questions. Contact your teacher.'}, status=400)
+            session.question_snapshot = [QuestionSerializer(q).data for q in questions]
+            session.deadline_at = min(exam.end_datetime, now + timedelta(minutes=exam.duration_minutes))
 
             option_maps = {}
             if exam.randomize_options:
@@ -271,16 +310,16 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
             session.option_maps    = option_maps
             session.status         = 'in_progress'
             session.started_at     = now
-            session.time_remaining_seconds = exam.duration_minutes * 60
+            session.time_remaining_seconds = max(0, int((session.deadline_at - now).total_seconds()))
             session.save()
 
             # Mark exam ongoing if it's still in published state
             if exam.status == 'published':
                 CBTExam.objects.filter(pk=exam.pk).update(status='ongoing')
         else:
-            # Resuming — recalculate time remaining
-            elapsed = int((now - session.started_at).total_seconds())
-            session.time_remaining_seconds = max(0, exam.duration_minutes * 60 - elapsed)
+            if _finalize_if_expired(session, exam, now):
+                return Response({'detail': 'Exam time has expired.'}, status=400)
+            session.time_remaining_seconds = _remaining_seconds(session, exam, now)
             session.save(update_fields=['time_remaining_seconds'])
 
         questions = _build_question_list(session)
@@ -291,9 +330,10 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
             'questions':            questions,
         })
 
-    # ── /exams/{id}/save-answer/ ──────────────────────────────────────────────
+    # â”€â”€ /exams/{id}/save-answer/ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @action(detail=True, methods=['post'], url_path='save-answer')
+    @transaction.atomic
     def save_answer(self, request, pk=None):
         """
         Auto-save a single answer.
@@ -306,7 +346,12 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
         except (TypeError, ValueError):
             return Response({'detail': 'question_id must be an integer.'}, status=400)
         option  = request.data.get('selected_option', '')
-        spent   = int(request.data.get('time_spent_seconds', 0))
+        try:
+            spent = max(0, int(request.data.get('time_spent_seconds', 0)))
+        except (TypeError, ValueError):
+            return Response({'detail':'Invalid time spent.'}, status=400)
+        if not isinstance(option, str) or len(option) > 1000:
+            return Response({'detail':'Invalid answer.'}, status=400)
 
         session = _get_active_session(exam, user)
         if isinstance(session, Response):
@@ -323,9 +368,10 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
         )
         return Response({'saved': True})
 
-    # ── /exams/{id}/status/ ───────────────────────────────────────────────────
+    # â”€â”€ /exams/{id}/status/ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @action(detail=True, methods=['get'])
+    @transaction.atomic
     def status(self, request, pk=None):
         """Return remaining time and all saved answers for the student's session."""
         exam    = self.get_object()
@@ -334,20 +380,27 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
         if not session:
             return Response({'detail': 'No session found.'}, status=404)
 
-        # Recalculate time remaining for active sessions
-        if session.status == 'in_progress' and session.started_at:
-            elapsed = int((timezone.now() - session.started_at).total_seconds())
-            session.time_remaining_seconds = max(0, exam.duration_minutes * 60 - elapsed)
-            session.save(update_fields=['time_remaining_seconds'])
+        # Recalculate against the persisted deadline, not the mutable exam duration.
+        if session.status == 'in_progress':
+            now = timezone.now()
+            if _finalize_if_expired(session, exam, now):
+                session.refresh_from_db()
+            else:
+                session.time_remaining_seconds = _remaining_seconds(session, exam, now)
+                session.save(update_fields=['time_remaining_seconds'])
 
-        return Response(ExamSessionStatusSerializer(session).data)
+        payload = ExamSessionStatusSerializer(session).data
+        if not exam.show_score_immediately:
+            payload['score'] = None
+        return Response(payload)
 
-    # ── /exams/{id}/submit/ ───────────────────────────────────────────────────
+    # â”€â”€ /exams/{id}/submit/ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def submit(self, request, pk=None):
         """
-        Final submission — marks all answers, computes percentage score.
+        Final submission â€” marks all answers, computes percentage score.
         """
         exam    = self.get_object()
         user    = request.user
@@ -357,16 +410,17 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
 
         auto_mark(session, final_status='submitted')
 
-        payload = {'score': float(session.score), 'status': 'submitted'}
+        payload = {'score': float(session.score) if exam.show_score_immediately else None, 'status': 'submitted'}
         if exam.show_score_immediately:
             payload['answers'] = list(
                 session.answers.values('question_id', 'selected_option', 'is_correct')
             )
         return Response(payload)
 
-    # ── /exams/{id}/log-tab-switch/ ───────────────────────────────────────────
+    # â”€â”€ /exams/{id}/log-tab-switch/ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @action(detail=True, methods=['post'], url_path='log-tab-switch')
+    @transaction.atomic
     def log_tab_switch(self, request, pk=None):
         """Increment tab_switch_count for the student's active session."""
         exam    = self.get_object()
@@ -378,7 +432,7 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
             session.save(update_fields=['tab_switch_count'])
         return Response({'tab_switch_count': session.tab_switch_count if session else 0})
 
-    # ── /exams/{id}/push-to-gradebook/ ───────────────────────────────────────
+    # â”€â”€ /exams/{id}/push-to-gradebook/ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @action(detail=True, methods=['post'], url_path='push-to-gradebook',
             permission_classes=[IsSchoolAdminOrTeacher])
@@ -429,12 +483,12 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
 
         return Response({'updated': updated, 'skipped': skipped})
 
-    # ── /exams/{id}/review/ ───────────────────────────────────────────────────
+    # â”€â”€ /exams/{id}/review/ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @action(detail=True, methods=['get'])
     def review(self, request, pk=None):
         """
-        Post-exam review for the student — questions with their answer,
+        Post-exam review for the student â€” questions with their answer,
         the correct answer, and the explanation.
         Only available after submission and only if allow_review=True.
         """
@@ -445,14 +499,11 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
         if not session or session.status not in ('submitted', 'timed_out'):
             return Response({'detail': 'Review not available yet.'}, status=403)
 
-        if not exam.allow_review:
+        if not exam.allow_review or timezone.now() < exam.end_datetime:
             return Response({'detail': 'Review is disabled for this exam.'}, status=403)
 
         answers = {a.question_id: a for a in session.answers.select_related('question')}
-        q_map   = {
-            q.id: q
-            for q in Question.objects.filter(id__in=session.question_order)
-        }
+        q_map = session_questions(session)
 
         result = []
         for q_id in session.question_order:
@@ -488,7 +539,7 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
             'questions': result,
         })
 
-    # ── /exams/{id}/results/ ─────────────────────────────────────────────────
+    # â”€â”€ /exams/{id}/results/ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @action(detail=True, methods=['get'], permission_classes=[IsSchoolAdminOrTeacher])
     def results(self, request, pk=None):
@@ -525,7 +576,7 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
             'results':        data,
         })
 
-    # ── /exams/{id}/question-analysis/ ───────────────────────────────────────
+    # â”€â”€ /exams/{id}/question-analysis/ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @action(detail=True, methods=['get'], url_path='question-analysis',
             permission_classes=[IsSchoolAdminOrTeacher])
@@ -580,7 +631,7 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
         return Response(result)
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _get_client_ip(request):
     x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
@@ -589,13 +640,42 @@ def _get_client_ip(request):
     return request.META.get('REMOTE_ADDR')
 
 
+def _session_deadline(session, exam):
+    if session.deadline_at:
+        return session.deadline_at
+    if session.started_at:
+        return min(exam.end_datetime, session.started_at + timedelta(minutes=exam.duration_minutes))
+    return None
+
+
+def _remaining_seconds(session, exam, now=None):
+    deadline = _session_deadline(session, exam)
+    if not deadline:
+        return 0
+    now = now or timezone.now()
+    return max(0, int((deadline - now).total_seconds()))
+
+
+def _finalize_if_expired(session, exam, now=None):
+    deadline = _session_deadline(session, exam)
+    now = now or timezone.now()
+    if not deadline or now >= deadline:
+        auto_mark(session, final_status='timed_out')
+        session.time_remaining_seconds = 0
+        session.save(update_fields=['time_remaining_seconds'])
+        return True
+    return False
+
+
 def _get_active_session(exam, user):
     """Return the in-progress session or a Response error."""
-    session = StudentExamSession.objects.filter(exam=exam, student=user).first()
+    session = StudentExamSession.objects.select_for_update().filter(exam=exam, student=user).first()
     if not session:
         return Response({'detail': 'No session found. Call /start/ first.'}, status=404)
     if session.status in ('submitted', 'timed_out'):
         return Response({'detail': 'Exam already completed.'}, status=400)
+    if _finalize_if_expired(session, exam):
+        return Response({'detail':'Exam time has expired.'}, status=400)
     return session
 
 
@@ -604,13 +684,13 @@ def _build_question_list(session):
     Return questions in session order with options shuffled per option_maps.
     correct_answer is NOT included.
     """
-    q_map = {q.id: q for q in Question.objects.filter(id__in=session.question_order)}
+    q_map = session_questions(session)
     result = []
     for q_id in session.question_order:
         q = q_map.get(q_id)
         if not q:
             continue
-        data = ExamQuestionSerializer(q).data
+        data = deepcopy({name: getattr(q, name) for name in ('id','question_text','question_image','question_type','options')})
         # Apply option shuffle map
         omap = session.option_maps.get(str(q_id))
         if omap and data.get('options'):
@@ -631,3 +711,5 @@ def _shuffled_options(question, omap):
         })
     opts.sort(key=lambda o: o['id'])
     return opts
+
+

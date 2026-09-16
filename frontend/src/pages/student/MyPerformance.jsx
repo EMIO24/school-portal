@@ -11,7 +11,7 @@ const COLORS = ["#1a6b3c", "#3498db", "#e67e22", "#9b59b6", "#e74c3c", "#2ecc71"
 
 export default function MyPerformance() {
   const { user } = useContext(AuthContext);
-  const studentId = user?.student_id || user?.id;
+  const studentId = user?.student_id;
 
   const [trends, setTrends]   = useState([]);
   const [loading, setLoading] = useState(true);

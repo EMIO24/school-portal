@@ -31,7 +31,6 @@ const CA_FIELDS = [
   { key: 'project',     label: 'Project',    max:  5 },
   { key: 'practical',   label: 'Practical',  max:  5 },
 ];
-const MAX_CA   = 40;
 const MAX_EXAM = 60;
 
 // All editable columns in Tab order
@@ -81,10 +80,10 @@ export default function ScoreEntry() {
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/api/academics/terms/'),
-      api.get('/api/academics/sessions/'),
-      api.get('/api/enrollment/class-arms/'),
-      api.get('/api/enrollment/subjects/'),
+      api.get('/api/terms/'),
+      api.get('/api/sessions/'),
+      api.get('/api/class-arms/'),
+      api.get('/api/subjects/'),
       api.get('/api/gradebook/entries/grade-scale/'),
     ]).then(([t, s, c, sub, gs]) => {
       const termList = t.data.results ?? t.data;
@@ -113,9 +112,9 @@ export default function ScoreEntry() {
 
       // Also fetch the full enrolled student list so ungraded students appear
       const { data: stuData } = await api.get(
-        `/api/enrollment/students/?class_arm=${selClass}`
+        `/api/students/?class_arm=${selClass}`
       );
-      const allStudents = stuData.results ?? stuData;
+      const allStudents = (stuData.results ?? stuData).map(stu => ({ ...stu, id: stu.user }));
       setStudents(allStudents);
 
       // Build row map — start from API data, fill blanks for ungraded students
@@ -252,7 +251,7 @@ export default function ScoreEntry() {
     return { total: students.length, graded: graded.length, avg: avg.toFixed(1), pass };
   }, [students, computed]);
 
-  const canRender = selTerm && selClass && selSubject;
+  const canRender = selTerm && selSession && selClass && selSubject;
   const isPublished = students.length > 0 && students.every(s => rows[s.id]?.is_published);
 
   // ── Render ────────────────────────────────────────────────────────────────────

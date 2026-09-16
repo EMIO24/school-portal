@@ -1,3 +1,4 @@
+from accounts.school_access import TenantRelationsMixin
 """
 backend/attendance/serializers.py
 
@@ -64,7 +65,7 @@ class AttendanceSessionSerializer(serializers.ModelSerializer):
         return None
 
 
-class AttendanceSessionCreateSerializer(serializers.ModelSerializer):
+class AttendanceSessionCreateSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     """
     Used for POST start/ .
     school and teacher injected from request context — not accepted from client.

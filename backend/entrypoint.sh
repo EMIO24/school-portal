@@ -3,23 +3,22 @@ set -e
 
 # Only run migrations for the web service (not for celery/celery-beat)
 if [ "$RUN_MIGRATIONS" = "true" ]; then
+    python manage.py deployment_check ${DEPLOYMENT_CHECK_ARGS:-}
+    python manage.py check --deploy --fail-level WARNING
     echo "==> Running database migrations..."
     python manage.py migrate --noinput
 
     # Create superadmin from env vars (idempotent — skips if email already exists)
     if [ -n "$DJANGO_SUPERUSER_EMAIL" ] && [ -n "$DJANGO_SUPERUSER_PASSWORD" ]; then
-        python manage.py shell -c "
+        python manage.py shell <<'PYTHON'
+import os
 from django.contrib.auth import get_user_model
 User = get_user_model()
-if not User.objects.filter(email='$DJANGO_SUPERUSER_EMAIL').exists():
-    User.objects.create_superuser(
-        email='$DJANGO_SUPERUSER_EMAIL',
-        password='$DJANGO_SUPERUSER_PASSWORD',
-    )
-    print('Superuser created.')
-else:
-    print('Superuser already exists — skipped.')
-"
+email = os.environ['DJANGO_SUPERUSER_EMAIL']
+if not User.objects.filter(email=email).exists():
+    User.objects.create_superuser(email=email, password=os.environ['DJANGO_SUPERUSER_PASSWORD'])
+    print('Platform owner created.')
+PYTHON
     fi
 
     echo "==> Starting Gunicorn..."

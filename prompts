@@ -1488,3 +1488,6 @@ File: backend/tests/ (one file per category)
 
 Use DRF APIClient for all requests. Mock Termii and Paystack.
 
+
+
+now assume you are a senior fullstack developer, audit this project and check for bugs, wrong logic or silent fails or security readiness and exposure to ensure it is ready for consumption while checking for gaps in a real school workflow

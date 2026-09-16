@@ -59,10 +59,10 @@ export default function MyAttendance() {
 
   // ── Boot ───────────────────────────────────────────────────────────────────
   useEffect(() => {
-    api.get('/academics/terms/').then(({ data }) => {
+    api.get('/api/terms/').then(({ data }) => {
       const list   = data.results ?? data;
       setTerms(list);
-      const active = list.find(t => t.is_active);
+      const active = list.find(t => t.is_current);
       if (active) setSelectedTerm(String(active.id));
     });
   }, []);
@@ -74,14 +74,14 @@ export default function MyAttendance() {
     try {
       // Summary figures
       const sumRes = await api.get(
-        `/attendance/sessions/report/?student=${user.id}&term=${selectedTerm}`
+        `/api/attendance/sessions/report/?student=${user.id}&term=${selectedTerm}`
       );
       setSummary(sumRes.data);
 
       // Raw records for dot calendar — GET all sessions with this student's mark
       // The backend returns flat records keyed by session date
       const recRes = await api.get(
-        `/attendance/sessions/?term=${selectedTerm}&student=${user.id}`
+        `/api/attendance/sessions/?term=${selectedTerm}&student=${user.id}`
       );
       const sessions = recRes.data.results ?? recRes.data;
       // Flatten to {date, status, remark} per session

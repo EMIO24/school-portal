@@ -18,9 +18,9 @@
 import {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useReducer,
+  useRef,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { authAPI, tokenStore } from "../services/api";
@@ -71,11 +71,14 @@ function authReducer(state, action) {
 function normaliseUser(apiUser) {
   return {
     id:                 apiUser.id,
+    student_id:         apiUser.student_id ?? null,
+    class_arm_id:       apiUser.class_arm_id ?? null,
     email:              apiUser.email,
     firstName:          apiUser.first_name,
     lastName:           apiUser.last_name,
     fullName:           apiUser.full_name,
     role:               apiUser.role,
+    platformAccess:     apiUser.role === "superadmin" ? apiUser.platform_access || "owner" : null,
     photo:              apiUser.profile_photo || null,
     mustChangePassword: apiUser.must_change_password,
     school:             apiUser.school || null,
@@ -87,6 +90,7 @@ function normaliseUser(apiUser) {
 export function AuthProvider({ children }) {
   const [state, dispatch] = useReducer(authReducer, initialState);
   const navigate = useNavigate();
+  const restoreStarted = useRef(false);
 
   // ── Load user on mount (persisted session) ───────────────────────────────
 
@@ -113,6 +117,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    if (restoreStarted.current) return;
+    restoreStarted.current = true;
     loadUser();
   }, [loadUser]);
 
@@ -120,7 +126,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const handleForcedLogout = () => {
       dispatch({ type: "AUTH_FAILED" });
-      navigate("/login", { replace: true });
+      navigate(window.location.pathname.startsWith("/superadmin/") || window.location.pathname.startsWith("/platform/") ? "/platform/login" : "/login", { replace: true });
     };
     window.addEventListener("auth:logout", handleForcedLogout);
     return () => window.removeEventListener("auth:logout", handleForcedLogout);
@@ -128,23 +134,32 @@ export function AuthProvider({ children }) {
 
   // ── login ────────────────────────────────────────────────────────────────
 
-  const login = useCallback(async (email, password) => {
-    dispatch({ type: "AUTH_LOADING" });
-    try {
-      const { data } = await authAPI.login(email, password);
-
+  const finishLogin = useCallback((data) => {
       tokenStore.setTokens({ access: data.access, refresh: data.refresh });
       const user = normaliseUser(data.user);
       dispatch({ type: "AUTH_SUCCESS", payload: user });
 
       // ── Post-login routing ───────────────────────────────────────────────
       if (user.mustChangePassword) {
-        navigate("/change-password", { replace: true });
+        navigate(user.role === "superadmin" ? "/platform/change-password" : "/change-password", { replace: true });
       } else {
-        navigate(ROLE_DASHBOARDS[user.role] || "/", { replace: true });
+        const paymentReturn = sessionStorage.getItem("payment_return");
+        navigate(user.role !== "superadmin" && paymentReturn?.startsWith("/payments/return?") ? paymentReturn : ROLE_DASHBOARDS[user.role] || "/", { replace: true });
       }
 
       return { success: true };
+  }, [navigate]);
+
+  const login = useCallback(async (email, password) => {
+    dispatch({ type: "AUTH_LOADING" });
+    try {
+      const { data } = await authAPI.login(email, password);
+
+      if (data.mfa_required) {
+        dispatch({ type: "AUTH_FAILED" });
+        return { mfa: data };
+      }
+      return finishLogin(data);
     } catch (err) {
       const message =
         err.response?.data?.errors?.non_field_errors?.[0] ||
@@ -155,15 +170,15 @@ export function AuthProvider({ children }) {
       dispatch({ type: "AUTH_FAILED", payload: message });
       return { success: false, error: message };
     }
-  }, [navigate]);
+  }, [finishLogin]);
 
   // ── logout ───────────────────────────────────────────────────────────────
 
   const logout = useCallback(() => {
     tokenStore.clearAll();
     dispatch({ type: "AUTH_FAILED" });
-    navigate("/login", { replace: true });
-  }, [navigate]);
+    navigate(state.user?.role === "superadmin" ? "/platform/login" : "/login", { replace: true });
+  }, [navigate, state.user?.role]);
 
   // ── clearError ───────────────────────────────────────────────────────────
 
@@ -185,6 +200,7 @@ export function AuthProvider({ children }) {
       value={{
         ...state,
         login,
+        finishLogin,
         logout,
         loadUser,
         clearError,

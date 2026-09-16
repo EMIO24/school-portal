@@ -173,7 +173,7 @@ export default function EntryModal({
             <option value="">— Unassigned —</option>
             {teachers.map(t => (
               <option key={t.id} value={t.id}>
-                {t.first_name} {t.last_name}
+                {t.full_name || `${t.first_name || ''} ${t.last_name || ''}`.trim()}
               </option>
             ))}
           </select>

@@ -1,3 +1,9 @@
+﻿from rest_framework.throttling import AnonRateThrottle
+
+class ResultCheckThrottle(AnonRateThrottle):
+    rate = "10/min"
+
+from accounts.school_access import SchoolModulePermission, require_assignment
 """
 backend/results/views.py
 
@@ -5,15 +11,15 @@ Result slip + broadsheet PDF generation via WeasyPrint.
 Scratch card generation and public PIN result checking.
 
 Endpoint map:
-  GET  /api/results/slip/{student_id}/?term=         → PDF
-  GET  /api/results/broadsheet/{class_arm_id}/?term= → PDF
+  GET  /api/results/slip/{student_id}/?term=         â†’ PDF
+  GET  /api/results/broadsheet/{class_arm_id}/?term= â†’ PDF
   POST /api/results/positions/compute/?class_arm=&term=
   PATCH /api/results/remarks/{student_id}/?term=
-  GET  /api/results/slip-data/{student_id}/?term=    → JSON preview
-  POST /api/results/check/                           → PUBLIC PIN check
-  POST /api/scratch-cards/generate/                  → Admin, returns CSV
-  GET  /api/scratch-cards/                           → Admin list
-  GET  /api/scratch-cards/batch-stats/               → Admin batch summary
+  GET  /api/results/slip-data/{student_id}/?term=    â†’ JSON preview
+  POST /api/results/check/                           â†’ PUBLIC PIN check
+  POST /api/scratch-cards/generate/                  â†’ Admin, returns CSV
+  GET  /api/scratch-cards/                           â†’ Admin list
+  GET  /api/scratch-cards/batch-stats/               â†’ Admin batch summary
 """
 
 import csv
@@ -21,7 +27,11 @@ import io
 import random
 import string
 import zipfile
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+from django.db import transaction
+from django.utils.text import slugify
+from accounts.permissions import IsSchoolAdmin
+from .scratch_pdf import scratch_cards_pdf
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.db.models import Count, Q, Sum, Avg
@@ -33,6 +43,8 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from tenants.mixins import TenantMixin
+from academics.models import Term
+from enrollment.models import ClassArm, StudentProfile
 
 from .models import ResultRemark, ScratchCard, _generate_serial
 from .serializers import (
@@ -95,9 +107,9 @@ def _simple_pdf_bytes(lines):
     return bytes(pdf)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Data assembly helper
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _assemble_slip_data(school, student, term):
     """
@@ -227,7 +239,7 @@ def _assemble_slip_data(school, student, term):
 
         # Position
         'position':       getattr(remark_obj, 'computed_position', None),
-        'class_size':     class_size or '—',
+        'class_size':     class_size or 'â€”',
 
         # Domains
         'affective_rows':   affective_rows,
@@ -265,12 +277,12 @@ def _render_pdf(template_name, context, orientation='portrait'):
         ])
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Position computation
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ComputePositionsView(TenantMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def post(self, request):
         """
@@ -345,12 +357,12 @@ class ComputePositionsView(TenantMixin, APIView):
         })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Remarks PATCH
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ResultRemarkView(TenantMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request, student_id):
         term_id = request.query_params.get('term')
@@ -366,24 +378,46 @@ class ResultRemarkView(TenantMixin, APIView):
         if not term_id:
             return Response({'detail': 'term param required.'}, status=400)
 
+        try:
+            profile = StudentProfile.objects.select_related('user', 'current_class').get(
+                user_id=student_id,
+                user__role='student',
+                school=self.school,
+            )
+            term = Term.objects.get(pk=term_id, session__school=self.school)
+        except (StudentProfile.DoesNotExist, Term.DoesNotExist):
+            return Response({'detail': 'Student or term not found.'}, status=404)
+
+        class_arm_id = request.data.get('class_arm') or getattr(profile, 'current_class_id', None)
+        if not class_arm_id:
+            return Response({'detail': 'class_arm is required for this student.'}, status=400)
+        try:
+            class_arm = ClassArm.objects.get(pk=class_arm_id, school=self.school)
+        except ClassArm.DoesNotExist:
+            return Response({'detail': 'Class not found.'}, status=404)
+        if profile.current_class_id and class_arm.pk != profile.current_class_id:
+            return Response({'detail': 'Class does not match this student.'}, status=400)
+
         obj, _ = ResultRemark.objects.get_or_create(
             school=self.school,
-            student_id=student_id,
-            term_id=term_id,
-            defaults={'class_arm_id': request.data.get('class_arm')},
+            student=profile.user,
+            term=term,
+            defaults={'class_arm': class_arm},
         )
+        if obj.class_arm_id != class_arm.pk:
+            return Response({'detail': 'Class does not match this result remark.'}, status=400)
         ser = RemarkPatchSerializer(obj, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         ser.save()
         return Response(ResultRemarkSerializer(obj).data)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Class results list (for admin management table)
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ClassResultsView(TenantMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request):
         class_arm_id = request.query_params.get('class_arm')
@@ -401,12 +435,12 @@ class ClassResultsView(TenantMixin, APIView):
         return Response(ResultRemarkSerializer(remarks, many=True).data)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Slip data JSON (browser preview)
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class SlipDataView(TenantMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request, student_id):
         from django.contrib.auth import get_user_model
@@ -418,7 +452,7 @@ class SlipDataView(TenantMixin, APIView):
         try:
             from academics.models import Term
             student = User.objects.get(pk=student_id, school=self.school)
-            term    = Term.objects.get(pk=term_id)
+            term    = Term.objects.get(pk=term_id, session__school=self.school)
         except Exception:
             return Response({'detail': 'Student or term not found.'}, status=404)
 
@@ -426,12 +460,12 @@ class SlipDataView(TenantMixin, APIView):
         return Response(data)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # PDF: Result Slip
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ResultSlipPDFView(TenantMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request, student_id):
         from django.contrib.auth import get_user_model
@@ -441,7 +475,7 @@ class ResultSlipPDFView(TenantMixin, APIView):
         try:
             student = User.objects.get(pk=student_id, school=self.school)
             from academics.models import Term
-            term = Term.objects.get(pk=term_id)
+            term = Term.objects.get(pk=term_id, session__school=self.school)
         except Exception:
             return Response({'detail': 'Student or term not found.'}, status=404)
 
@@ -454,12 +488,12 @@ class ResultSlipPDFView(TenantMixin, APIView):
         return response
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # PDF: Broadsheet
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class BroadsheetPDFView(TenantMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request, class_arm_id):
         from django.contrib.auth import get_user_model
@@ -534,13 +568,13 @@ class BroadsheetPDFView(TenantMixin, APIView):
 
         from academics.models import Term
         try:
-            term_obj = Term.objects.get(pk=term_id)
+            term_obj = Term.objects.get(pk=term_id, session__school=self.school)
         except Term.DoesNotExist:
             return Response({'detail': 'Term not found.'}, status=404)
 
         from enrollment.models import ClassArm
         try:
-            class_arm = ClassArm.objects.get(pk=class_arm_id)
+            class_arm = ClassArm.objects.get(pk=class_arm_id, school=self.school)
         except ClassArm.DoesNotExist:
             return Response({'detail': 'Class not found.'}, status=404)
 
@@ -563,12 +597,12 @@ class BroadsheetPDFView(TenantMixin, APIView):
         return response
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # ZIP: All slips for a class
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class AllSlipsZipView(TenantMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request, class_arm_id):
         from django.contrib.auth import get_user_model
@@ -580,7 +614,7 @@ class AllSlipsZipView(TenantMixin, APIView):
             return Response({'detail': 'term param required.'}, status=400)
 
         try:
-            term = Term.objects.get(pk=term_id)
+            term = Term.objects.get(pk=term_id, session__school=self.school)
         except Term.DoesNotExist:
             return Response({'detail': 'Term not found.'}, status=404)
 
@@ -606,15 +640,22 @@ class AllSlipsZipView(TenantMixin, APIView):
         return response
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Scratch Card: Generate (Admin)
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ScratchCardGenerateView(TenantMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsSchoolAdmin]
 
+    @transaction.atomic
     def post(self, request):
-        quantity   = int(request.data.get('quantity', 0))
+        try:
+            quantity = int(request.data.get('quantity', 0))
+            amount = Decimal(str(request.data.get('price', '0')))
+            if not amount.is_finite() or amount < 0 or amount >= 1000000 or amount.as_tuple().exponent < -2:
+                raise ValueError()
+        except (ValueError, TypeError, InvalidOperation):
+            return Response({'detail': 'Enter a valid quantity and non-negative price with up to two decimal places.'}, status=400)
         batch_name = request.data.get('batch_name', '').strip()
         term_id    = request.data.get('term_id')
         price      = request.data.get('price', '0')
@@ -624,6 +665,12 @@ class ScratchCardGenerateView(TenantMixin, APIView):
         if not batch_name:
             return Response({'detail': 'batch_name is required.'}, status=400)
 
+        if term_id:
+            from academics.models import Term
+            if not str(term_id).isdigit() or not Term.objects.filter(pk=term_id, session__school=self.school).exists():
+                return Response({'detail': 'Choose a term belonging to this school.'}, status=400)
+        if len(batch_name) > 100:
+            return Response({'detail': 'Batch name must be at most 100 characters.'}, status=400)
         cards_to_create = []
         csv_rows = [['serial_number', 'pin']]
 
@@ -648,26 +695,23 @@ class ScratchCardGenerateView(TenantMixin, APIView):
             ))
             csv_rows.append([serial, plain_pin])
 
+        # Render before saving; failed exports must not leave an inaccessible PIN batch.
+        pdf = scratch_cards_pdf(self.school.name, batch_name, csv_rows[1:])
         ScratchCard.objects.bulk_create(cards_to_create)
-
-        # Return CSV download
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerows(csv_rows)
-        output.seek(0)
-
-        filename = f"scratch_cards_{batch_name.replace(' ', '_')}.csv"
-        response = HttpResponse(output.read(), content_type='text/csv')
+        filename = f"scratch_cards_{slugify(batch_name) or 'batch'}.pdf"
+        response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response['Cache-Control'] = 'no-store'
+
         return response
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Scratch Card: List + Batch Stats (Admin)
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ScratchCardListView(TenantMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request):
         batch = request.query_params.get('batch')
@@ -679,7 +723,7 @@ class ScratchCardListView(TenantMixin, APIView):
 
 
 class ScratchCardBatchStatsView(TenantMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SchoolModulePermission]
 
     def get(self, request):
         from django.db.models import Min
@@ -698,40 +742,30 @@ class ScratchCardBatchStatsView(TenantMixin, APIView):
         return Response(list(batches))
 
 
-class ScratchCardUnusedCSVView(TenantMixin, APIView):
-    """Download unused PINs for a batch — admin only."""
-    permission_classes = [IsAuthenticated]
+class ScratchCardUnusedPDFView(TenantMixin, APIView):
+    permission_classes = [IsSchoolAdmin]
 
     def get(self, request):
         batch = request.query_params.get('batch', '').strip()
         if not batch:
             return Response({'detail': 'batch param required.'}, status=400)
-
-        cards = ScratchCard.objects.filter(
-            school=self.school, batch_name=batch, is_used=False
-        )
-        # Note: we can only return serial numbers here — PINs are hashed and not recoverable.
-        # Admins should keep the original CSV from generation. This endpoint lists unused serials.
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(['serial_number', 'status'])
-        for card in cards:
-            writer.writerow([card.serial_number, 'unused'])
-        output.seek(0)
-
-        filename = f"unused_{batch.replace(' ', '_')}.csv"
-        response = HttpResponse(output.read(), content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        cards = ScratchCard.objects.filter(school=self.school, batch_name=batch, is_used=False)
+        pdf = scratch_cards_pdf(self.school.name, batch, ((card.serial_number, '') for card in cards), include_pins=False)
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="unused_{slugify(batch) or "batch"}.pdf"'
+        response['Cache-Control'] = 'no-store'
         return response
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Public PIN Check (NO auth, NO tenant middleware)
-# ─────────────────────────────────────────────────────────────────────────────
+class ScratchCardUnusedCSVView(ScratchCardUnusedPDFView):
+    # Retain the legacy URL, but all report downloads now return PDF.
+    pass
+
 
 class PublicResultCheckView(APIView):
+    throttle_classes = [ResultCheckThrottle]
     """
-    Public endpoint — no login required.
+    Public endpoint â€” no login required.
     Accepts admission_number + serial_number + pin.
     Verifies the scratch card, marks it used, returns full result JSON.
     """
@@ -756,6 +790,9 @@ class PublicResultCheckView(APIView):
             )
         except ScratchCard.DoesNotExist:
             return Response({'detail': 'Invalid serial number.'}, status=404)
+
+        if not card.school.is_active or card.school.approval_status != 'approved':
+            return Response({'detail': 'Result checking is unavailable.'}, status=403)
 
         # Verify PIN
         if not check_password(pin, card.pin_hash):
@@ -784,7 +821,7 @@ class PublicResultCheckView(APIView):
                 status=404,
             )
 
-        # Determine term — use card's term if set, else current term for the school
+        # Determine term â€” use card's term if set, else current term for the school
         if card.term:
             term = card.term
         else:
@@ -810,3 +847,4 @@ class PublicResultCheckView(APIView):
         # Assemble and return result data
         data = _assemble_slip_data(card.school, student, term)
         return Response(data)
+

@@ -254,7 +254,7 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if not csv_file.name.endswith(".csv"):
+        if not csv_file.name.lower().endswith(".csv"):
             return Response(
                 {"error": "Only .csv files are accepted."},
                 status=status.HTTP_400_BAD_REQUEST,

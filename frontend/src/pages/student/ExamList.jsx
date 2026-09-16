@@ -36,15 +36,11 @@ export default function ExamList() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    api.get('/cbt/exams/available/')
+    api.get('/api/cbt/exams/available/')
       .then(({ data }) => setExams(data))
       .finally(() => setLoading(false));
   }, []);
 
-  const canStart = (exam) => {
-    const s = exam.session_status;
-    return s === null || s === 'not_started' || s === 'in_progress';
-  };
 
   const handleAction = (exam) => {
     navigate(`/student/exam/${exam.id}`);

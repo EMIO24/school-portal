@@ -1,0 +1,50 @@
+/* Shared phone/tablet behavior for all five portal designs. */
+.workspace-backdrop,.workspace-drawer-close{display:none}
+@media(max-width:1024px){
+  .workspace,.workspace.layout-executive{display:flex;flex-direction:column;min-height:100dvh;width:100%;max-width:100%}
+  .workspace.layout-heritage{padding:0}
+  .workspace .workspace-sidebar{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;height:auto;width:100%;padding:14px 16px;overflow:visible;border:0}
+  .workspace .workspace-brand{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;text-align:left;min-width:0;padding:0;border:0;gap:9px}
+  .workspace .workspace-brand>div{min-width:0}.workspace .workspace-brand strong{font-size:15px;line-height:1.35}.workspace .workspace-brand small{display:none}
+  .workspace .workspace-brand img,.workspace .workspace-monogram{width:38px;height:38px;flex-shrink:0}
+  .workspace .workspace-menu{display:block;width:auto;min-width:78px;min-height:44px;padding:9px 12px;border:1px solid currentColor;border-radius:8px;background:transparent;color:inherit;font-size:14px;white-space:normal}
+  .workspace .workspace-plan{display:none}
+  .workspace .workspace-links{display:none;position:fixed;inset:0 0 0 auto;width:min(340px,90vw);height:100dvh;max-height:none;margin:0;padding:16px 16px max(20px,env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain;z-index:1200;background:#fff;color:#173b56;border:0;box-shadow:-8px 0 30px #122a3e30;flex-direction:column;flex-wrap:nowrap;justify-content:flex-start;gap:4px;text-align:left}
+  .workspace .is-open .workspace-links{display:flex}
+  .workspace .workspace-links a{font-size:15px;line-height:1.45;min-height:48px;padding:12px;flex-shrink:0;white-space:normal;border-radius:8px;box-shadow:none}
+  .workspace .workspace-links a.active{background:var(--primary);color:var(--on-primary);border:0}
+  .workspace .workspace-nav-caption{display:block;font-size:11px;padding:12px;opacity:1;color:#627381;flex-shrink:0}
+  .workspace .workspace-nav-icon{font-size:11px}.workspace .workspace-nav-arrow{display:block}
+  .workspace .workspace-account{display:block;margin:16px 0 0;padding-top:12px;border-top:1px solid #dce4ea;flex-shrink:0}
+  .workspace .workspace-account button{font-size:15px;min-height:48px;width:100%;text-align:left}
+  .workspace .workspace-drawer-close{display:flex;justify-content:space-between;align-items:center;position:sticky;top:-16px;z-index:1;background:#fff;border:0;border-bottom:1px solid #dce4ea;color:#173b56;padding:12px;min-height:50px;width:100%;font-size:16px;flex-shrink:0}.workspace-drawer-close span{font-size:26px}
+  .workspace .workspace-backdrop{display:block;position:fixed;inset:0;width:100%;height:100dvh;border:0;border-radius:0;background:#10253580;z-index:1100;cursor:pointer}
+  .workspace .workspace-topbar{padding:14px 16px;gap:12px}.workspace .workspace-topbar .workspace-eyebrow{display:none}.workspace .workspace-topbar>div>strong{font-size:18px;margin:0}.workspace .workspace-person>div{display:none}
+  .workspace .workspace-body{width:100%;min-width:0}.workspace .workspace-content{padding:20px 16px;max-width:100%;min-width:0}
+  .workspace .workspace-footer{padding:18px 16px;font-size:12px;flex-wrap:wrap}
+  .workspace .workspace-content>main,.workspace .workspace-content .page-shell{width:100%;min-width:0;max-width:100%}
+  .workspace .workspace-welcome{min-height:0;padding:24px;gap:0}.workspace .workspace-welcome h1{font-size:28px}.workspace .workspace-welcome p{font-size:14px;line-height:1.65}.workspace .workspace-welcome-mark{display:none}
+  .workspace .workspace-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.workspace .workspace-shortcuts>a{display:block;padding:20px}.workspace .workspace-shortcuts h2{font-size:16px;margin:15px 0 8px}.workspace .workspace-shortcuts p{font-size:14px;line-height:1.6}.workspace .shortcut-number{font-size:12px}
+  .workspace .workspace-content input:not([type=checkbox]):not([type=radio]),.workspace .workspace-content select,.workspace .workspace-content textarea{font-size:16px!important;min-height:44px;max-width:100%;min-width:0}
+  .workspace .workspace-content button,.workspace .workspace-content a.btn{min-height:44px;white-space:normal}
+  .workspace .workspace-content :is(.table-wrap,.table-container,.tt-grid-wrap,.bi-preview-wrap,.se-table-wrap,.att-table-wrap){max-width:100%;min-width:0;overflow-x:auto;overscroll-behavior-x:contain}
+  .workspace .workspace-content table{display:block;max-width:100%;overflow-x:auto}
+  .workspace .workspace-content :is(.chart-row,.fee-layout,.notif-layout){grid-template-columns:minmax(0,1fr)}
+  .workspace .workspace-content :is(.dash-controls,.tt-toolbar,.staff-filters,.sm-filters,.stf-form-actions){flex-wrap:wrap;min-width:0;gap:10px}
+  .workspace .workspace-content :is(.stf-grid--3,.stf-grid--2,.platform-grid){grid-template-columns:minmax(0,1fr)}
+  .workspace .design-save-bar{position:static;flex-wrap:wrap;box-shadow:none}.workspace .design-save-bar>div{width:100%}.workspace .design-save-bar button{width:100%;font-size:15px}.workspace .design-save-bar a{font-size:14px;min-height:44px;display:flex;align-items:center}
+  .workspace .design-help,.workspace .design-option>p,.workspace .design-plan-options li,.workspace .design-school-picker p{font-size:14px}.workspace .design-controls label,.workspace .design-school-picker label{font-size:15px}.workspace .design-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:600px){
+  .workspace .workspace-content{padding:16px 12px}.workspace .workspace-sidebar{padding:12px}.workspace .workspace-topbar{padding:12px}.workspace .workspace-brand strong{font-size:14px}
+  .workspace .design-gallery,.workspace .design-plan-options{grid-template-columns:minmax(0,1fr)}
+  .workspace .design-school-picker{display:block}.workspace .design-school-picker select{margin:10px 0}.workspace .design-page-heading h1{font-size:28px}
+  .workspace .workspace-content :is(.form-grid,.sm-form-grid,.stf-grid,.qe-row){grid-template-columns:minmax(0,1fr)}
+  .workspace .workspace-content :is(.em-modal,.qe-modal,.tt-modal,.sm-modal){max-width:calc(100vw - 20px);max-height:calc(100dvh - 20px);overflow-y:auto}
+  html[data-portal-layout] .login-root{padding:20px 14px;min-height:100dvh}html[data-portal-layout] .login-card{padding:24px 20px;max-width:100%;margin-left:0}html[data-portal-layout=studio] .login-card{box-shadow:5px 5px 0 var(--primary-light)}
+}
+@media(max-width:420px){
+  .workspace .workspace-shortcuts{grid-template-columns:minmax(0,1fr)}.workspace .workspace-welcome{padding:22px 18px}.workspace .workspace-welcome h1{font-size:25px}.workspace .workspace-eyebrow{font-size:10px;letter-spacing:.8px}
+  .workspace .workspace-shortcuts>a{padding:18px}.workspace .workspace-shortcuts h2{margin-top:9px}.workspace .workspace-content .dash-controls{width:100%}.workspace .workspace-content .dash-controls>*{width:100%}
+}
+@media print{.workspace-sidebar,.workspace-topbar,.workspace-footer,.workspace-backdrop{display:none!important}.workspace{display:block!important}.workspace-content{padding:0!important}}

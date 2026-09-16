@@ -59,7 +59,22 @@ class IsSuperAdmin(_RolePermission):
     NOT tenant-scoped — superadmin can act across all schools.
     """
     allowed_roles = ("superadmin",)
-    message = "Only platform superadmins can perform this action."
+    message = "Only platform owners can perform this action."
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+        if request.user.must_change_password:
+            return False
+        state = getattr(request.user, "platform_security", None)
+        return state is None or state.access_level == "owner"
+
+
+class IsPlatformReader(IsSuperAdmin):
+    def has_permission(self, request, view):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return bool(request.user and request.user.is_authenticated and request.user.role == "superadmin")
+        return super().has_permission(request, view)
 
 
 class IsSchoolAdmin(_TenantRolePermission):
@@ -123,3 +138,6 @@ class IsAuthenticatedTenantUser(IsAuthenticated):
             return False
 
         return request.user.school_id == tenant.pk
+
+class IsPlatformMember(_RolePermission):
+    allowed_roles = ("superadmin",)
