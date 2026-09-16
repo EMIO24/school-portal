@@ -268,7 +268,10 @@ class ManualPaymentView(APIView):
         except (StudentProfile.DoesNotExist, FeeSchedule.DoesNotExist) as exc:
             return Response({'error': str(exc)}, status=404)
 
-        payment_date = parse_date(str(d['payment_date']))
+        try:
+            payment_date = parse_date(str(d['payment_date']))
+        except (TypeError, ValueError):
+            payment_date = None
         if payment_date is None:
             return Response({'error': 'payment_date must be a valid YYYY-MM-DD date.'}, status=400)
 

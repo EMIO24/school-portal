@@ -24,16 +24,21 @@ def evaluate_student(student, session, criteria):
         if subj_avg >= 50:
             subjects_passed += 1
 
-    # Attendance % for session
+    # Attendance % for session. Match attendance reports: late counts as present
+    # and excused absences do not reduce the percentage.
     attend = AttendanceRecord.objects.filter(
         student=student.user,
         attendance_session__term__in=terms,
         attendance_session__school=student.school,
     ).aggregate(
         present=Count('id', filter=Q(status='present')),
+        late=Count('id', filter=Q(status='late')),
+        excused=Count('id', filter=Q(status='excused')),
         total=Count('id'),
     )
-    attend_pct = int(attend['present'] / attend['total'] * 100) if attend['total'] else 0
+    counted_total = max((attend['total'] or 0) - (attend['excused'] or 0), 0)
+    effective_present = (attend['present'] or 0) + (attend['late'] or 0)
+    attend_pct = round(effective_present / counted_total * 100, 1) if counted_total else 0
 
     criteria_met = (
         subjects_passed >= criteria.min_subjects_to_pass

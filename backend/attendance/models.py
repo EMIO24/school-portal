@@ -46,8 +46,8 @@ class AttendanceRecordQuerySet(models.QuerySet):
             late     = Count('id', filter=Q(status='late')),
             excused  = Count('id', filter=Q(status='excused')),
         )
-        total = agg['total'] or 0
-        # Late counts as present for the % calculation (Nigerian convention)
+        total = max((agg['total'] or 0) - (agg['excused'] or 0), 0)
+        # Late counts as present; excused absence does not count against the student.
         effective_present = (agg['present'] or 0) + (agg['late'] or 0)
         agg['percentage'] = round(effective_present / total * 100, 1) if total else 0.0
         return agg

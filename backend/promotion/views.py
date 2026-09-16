@@ -9,6 +9,7 @@ POST     /api/promotion/execute/
 """
 
 import logging
+from decimal import Decimal, InvalidOperation
 
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -41,14 +42,37 @@ class PromotionCriteriaView(APIView):
     def post(self, request):
         school = getattr(request, 'tenant', None)
         d      = request.data
+        from enrollment.models import ClassLevel
+
+        class_level = ClassLevel.objects.filter(pk=d.get('class_level_id'), school=school).first()
+        if not class_level:
+            return Response({'class_level_id': 'Choose a class level belonging to this school.'}, status=400)
+
+        try:
+            min_subjects = int(d.get('min_subjects_to_pass', 5))
+            min_average = Decimal(str(d.get('min_average_score', 40)))
+            min_attendance = int(d.get('min_attendance_pct', 50))
+        except (TypeError, ValueError, InvalidOperation):
+            return Response({'detail': 'Enter valid promotion criteria numbers.'}, status=400)
+
+        errors = {}
+        if min_subjects < 0 or min_subjects > 30:
+            errors['min_subjects_to_pass'] = 'Enter a value between 0 and 30.'
+        if min_average < 0 or min_average > 100:
+            errors['min_average_score'] = 'Enter a percentage between 0 and 100.'
+        if min_attendance < 0 or min_attendance > 100:
+            errors['min_attendance_pct'] = 'Enter a percentage between 0 and 100.'
+        if errors:
+            return Response(errors, status=400)
+
         obj, _ = PromotionCriteria.objects.update_or_create(
             school=school,
-            class_level_id=d['class_level_id'],
+            class_level=class_level,
             defaults={
-                'min_subjects_to_pass': d.get('min_subjects_to_pass', 5),
-                'min_average_score':    d.get('min_average_score', 40),
-                'min_attendance_pct':   d.get('min_attendance_pct', 50),
-                'auto_promote_if_met':  d.get('auto_promote_if_met', False),
+                'min_subjects_to_pass': min_subjects,
+                'min_average_score':    min_average,
+                'min_attendance_pct':   min_attendance,
+                'auto_promote_if_met':  bool(d.get('auto_promote_if_met', False)),
             },
         )
         return Response({'id': obj.id}, status=201)

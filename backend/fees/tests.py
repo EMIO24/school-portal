@@ -137,6 +137,12 @@ class PaystackTests(TestCase):
         settle(order.reference, self.data(order))
         receipt = FeePayment.objects.get()
         self.assertEqual(self.client.get('/api/fees/receipts/%s/' % receipt.pk, **self.headers).status_code, 403)
+    def test_manual_payment_invalid_calendar_date_returns_400(self):
+        self.client.force_authenticate(self.admin)
+        payload = {'student_id': self.student.pk, 'fee_schedule_id': self.fee.pk, 'amount_paid': 500, 'payment_date': '2026-02-30', 'method': 'cash'}
+        response = self.client.post('/api/fees/pay/manual/', payload, format='json', **self.headers)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('payment_date', response.data['error'])
     def test_manual_payment_cannot_fake_paystack_or_exceed_balance(self):
         self.client.force_authenticate(self.admin)
         payload = {'student_id': self.student.pk, 'fee_schedule_id': self.fee.pk, 'amount_paid': 500, 'payment_date': '2026-09-15', 'method': 'paystack'}
@@ -153,3 +159,4 @@ class PaystackTests(TestCase):
         self.start(); order = PaymentOrder.objects.get()
         settle(order.reference, self.data(order, status='failed'))
         self.assertEqual(self.start().status_code, 200)
+

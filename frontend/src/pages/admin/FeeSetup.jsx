@@ -96,13 +96,27 @@ export default function FeeSetup() {
       });
     });
     try {
-      await api.post("/api/fees/schedule/", {
+      const { data, status } = await api.post("/api/fees/schedule/", {
         term_id: Number(selectedTerm), schedules: scheduleItems,
       });
+      if (status === 207 || (Array.isArray(data?.errors) && data.errors.length)) {
+        const details = (data.errors || [])
+          .map(err => {
+            const item = scheduleItems[err.index] || {};
+            const level = levels.find(lv => lv.id === item.class_level_id)?.name || `row ${err.index + 1}`;
+            const category = categories.find(cat => cat.id === item.fee_category_id)?.name || "fee item";
+            return `${level} / ${category}: ${err.detail}`;
+          })
+          .join("\n");
+        alert(`Some fee amounts were not saved.\n\n${details || "Review the entered amounts and try again."}`);
+        await loadSchedules();
+        return;
+      }
       setToast("Fee schedule saved.");
       setTimeout(() => setToast(null), 3000);
-    } catch {
-      alert("Failed to save fee schedule. Please try again.");
+    } catch (err) {
+      const detail = err?.response?.data?.error || err?.response?.data?.detail;
+      alert(detail || "Failed to save fee schedule. Please try again.");
     } finally {
       setSaving(false);
     }
