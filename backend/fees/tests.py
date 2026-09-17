@@ -99,12 +99,21 @@ class PaystackTests(TestCase):
         with patch.object(PaystackService,'initialize',side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
             r=self.client.post('/api/fees/subscription/',{'plan':'basic'},format='json',**self.headers)
         self.assertEqual(r.status_code,200,r.data)
-        order=PaymentOrder.objects.get();self.assertEqual(order.amount_kobo,7500000);self.assertFalse(order.subaccount_code)
+        order=PaymentOrder.objects.get();self.assertEqual(order.amount_kobo,120000);self.assertFalse(order.subaccount_code)
         self.school.is_active=False;self.school.save()
         settle(order.reference,self.data(order));self.school.refresh_from_db(); end=self.school.subscription_ends_on
         settle(order.reference,self.data(order));self.school.refresh_from_db()
         self.assertEqual(end,self.school.subscription_ends_on);self.assertFalse(self.school.is_active)
         self.assertEqual(self.school.subscription_plan,'basic')
+    def test_subscription_10_percent_discount_for_100_students_and_above(self):
+        self.client.force_authenticate(self.admin)
+        for index in range(99):
+            user = CustomUser.objects.create_user(f'bulk{index}@pay.test', 'Password!123', school=self.school, role='student')
+            StudentProfile.objects.create(school=self.school, user=user, current_class=None, admission_number=f'BULK{index:03d}')
+        with patch.object(PaystackService,'initialize',side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
+            r=self.client.post('/api/fees/subscription/',{'plan':'basic'},format='json',**self.headers)
+        self.assertEqual(r.status_code,200,r.data)
+        order=PaymentOrder.objects.get(); self.assertEqual(order.amount_kobo,10800000)
     def test_owner_controls_work_without_tenant_and_viewer_denied(self):
         self.client.force_authenticate(self.owner)
         self.assertEqual(self.client.get('/api/platform/payments/').status_code,200)

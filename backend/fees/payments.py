@@ -18,11 +18,28 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from accounts.permissions import IsAuthenticatedTenantUser, IsSchoolAdmin, IsSuperAdmin
+from enrollment.models import StudentProfile
 from tenants.models import School, PlatformEvent
 from tenants.plans import PLAN_FEATURES, FEATURES
 from .models import PaymentOrder, SchoolPaymentAccount, SubscriptionOffer, FeeSchedule, FeePayment
 from .access import payment_student
 from .services.paystack import PaystackService
+
+
+def subscription_student_count(school):
+    return StudentProfile.objects.filter(school=school, status='active').count()
+
+
+def subscription_offer_total(school, offer):
+    student_count = subscription_student_count(school)
+    amount = Decimal(student_count) * Decimal(str(offer.amount))
+    if student_count >= 100:
+        amount *= Decimal('0.90')
+    return amount.quantize(Decimal('0.01'))
+
+
+def subscription_offer_amount(school, offer):
+    return subscription_offer_total(school, offer)
 
 
 def event(user, action, target, details):
@@ -192,10 +209,35 @@ class PaystackWebhook(APIView):
 class SchoolSubscription(APIView):
     permission_classes = [IsSchoolAdmin]
     def get(self, request):
+        offers = []
+        school_student_count = StudentProfile.objects.filter(school=request.tenant, status='active').count()
+        for offer in SubscriptionOffer.objects.filter(enabled=True):
+            base_amount = Decimal(str(offer.amount))
+            total_amount = Decimal(school_student_count) * base_amount
+            if school_student_count >= 100:
+                total_amount *= Decimal('0.90')
+            offers.append({
+                'plan': offer.plan,
+                'amount': float(offer.amount),
+                'months': offer.months,
+                'base_amount': float(offer.amount),
+                'total_amount': float(total_amount.quantize(Decimal('0.01'))),
+                'student_count': school_student_count,
+                'discount_percent': 10 if school_student_count >= 100 else 0,
+                'discount_applied': school_student_count >= 100,
+                'billing_note': 'per student per term',
+            })
+        school_summary = f"School size: {school_student_count} active students."
+        if school_student_count >= 100:
+            school_summary += ' 10% discount is active.'
+        else:
+            school_summary += ' 100+ active students unlocks 10% off.'
         return Response({'plan': request.tenant.subscription_plan, 'ends_on': request.tenant.subscription_ends_on,
             'features': PLAN_FEATURES,
             'feature_labels': FEATURES,
-            'offers': list(SubscriptionOffer.objects.filter(enabled=True).values('plan', 'amount', 'months')),
+            'school_size_summary': school_summary,
+            'school_student_count': school_student_count,
+            'offers': offers,
             'orders': [result(o) for o in PaymentOrder.objects.filter(school=request.tenant, kind='subscription').order_by('-id')[:30]]})
     @transaction.atomic
     def post(self, request):
@@ -208,7 +250,8 @@ class SchoolSubscription(APIView):
         offer = get_object_or_404(SubscriptionOffer, plan=request.data.get('plan'), enabled=True)
         if school.subscription_ends_on and school.subscription_ends_on >= timezone.localdate() and school.subscription_plan not in ('free', offer.plan):
             raise ValidationError('Contact the platform owner to change plans during a paid period.')
-        return checkout(request, kind='subscription', plan=offer.plan, months=offer.months, amount_kobo=int(offer.amount * 100))
+        final_amount = subscription_offer_total(school, offer)
+        return checkout(request, kind='subscription', plan=offer.plan, months=offer.months, amount_kobo=int(final_amount * 100))
 
 
 class PlatformPayments(APIView):

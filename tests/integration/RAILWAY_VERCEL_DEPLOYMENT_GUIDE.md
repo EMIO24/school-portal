@@ -30,6 +30,24 @@ Create or prepare these accounts:
 
 You can deploy without a custom domain first by using Railway and Vercel URLs.
 
+## Billing model
+
+Subscription pricing is per active student per term, not a flat school fee:
+
+```text
+Basic:   ₦1,200 per active student per term
+Premium: ₦2,000 per active student per term
+```
+
+Schools with 100 or more active students receive 10% off the calculated total.
+The pricing page shows the active student count, discount status and total amount
+for the school before checkout. Examples:
+
+```text
+5 students:   Basic ₦6,000; Premium ₦10,000
+100 students: Basic ₦108,000; Premium ₦180,000
+```
+
 ## 2. Confirm the branch on GitHub
 
 The current deployment branch is:
@@ -152,8 +170,8 @@ PLATFORM_MFA_KEY=<your generated PLATFORM_MFA_KEY>
 DATABASE_URL=<Railway PostgreSQL URL>
 REDIS_URL=<Railway Redis URL>
 ALLOWED_HOSTS=<temporary Railway backend domain without https://>
-FRONTEND_URL=<temporary Vercel frontend URL, add later if unknown>
-CORS_ALLOWED_ORIGINS=<temporary Vercel frontend URL, add later if unknown>
+FRONTEND_URL=https://<your-real-vercel-domain>
+CORS_ALLOWED_ORIGINS=https://<your-real-vercel-domain>
 PAYSTACK_MODE=test
 PAYSTACK_SECRET_KEY=<Paystack test secret key>
 DEPLOYMENT_CHECK_ARGS=--allow-test-payments
@@ -163,14 +181,9 @@ DEFAULT_FROM_EMAIL=<verified sender email>
 RUN_MIGRATIONS=true
 ```
 
-At this point you may not know the Vercel URL yet. If you do not know it, put a temporary value like:
-
-```text
-FRONTEND_URL=https://example.com
-CORS_ALLOWED_ORIGINS=https://example.com
-```
-
-You will replace it after Vercel deploys.
+Production settings require both values to be real HTTPS origins. Do not use
+`http://localhost`, an empty value or a placeholder in Railway production.
+Deploy the frontend first if necessary, then return here with its actual Vercel URL.
 
 ## 9. Generate a Railway backend URL
 
@@ -530,6 +543,9 @@ Run these before using real school records:
 - Attendance/debtors exports download as PDF.
 - Paystack test payment verifies through backend before receipt/renewal.
 - Failed or pending payment does not create a receipt.
+- Subscription totals use the active student count: verify 5 students and 100 students.
+- Verify the 100-student case applies exactly 10% off and checkout uses that total.
+- Public result-check failures do not reveal whether a card, student or term exists.
 - Mobile layout works around 390px width.
 
 ## 23. Backup and restore drill
@@ -605,12 +621,10 @@ With domain reserve: roughly ₦32,000-₦50,000 per 100-student school
 
 This is cost, not selling price. Your selling price should include support time, onboarding, training, risk buffer, payment reconciliation work and profit.
 
-Suggested starting prices:
-
-```text
-Basic: ₦30,000-₦50,000 per term
-Premium: ₦60,000-₦100,000 per term
-```
+The application prices subscriptions from the active student count. At exactly
+100 active students, the application total is ₦108,000 for Basic or ₦180,000
+for Premium per term after the 10% discount. Any separate commercial packaging,
+support fee or onboarding fee must be communicated as a separate charge.
 
 As more schools join, the fixed hosting cost is shared across all schools, so the cost per school drops.
 

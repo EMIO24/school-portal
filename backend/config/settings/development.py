@@ -9,7 +9,7 @@ from .base import *
 
 # ── Security ───────────────────────────────────────────────────────────────
 
-SECRET_KEY = "django-insecure-dev-key-change-before-production-use"
+SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-dev-only-key-for-local-development-2026")
 
 DEBUG = True
 
@@ -27,7 +27,7 @@ DATABASES = {
         "ENGINE":   "django.db.backends.postgresql",
         "NAME":     "school_portal",
         "USER":     "postgres",
-        "PASSWORD": "postgres",      # ← change to your postgres password
+        "PASSWORD": os.environ.get("DB_PASSWORD", "postgres"),
         "HOST":     "localhost",
         "PORT":     "5432",
     }

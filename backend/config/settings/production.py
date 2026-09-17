@@ -25,6 +25,8 @@ SECRET_KEY = os.environ["SECRET_KEY"]
 DEBUG = False
 
 ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', '').split(',') if host.strip()]
+if not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS:
+    raise RuntimeError('Production requires explicit ALLOWED_HOSTS.')
 
 # â”€â”€ Database â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -38,7 +40,7 @@ DATABASES = {
 
 # â”€â”€ Cache / Celery (Upstash Redis with TLS) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = os.environ["REDIS_URL"]
 _upstash   = REDIS_URL.startswith("rediss://")
 
 CACHES = {
@@ -71,13 +73,17 @@ STATIC_ROOT = BASE_DIR / "staticfiles"  # noqa: F405
 
 # â”€â”€ CORS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "")
+FRONTEND_URL = os.environ["FRONTEND_URL"].rstrip('/')
+if not FRONTEND_URL.startswith('https://'):
+    raise RuntimeError('Production FRONTEND_URL must use HTTPS.')
 
 CORS_ALLOWED_ORIGIN_REGEXES = []
 CORS_ALLOWED_ORIGINS = [origin.strip().rstrip('/') for origin in os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if origin.strip()]
 
 if FRONTEND_URL:
     CORS_ALLOWED_ORIGINS += [FRONTEND_URL.rstrip("/")]
+
+CSRF_TRUSTED_ORIGINS = [FRONTEND_URL]
 
 CORS_ALLOW_HEADERS = [
     "accept",
@@ -115,8 +121,15 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@schoolportal.
 
 # â”€â”€ Third-party keys â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
+PAYSTACK_MODE = os.environ.get("PAYSTACK_MODE", "live")
+if PAYSTACK_MODE not in ('test', 'live'):
+    raise RuntimeError('PAYSTACK_MODE must be test or live.')
+PAYSTACK_SECRET_KEY = os.environ["PAYSTACK_SECRET_KEY"]
+if not PAYSTACK_SECRET_KEY.startswith('sk_' + PAYSTACK_MODE + '_'):
+    raise RuntimeError('PAYSTACK_SECRET_KEY does not match PAYSTACK_MODE.')
 TERMII_API_KEY      = os.environ.get("TERMII_API_KEY", "")
+
+PLATFORM_MFA_KEY = os.environ["PLATFORM_MFA_KEY"]
 
 CLOUDINARY_STORAGE = {
     "CLOUD_NAME": os.environ.get("CLOUDINARY_CLOUD_NAME", ""),

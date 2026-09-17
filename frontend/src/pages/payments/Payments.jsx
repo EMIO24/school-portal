@@ -23,10 +23,60 @@ export function PaymentReturn() {
   </main>;
 }
 export function Subscription() {
-  const [data,setData]=useState(null), [error,setError]=useState(''), [busy,setBusy]=useState(false);
-  useEffect(() => {api.get('/api/fees/subscription/').then(r => setData(r.data)).catch(e => setError(message(e)));}, []);
-  const pay=async plan => {setBusy(true);setError('');try {const r=await api.post('/api/fees/subscription/',{plan});window.location.assign(r.data.authorization_url);} catch(e){setError(message(e) + (e.response?.data?.reference ? ' Reference: ' + e.response.data.reference : ''));setBusy(false);}};
-  return <main className="payments-page"><h1>Portal subscription</h1><p>Pay once for the period shown. Renewals are manual; your card is not automatically charged. SMS usage is billed separately by arrangement with the platform owner.</p>{error && <p role="alert">{error}</p>}{data && <><p>Current plan: {data.plan}. Paid through: {data.ends_on || 'No paid period'}.</p><div className="payment-cards">{data.offers.map(o => <article key={o.plan}><h2>{o.plan}</h2><ul>{(data.features?.[o.plan] || []).map(f=><li key={f}>{data.feature_labels?.[f] || f}</li>)}</ul><p>{money(o.amount)} / {o.months} months</p><button disabled={busy} onClick={() => pay(o.plan)}>Pay with Paystack</button></article>)}</div><h2>Payment history</h2><OrderList orders={data.orders}/></>}</main>;
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get('/api/fees/subscription/').then(r => setData(r.data)).catch(e => setError(message(e)));
+  }, []);
+
+  const pay = async plan => {
+    setBusy(true);
+    setError('');
+    try {
+      const response = await api.post('/api/fees/subscription/', {plan});
+      window.location.assign(response.data.authorization_url);
+    } catch (e) {
+      setError(message(e) + (e.response?.data?.reference ? ' Reference: ' + e.response.data.reference : ''));
+      setBusy(false);
+    }
+  };
+
+  const schoolStudentCount = data?.school_student_count ?? 0;
+
+  return (
+    <main className="payments-page">
+      <h1>Portal subscription</h1>
+      <p>Pay per student per term. Renewals are manual; your card is not automatically charged. SMS usage is billed separately by arrangement with the platform owner.</p>
+      {error && <p role="alert">{error}</p>}
+      {data && (
+        <>
+          <p>Current plan: {data.plan}. Paid through: {data.ends_on || 'No paid period'}.</p>
+          <div className="payment-summary">
+            <h2>School size summary</h2>
+            <p>{data.school_size_summary}</p>
+            <p>Active students: <strong>{schoolStudentCount}</strong></p>
+            {schoolStudentCount >= 100 ? <p><strong>10% discount is active.</strong></p> : <p>100+ active students unlock a 10% discount.</p>}
+          </div>
+          <div className="payment-cards">
+            {data.offers.map(o => (
+              <article key={o.plan}>
+                <h2>{o.plan}</h2>
+                <ul>{(data.features?.[o.plan] || []).map(f => <li key={f}>{data.feature_labels?.[f] || f}</li>)}</ul>
+                {o.discount_applied ? <p><strong>10% off</strong> for schools with 100+ active students.</p> : <p>No discount yet.</p>}
+                <p>{money(o.amount)} / {o.months} months per student per term</p>
+                <p><strong>Total for this school:</strong> {money(o.total_amount ?? (schoolStudentCount * Number(o.amount) * (o.discount_applied ? 0.9 : 1)))}</p>
+                <button disabled={busy} onClick={() => pay(o.plan)}>Pay with Paystack</button>
+              </article>
+            ))}
+          </div>
+          <h2>Payment history</h2>
+          <OrderList orders={data.orders}/>
+        </>
+      )}
+    </main>
+  );
 }
 export function PlatformPayments() {
   const {user}=useAuth(); const [data,setData]=useState(null), [schools,setSchools]=useState([]), [error,setError]=useState(''), [notice,setNotice]=useState(''), [busy,setBusy]=useState(false);

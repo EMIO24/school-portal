@@ -770,14 +770,20 @@ class PublicResultCheckView(APIView):
     authentication_classes = []
 
     def post(self, request):
+        generic_error = Response(
+            {'detail': 'The supplied result-checking details are invalid or unavailable.'},
+            status=403,
+            headers={'Cache-Control': 'no-store'},
+        )
         admission_number = request.data.get('admission_number', '').strip().upper()
         serial_number    = request.data.get('serial_number', '').strip().upper()
         pin              = request.data.get('pin', '').strip()
 
         if not (admission_number and serial_number and pin):
             return Response(
-                {'detail': 'admission_number, serial_number and pin are all required.'},
+                {'detail': 'The supplied result-checking details are invalid or unavailable.'},
                 status=400,
+                headers={'Cache-Control': 'no-store'},
             )
 
         # Look up card
@@ -786,21 +792,18 @@ class PublicResultCheckView(APIView):
                 serial_number=serial_number
             )
         except ScratchCard.DoesNotExist:
-            return Response({'detail': 'Invalid serial number.'}, status=404)
+            return generic_error
 
         if not card.school.is_active or card.school.approval_status != 'approved':
-            return Response({'detail': 'Result checking is unavailable.'}, status=403)
+            return generic_error
 
         # Verify PIN
         if not check_password(pin, card.pin_hash):
-            return Response({'detail': 'Incorrect PIN.'}, status=403)
+            return generic_error
 
         # Already used?
         if card.is_used:
-            return Response(
-                {'detail': 'This card has already been used.'},
-                status=403,
-            )
+            return generic_error
 
         # Find student by admission number within that school
         from django.contrib.auth import get_user_model
@@ -813,10 +816,7 @@ class PublicResultCheckView(APIView):
             )
             student = profile.user
         except StudentProfile.DoesNotExist:
-            return Response(
-                {'detail': 'No student found with that admission number.'},
-                status=404,
-            )
+            return generic_error
 
         # Determine term â€” use card's term if set, else current term for the school
         if card.term:
@@ -827,10 +827,7 @@ class PublicResultCheckView(APIView):
                 session__school=card.school, is_current=True
             ).first()
             if not term:
-                return Response(
-                    {'detail': 'No current term configured for this school.'},
-                    status=404,
-                )
+                return generic_error
 
         # Mark card used atomically to prevent double-use race condition
         updated = ScratchCard.objects.filter(pk=card.pk, is_used=False).update(
@@ -839,9 +836,9 @@ class PublicResultCheckView(APIView):
             used_by_student=student,
         )
         if not updated:
-            return Response({'detail': 'This card has already been used.'}, status=403)
+            return generic_error
 
         # Assemble and return result data
         data = _assemble_slip_data(card.school, student, term)
-        return Response(data)
+        return Response(data, headers={'Cache-Control': 'no-store'})
 
