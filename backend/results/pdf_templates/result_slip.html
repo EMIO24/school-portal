@@ -13,6 +13,11 @@
   @page {
     size: A4 portrait;
     margin: 12mm 14mm;
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font-size: 7pt;
+      color: #64748b;
+    }
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -113,6 +118,13 @@
     width: 100%;
     border-collapse: collapse;
     margin-bottom: 8px;
+  }
+
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+  .school-header, .bio-strip, .summary-bar, .domain-columns,
+  .remarks-section, .footer-strip, .next-term-note {
+    page-break-inside: avoid;
   }
 
   .score-table th {
@@ -269,7 +281,7 @@
     margin-bottom: 3px;
   }
 
-  .remark-text { font-size: 8.5pt; color: #333; font-style: italic; }
+  .remark-text { font-size: 8.5pt; color: #333; font-style: italic; overflow-wrap: anywhere; }
 
   /* ── Signature / footer ── */
   .footer-strip {

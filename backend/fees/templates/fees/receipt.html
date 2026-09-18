@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  @page {
+    size: A4 portrait;
+    margin: 14mm 16mm;
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font-size: 9px;
+      color: #64748b;
+    }
+  }
   body { font-family: Arial, sans-serif; font-size: 12px; color: #1f2933; padding: 28px; }
   .receipt-shell { border: 1px solid #d7dee8; padding: 20px; border-radius: 8px; }
   .header { display: flex; align-items: center; gap: 16px; border-bottom: 3px solid {{ document_primary_color }}; padding-bottom: 14px; margin-bottom: 16px; }
@@ -18,13 +27,15 @@
   .meta { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; background: #f7f9fc; border: 1px solid #e1e7ef; border-radius: 6px; padding: 12px; }
   .meta div { line-height: 1.4; }
   label { display: block; font-weight: bold; font-size: 10px; text-transform: uppercase; color: #64748b; letter-spacing: .4px; }
-  .value { font-weight: bold; color: #172b4d; }
+  .value { font-weight: bold; color: #172b4d; overflow-wrap: anywhere; }
   .barcode-box { width: 126px; text-align: center; border: 1px solid #d7dee8; border-radius: 6px; padding: 8px; }
   .barcode-box img { width: 102px; height: 102px; object-fit: contain; }
   .barcode-label { font-size: 9px; color: #52606d; margin-top: 4px; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
   th { background: {{ document_primary_color }}; color: #fff; text-align: left; padding: 9px 10px; border: 1px solid {{ document_primary_color }}; }
-  td { padding: 9px 10px; border: 1px solid #d7dee8; }
+  td { padding: 9px 10px; border: 1px solid #d7dee8; overflow-wrap: anywhere; }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
   .total-row td { font-weight: bold; background: #f7f9fc; font-size: 13px; }
   .verification { background: #fff8e6; border-left: 4px solid {{ document_accent_color }}; padding: 9px 12px; font-size: 10.5px; color: #594214; margin-bottom: 18px; }
   .footer { margin-top: 28px; display: flex; justify-content: space-between; }

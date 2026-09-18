@@ -42,6 +42,14 @@ def school_branding_context(school):
     }
 
 
+def secure_document_response(response):
+    """Prevent authenticated school documents from being cached or sniffed."""
+    response["Cache-Control"] = "private, no-store"
+    response["Pragma"] = "no-cache"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 def receipt_barcode_data_uri(payment):
     """Create a scannable QR barcode as a data URI for receipt verification."""
     try:

@@ -28,7 +28,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from tenants.mixins import TenantMixin
-from tenants.document_branding import school_branding_context
+from tenants.document_branding import school_branding_context, secure_document_response
 from .models import AttendanceSession, AttendanceRecord
 from .serializers import (
     AttendanceSessionSerializer,
@@ -249,6 +249,8 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        require_assignment(request, class_arm_id, term_id)
+
         sessions = (
             AttendanceSession.objects
             .filter(school=self.school, class_arm_id=class_arm_id, term_id=term_id)
@@ -338,4 +340,4 @@ def _export_class_report_pdf(rows, class_arm_id, school=None):
     branding = school_branding_context(school) if school else {}
     response = HttpResponse(text_report_pdf('Class attendance report', lines or ['No attendance records.'], branding=branding), content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="attendance_class_{class_arm_id}.pdf"'
-    return response
+    return secure_document_response(response)

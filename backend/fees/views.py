@@ -33,6 +33,7 @@ from enrollment.models import StudentProfile, ClassArm
 from .models import FeeCategory, FeeSchedule, FeePayment
 from .serializers import FeeCategorySerializer, FeeScheduleSerializer, FeePaymentSerializer
 from .services.paystack import PaystackService
+from tenants.document_branding import secure_document_response
 from tenants.document_branding import receipt_barcode_data_uri, school_branding_context
 
 
@@ -325,7 +326,7 @@ class FeeReceiptView(APIView):
             pdf  = HTML(string=html).write_pdf()
             resp = HttpResponse(pdf, content_type='application/pdf')
             resp['Content-Disposition'] = f'inline; filename="{payment.receipt_number}.pdf"'
-            return resp
+            return secure_document_response(resp)
         except Exception:
             pdf = _simple_pdf_bytes([
                 getattr(school, 'name', 'School'),
@@ -336,7 +337,7 @@ class FeeReceiptView(APIView):
             ])
             resp = HttpResponse(pdf, content_type='application/pdf')
             resp['Content-Disposition'] = f'inline; filename="{payment.receipt_number}.pdf"'
-            return resp
+            return secure_document_response(resp)
 
 
 # ── Outstanding fees ──────────────────────────────────────────────────────────

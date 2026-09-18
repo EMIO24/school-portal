@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 
 from .models import AnalyticsSnapshot
 from .tasks import compute_school_analytics
+from tenants.document_branding import secure_document_response
 from tenants.document_branding import school_branding_context
 
 
@@ -157,6 +158,6 @@ class TranscriptPDFView(APIView):
             pdf  = HTML(string=html).write_pdf()
             resp = HttpResponse(pdf, content_type='application/pdf')
             resp['Content-Disposition'] = f'inline; filename="transcript_{student.admission_number}.pdf"'
-            return resp
-        except Exception as exc:
-            return Response({'error': str(exc)}, status=500)
+            return secure_document_response(resp)
+        except Exception:
+            return Response({'error': 'Unable to generate the transcript right now.'}, status=500)

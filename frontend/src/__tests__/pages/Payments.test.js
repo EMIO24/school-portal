@@ -28,7 +28,8 @@ test('signed out callback does not attempt verification', () => {
 test('school sees configured price and billing period', async () => {
   api.get.mockResolvedValue({data:{plan:'free',ends_on:null,offers:[{plan:'basic',amount:'1200',months:3}],orders:[]}});
   renderPage(<Subscription/>);
-  expect(await screen.findByText(/1,200.00 \/ 3 months/)).toBeVisible();
+  expect(await screen.findByText(/1,200.00 per student per term/)).toBeVisible();
+  expect(screen.getByText('Term length: 3 months')).toBeVisible();
   expect(screen.getByRole('button',{name:'Pay with Paystack'})).toBeEnabled();
 });
 test('read-only staff cannot load owner payment settings', () => {

@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  @page {
+    size: A4 portrait;
+    margin: 14mm 16mm 18mm;
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font-size: 9px;
+      color: #667085;
+    }
+  }
   body { font-family: Arial, sans-serif; font-size: 12px; color: #222; padding: 24px; }
   .header { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid {{ document_primary_color }}; padding-bottom: 14px; margin-bottom: 18px; }
   .logo { width: 68px; height: 68px; object-fit: contain; }
@@ -16,11 +25,13 @@
   .student-meta { display: flex; gap: 40px; margin-bottom: 18px; background: #f9f9f9; padding: 10px 14px; border-radius: 4px; border: 1px solid #e1e7ef; }
   .student-meta div { line-height: 1.8; }
   .student-meta label { font-weight: bold; margin-right: 6px; font-size: 11px; color: #555; }
-  .term-section { margin-bottom: 20px; page-break-inside: avoid; }
-  .term-title { background: {{ document_primary_color }}; color: #fff; padding: 5px 10px; font-size: 12px; font-weight: bold; border-radius: 3px 3px 0 0; display: flex; justify-content: space-between; }
+  .term-section { margin-bottom: 20px; page-break-inside: auto; }
+  .term-title { background: {{ document_primary_color }}; color: #fff; padding: 5px 10px; font-size: 12px; font-weight: bold; border-radius: 3px 3px 0 0; display: flex; justify-content: space-between; page-break-after: avoid; }
   table { width: 100%; border-collapse: collapse; }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
   th { background: #e8f5e9; text-align: left; padding: 6px 8px; border: 1px solid #ccc; font-size: 11px; }
-  td { padding: 6px 8px; border: 1px solid #ccc; font-size: 11px; }
+  td { padding: 6px 8px; border: 1px solid #ccc; font-size: 11px; overflow-wrap: anywhere; }
   .grade-A { color: #1a6b3c; font-weight: bold; }
   .grade-F { color: #c0392b; font-weight: bold; }
   .summary-row td { background: #f0f7f0; font-weight: bold; }

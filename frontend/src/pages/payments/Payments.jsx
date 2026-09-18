@@ -65,7 +65,8 @@ export function Subscription() {
                 <h2>{o.plan}</h2>
                 <ul>{(data.features?.[o.plan] || []).map(f => <li key={f}>{data.feature_labels?.[f] || f}</li>)}</ul>
                 {o.discount_applied ? <p><strong>10% off</strong> for schools with 100+ active students.</p> : <p>No discount yet.</p>}
-                <p>{money(o.amount)} / {o.months} months per student per term</p>
+                <p>{money(o.amount)} per student per term</p>
+                <p>Term length: {o.months} months</p>
                 <p><strong>Total for this school:</strong> {money(o.total_amount ?? (schoolStudentCount * Number(o.amount) * (o.discount_applied ? 0.9 : 1)))}</p>
                 <button disabled={busy} onClick={() => pay(o.plan)}>Pay with Paystack</button>
               </article>

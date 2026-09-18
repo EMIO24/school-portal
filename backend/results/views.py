@@ -43,7 +43,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from tenants.mixins import TenantMixin
-from tenants.document_branding import school_branding_context
+from tenants.document_branding import school_branding_context, secure_document_response
 from academics.models import Term
 from enrollment.models import ClassArm, StudentProfile
 
@@ -483,7 +483,7 @@ class ResultSlipPDFView(TenantMixin, APIView):
         filename = f"result_{student_id}_term{term_id}.pdf"
         response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{filename}"'
-        return response
+        return secure_document_response(response)
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -591,7 +591,7 @@ class BroadsheetPDFView(TenantMixin, APIView):
         filename = f"broadsheet_class{class_arm_id}_term{term_id}.pdf"
         response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        return response
+        return secure_document_response(response)
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -634,7 +634,7 @@ class AllSlipsZipView(TenantMixin, APIView):
         response['Content-Disposition'] = (
             f'attachment; filename="results_class{class_arm_id}_term{term_id}.zip"'
         )
-        return response
+        return secure_document_response(response)
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -699,8 +699,7 @@ class ScratchCardGenerateView(TenantMixin, APIView):
         response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         response['Cache-Control'] = 'no-store'
-
-        return response
+        return secure_document_response(response)
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -751,7 +750,7 @@ class ScratchCardUnusedPDFView(TenantMixin, APIView):
         response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="unused_{slugify(batch) or "batch"}.pdf"'
         response['Cache-Control'] = 'no-store'
-        return response
+        return secure_document_response(response)
 
 
 class ScratchCardUnusedCSVView(ScratchCardUnusedPDFView):
