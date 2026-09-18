@@ -19,9 +19,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Collect static files at build time using dummy secrets so Django starts
+# Collect static files at build time using valid dummy values that satisfy
+# the production settings checks without disabling runtime security rules.
 RUN SECRET_KEY=dummy-build-secret \
+    ALLOWED_HOSTS=localhost,127.0.0.1 \
     DATABASE_URL=sqlite:///dev-dummy.db \
+    REDIS_URL=redis://localhost:6379/0 \
+    FRONTEND_URL=https://example.com \
+    CORS_ALLOWED_ORIGINS=https://example.com \
+    PAYSTACK_MODE=test \
+    PAYSTACK_SECRET_KEY=sk_test_dummy_key \
+    PLATFORM_MFA_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
     python manage.py collectstatic --noinput
 
 # Non-root user for security
