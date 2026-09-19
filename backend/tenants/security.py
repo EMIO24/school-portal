@@ -24,14 +24,22 @@ from .models import PlatformSecurity, PlatformEvent
 
 def cipher():
     key = getattr(settings, 'PLATFORM_MFA_KEY', '')
-    print("DEBUG MFA key seen:", {
+    print("DEBUG MFA key state:", {
         "present": bool(key),
         "length": len(key) if key else 0,
-        "preview": key[:8] if key else "EMPTY",
+        "preview": key[:12] if key else "EMPTY",
+        "python_type": type(key).__name__,
     })
     if not key:
+        print("DEBUG MFA key missing at runtime. PLATFORM_MFA_KEY is empty or not loaded by Django.")
         raise AuthenticationFailed('Platform MFA is not configured. Contact support.')
-    return Fernet(key.encode() if isinstance(key, str) else key)
+    try:
+        fernet = Fernet(key.encode() if isinstance(key, str) else key)
+        print("DEBUG MFA key successfully parsed by Fernet.")
+        return fernet
+    except Exception as exc:
+        print(f"DEBUG MFA key invalid: {type(exc).__name__}: {exc}")
+        raise
 
 
 def audit(request, action, target='', details=None, actor=None):
@@ -54,35 +62,46 @@ def check_session(user, token):
 
 
 def start_challenge(user, request):
-    with transaction.atomic():
-        state, _ = PlatformSecurity.objects.get_or_create(user=user)
-        state = PlatformSecurity.objects.select_for_update().get(pk=state.pk)
-        if state.locked_until and state.locked_until > timezone.now():
-            raise PermissionDenied('Too many failed codes. Try again in 15 minutes.')
-        if state.locked_until:
-            state.failures = 0
-            state.locked_until = None
-        nonce = secrets.token_hex(24)
-        state.challenge_nonce = hashlib.sha256(nonce.encode()).hexdigest()
-        result = {'mfa_required': True, 'mfa_setup_required': not state.enabled,
-                  'challenge': signing.dumps({'uid': user.pk, 'nonce': nonce, 'version': state.session_version}, salt='platform-mfa')}
-        if not state.enabled:
-            # Retrying a password sign-in must not invalidate the authenticator
-            # the user has already scanned while enrollment is still pending.
-            if state.encrypted_secret:
-                secret = cipher().decrypt(state.encrypted_secret.encode()).decode()
-            else:
-                secret = pyotp.random_base32()
-                state.encrypted_secret = cipher().encrypt(secret.encode()).decode()
-            uri = pyotp.TOTP(secret).provisioning_uri(user.email, issuer_name='School Portal Platform')
-            output = io.BytesIO()
-            qrcode.make(uri).save(output, format='PNG')
-            result.update(secret=secret, qr_code='data:image/png;base64,' + base64.b64encode(output.getvalue()).decode())
-        state.save()
-        audit(request, 'mfa.challenge', actor=user)
-    response = Response(result, status=202)
-    response['Cache-Control'] = 'no-store'
-    return response
+    print("DEBUG start_challenge request:", {
+        "user_email": getattr(user, 'email', None),
+        "user_role": getattr(user, 'role', None),
+        "x_school_slug": request.headers.get('X-School-Slug'),
+        "tenant_present": bool(getattr(request, 'tenant', None)),
+        "tenant_slug": getattr(getattr(request, 'tenant', None), 'subdomain', None),
+    })
+    try:
+        with transaction.atomic():
+            state, _ = PlatformSecurity.objects.get_or_create(user=user)
+            state = PlatformSecurity.objects.select_for_update().get(pk=state.pk)
+            if state.locked_until and state.locked_until > timezone.now():
+                raise PermissionDenied('Too many failed codes. Try again in 15 minutes.')
+            if state.locked_until:
+                state.failures = 0
+                state.locked_until = None
+            nonce = secrets.token_hex(24)
+            state.challenge_nonce = hashlib.sha256(nonce.encode()).hexdigest()
+            result = {'mfa_required': True, 'mfa_setup_required': not state.enabled,
+                      'challenge': signing.dumps({'uid': user.pk, 'nonce': nonce, 'version': state.session_version}, salt='platform-mfa')}
+            if not state.enabled:
+                # Retrying a password sign-in must not invalidate the authenticator
+                # the user has already scanned while enrollment is still pending.
+                if state.encrypted_secret:
+                    secret = cipher().decrypt(state.encrypted_secret.encode()).decode()
+                else:
+                    secret = pyotp.random_base32()
+                    state.encrypted_secret = cipher().encrypt(secret.encode()).decode()
+                uri = pyotp.TOTP(secret).provisioning_uri(user.email, issuer_name='School Portal Platform')
+                output = io.BytesIO()
+                qrcode.make(uri).save(output, format='PNG')
+                result.update(secret=secret, qr_code='data:image/png;base64,' + base64.b64encode(output.getvalue()).decode())
+            state.save()
+            audit(request, 'mfa.challenge', actor=user)
+        response = Response(result, status=202)
+        response['Cache-Control'] = 'no-store'
+        return response
+    except Exception:
+        print("DEBUG start_challenge failed.", exc_info=True)
+        raise
 
 
 def consume_code(state, code):
