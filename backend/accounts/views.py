@@ -81,12 +81,6 @@ class LoginView(APIView):
             )
 
         user   = serializer.validated_data["user"]
-        print("DEBUG PROD login:", {
-            "email": getattr(user, "email", None),
-            "role": getattr(user, "role", None),
-            "tenant": getattr(request, "tenant", None),
-            "path": request.path,
-        })
         if user.role == "superadmin":
             from tenants.security import start_challenge
             return start_challenge(user, request)

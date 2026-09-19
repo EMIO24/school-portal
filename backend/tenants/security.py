@@ -24,11 +24,6 @@ from .models import PlatformSecurity, PlatformEvent
 
 def cipher():
     key = getattr(settings, 'PLATFORM_MFA_KEY', '')
-    print("DEBUG PROD MFA key:", {
-        "present": bool(key),
-        "length": len(key) if key else 0,
-        "preview": key[:8] if key else "EMPTY",
-    })
     if not key:
         raise AuthenticationFailed('Platform MFA is not configured. Contact support.')
     return Fernet(key.encode() if isinstance(key, str) else key)
@@ -54,11 +49,6 @@ def check_session(user, token):
 
 
 def start_challenge(user, request):
-    print("DEBUG PROD start_challenge:", {
-        "user": getattr(user, "email", None),
-        "role": getattr(user, "role", None),
-        "tenant": getattr(request, "tenant", None),
-    })
     with transaction.atomic():
         state, _ = PlatformSecurity.objects.get_or_create(user=user)
         state = PlatformSecurity.objects.select_for_update().get(pk=state.pk)
