@@ -12,7 +12,6 @@ import qrcode
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.core import signing
-from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
@@ -26,7 +25,7 @@ from .models import PlatformSecurity, PlatformEvent
 def cipher():
     key = getattr(settings, 'PLATFORM_MFA_KEY', '')
     if not key:
-        raise ImproperlyConfigured('Set PLATFORM_MFA_KEY to a Fernet key before enabling platform MFA.')
+        raise AuthenticationFailed('Platform MFA is not configured. Contact support.')
     return Fernet(key.encode() if isinstance(key, str) else key)
 
 

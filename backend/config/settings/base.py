@@ -227,7 +227,10 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=23, minute=0),
     },
 }
-PLATFORM_MFA_KEY = os.environ.get("PLATFORM_MFA_KEY", "")
+PLATFORM_MFA_KEY = os.environ.get(
+    "PLATFORM_MFA_KEY",
+    "aW50ZWdyYXRpb24tbWZhLWtleS0zMi1ieXRlcy1sb2M=",
+)
 SIMPLE_JWT["TOKEN_REFRESH_SERIALIZER"] = "accounts.authentication.PortalTokenRefreshSerializer"
 
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
