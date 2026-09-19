@@ -22,7 +22,15 @@ class Command(BaseCommand):
         except Exception: errors.append('Set a unique valid PLATFORM_MFA_KEY and back it up separately.')
         if not settings.SECURE_SSL_REDIRECT: errors.append('Enable SECURE_SSL_REDIRECT behind the trusted proxy.')
         if not settings.DATABASES['default']['ENGINE'].endswith('postgresql'): errors.append('Production requires PostgreSQL.')
-        if not settings.REDIS_URL.startswith('rediss://'): errors.append('Set REDIS_URL to a TLS Redis endpoint.')
+        redis_url = urlparse(settings.REDIS_URL)
+        is_tls_redis = redis_url.scheme == 'rediss'
+        is_railway_private = (
+            redis_url.scheme == 'redis'
+            and bool(redis_url.hostname)
+            and redis_url.hostname.endswith('.railway.internal')
+        )
+        if not (is_tls_redis or is_railway_private):
+            errors.append('REDIS_URL must use TLS unless using Railway private networking.')
         mode = settings.PAYSTACK_MODE
         if mode != 'live' and not options['allow_test_payments']: errors.append('Set PAYSTACK_MODE=live for production; test mode is staging-only.')
         if not settings.PAYSTACK_SECRET_KEY.startswith('sk_'+mode+'_'): errors.append('Set the Paystack secret for the selected mode.')
