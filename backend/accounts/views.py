@@ -83,7 +83,12 @@ class LoginView(APIView):
         user   = serializer.validated_data["user"]
         if user.role == "superadmin":
             from tenants.security import start_challenge
-            return start_challenge(user, request)
+
+            try:
+                return start_challenge(user, request)
+            except Exception:
+                logger.exception("Superadmin MFA challenge failed")
+                raise
         tokens = serializer.get_tokens(user)
 
         # Build theme from the user's school (None for superadmin)
