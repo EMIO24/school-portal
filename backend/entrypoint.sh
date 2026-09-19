@@ -1,22 +1,27 @@
 #!/usr/bin/env bash
-set -e
+set -Eeuo pipefail
 
 # Only run migrations for the web service (not for celery/celery-beat)
-if [ "$RUN_MIGRATIONS" = "true" ]; then
+if [ "${RUN_MIGRATIONS:-}" = "true" ]; then
     python manage.py deployment_check ${DEPLOYMENT_CHECK_ARGS:-}
     python manage.py check --deploy --fail-level WARNING
+
     echo "==> Running database migrations..."
     python manage.py migrate --noinput
 
     # Create superadmin from env vars (idempotent — skips if email already exists)
-    if [ -n "$DJANGO_SUPERUSER_EMAIL" ] && [ -n "$DJANGO_SUPERUSER_PASSWORD" ]; then
+    if [ -n "${DJANGO_SUPERUSER_EMAIL:-}" ] && [ -n "${DJANGO_SUPERUSER_PASSWORD:-}" ]; then
         python manage.py shell <<'PYTHON'
 import os
 from django.contrib.auth import get_user_model
+
 User = get_user_model()
-email = os.environ['DJANGO_SUPERUSER_EMAIL']
-if not User.objects.filter(email=email).exists():
-    User.objects.create_superuser(email=email, password=os.environ['DJANGO_SUPERUSER_PASSWORD'])
+email = os.environ.get('DJANGO_SUPERUSER_EMAIL')
+if email and not User.objects.filter(email=email).exists():
+    User.objects.create_superuser(
+        email=email,
+        password=os.environ['DJANGO_SUPERUSER_PASSWORD'],
+    )
     print('Platform owner created.')
 PYTHON
     fi

@@ -1,0 +1,6 @@
+# Keep shell scripts and deployment files in LF for Linux containers
+*.sh text eol=lf
+*.bash text eol=lf
+*.env text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
