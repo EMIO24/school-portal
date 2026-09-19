@@ -24,6 +24,11 @@ from .models import PlatformSecurity, PlatformEvent
 
 def cipher():
     key = getattr(settings, 'PLATFORM_MFA_KEY', '')
+    print("DEBUG MFA key seen:", {
+        "present": bool(key),
+        "length": len(key) if key else 0,
+        "preview": key[:8] if key else "EMPTY",
+    })
     if not key:
         raise AuthenticationFailed('Platform MFA is not configured. Contact support.')
     return Fernet(key.encode() if isinstance(key, str) else key)
