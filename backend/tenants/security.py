@@ -24,21 +24,11 @@ from .models import PlatformSecurity, PlatformEvent
 
 def cipher():
     key = getattr(settings, 'PLATFORM_MFA_KEY', '')
-    print("DEBUG MFA key state:", {
-        "present": bool(key),
-        "length": len(key) if key else 0,
-        "preview": key[:12] if key else "EMPTY",
-        "python_type": type(key).__name__,
-    })
     if not key:
-        print("DEBUG MFA key missing at runtime. PLATFORM_MFA_KEY is empty or not loaded by Django.")
         raise AuthenticationFailed('Platform MFA is not configured. Contact support.')
     try:
-        fernet = Fernet(key.encode() if isinstance(key, str) else key)
-        print("DEBUG MFA key successfully parsed by Fernet.")
-        return fernet
-    except Exception as exc:
-        print(f"DEBUG MFA key invalid: {type(exc).__name__}: {exc}")
+        return Fernet(key.encode() if isinstance(key, str) else key)
+    except Exception:
         raise
 
 
@@ -62,13 +52,6 @@ def check_session(user, token):
 
 
 def start_challenge(user, request):
-    print("DEBUG start_challenge request:", {
-        "user_email": getattr(user, 'email', None),
-        "user_role": getattr(user, 'role', None),
-        "x_school_slug": request.headers.get('X-School-Slug'),
-        "tenant_present": bool(getattr(request, 'tenant', None)),
-        "tenant_slug": getattr(getattr(request, 'tenant', None), 'subdomain', None),
-    })
     try:
         with transaction.atomic():
             state, _ = PlatformSecurity.objects.get_or_create(user=user)
@@ -100,7 +83,6 @@ def start_challenge(user, request):
         response['Cache-Control'] = 'no-store'
         return response
     except Exception:
-        print("DEBUG start_challenge failed.", exc_info=True)
         raise
 
 
