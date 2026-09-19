@@ -83,6 +83,12 @@ export default function Login({ platform = false, preview = false }) {
     if (preview) {e.preventDefault();return;}
     e.preventDefault();
 
+    if (platform) {
+      sessionStorage.removeItem('school_slug');
+      localStorage.removeItem('school_theme');
+      localStorage.removeItem('refresh_token');
+    }
+
     const errs = validate();
     if (Object.keys(errs).length) {
       setFieldErrors(errs);
