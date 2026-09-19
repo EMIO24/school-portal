@@ -6,6 +6,11 @@ if [ "${RUN_MIGRATIONS:-}" = "true" ]; then
     python manage.py deployment_check ${DEPLOYMENT_CHECK_ARGS:-}
     python manage.py check --deploy --fail-level WARNING
 
+    if [ "${RESET_DB_ON_DEPLOY:-}" = "true" ]; then
+        echo "==> Resetting database because RESET_DB_ON_DEPLOY=true"
+        python manage.py flush --noinput
+    fi
+
     echo "==> Running database migrations..."
     python manage.py migrate --noinput
 
