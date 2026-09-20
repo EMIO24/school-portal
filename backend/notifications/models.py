@@ -70,7 +70,7 @@ class NotificationBatch(models.Model):
 
 class NotificationOutbox(models.Model):
     batch = models.ForeignKey(NotificationBatch, on_delete=models.CASCADE)
-    log = models.OneToOneField(NotificationLog, on_delete=models.PROTECT)
+    log = models.OneToOneField(NotificationLog, on_delete=models.PROTECT, related_name='outbox')
     subject = models.CharField(max_length=200, blank=True)
     claimed_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)

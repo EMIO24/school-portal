@@ -17,7 +17,10 @@ def deliver_outbox():
     )
     NotificationLog.objects.filter(outbox__in=stale).update(
         status='failed',
-        error_message='Delivery was claimed by a worker but not completed. Check provider records before resending to avoid duplicates.',
+        error_message=(
+            'Delivery was claimed by a worker but not completed. '
+            'Check provider records before resending to avoid duplicates.'
+        ),
     )
     stale.update(completed_at=timezone.now())
 

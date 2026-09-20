@@ -237,6 +237,6 @@ PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
 PAYSTACK_MODE = os.environ.get("PAYSTACK_MODE", "test")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "")
 
-CELERY_BEAT_SCHEDULE['notification-outbox'] = {'task':'notifications.tasks.deliver_outbox','schedule':30.0}
+CELERY_BEAT_SCHEDULE['notification-outbox'] = {'task':'notifications.tasks.deliver_outbox','schedule':300.0}
 
 
