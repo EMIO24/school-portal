@@ -8,8 +8,8 @@ Deploy checklist:
   1. Set SECRET_KEY, DATABASE_URL, ALLOWED_HOSTS, PAYSTACK_SECRET_KEY,
      TERMII_API_KEY, CLOUDINARY_*, BREVO_API_KEY in Railway Variables tab.
   2. DATABASE_URL is auto-injected when you add the Railway PostgreSQL add-on.
-  3. REDIS_URL must be set to your Upstash Redis URL (rediss://... for TLS).
-  4. FRONTEND_URL should be your Cloudflare Pages URL for CORS.
+  3. REDIS_URL must be set to the Railway Redis URL (redis://...railway.internal or rediss://... for TLS).
+  4. FRONTEND_URL should be your Vercel frontend URL for CORS.
 """
 
 import os
@@ -38,10 +38,10 @@ DATABASES = {
     )
 }
 
-# â”€â”€ Cache / Celery (Upstash Redis with TLS) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â”€â”€ Cache / Celery (Railway Redis via private networking or TLS) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 REDIS_URL = os.environ["REDIS_URL"]
-_upstash   = REDIS_URL.startswith("rediss://")
+_tls_redis = REDIS_URL.startswith("rediss://")
 
 CACHES = {
     "default": {
@@ -49,7 +49,7 @@ CACHES = {
         "LOCATION": REDIS_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            **({"CONNECTION_POOL_KWARGS": {"ssl_cert_reqs": ssl.CERT_REQUIRED}} if _upstash else {}),
+            **({"CONNECTION_POOL_KWARGS": {"ssl_cert_reqs": ssl.CERT_REQUIRED}} if _tls_redis else {}),
         },
     }
 }
@@ -57,7 +57,7 @@ CACHES = {
 CELERY_BROKER_URL     = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 
-if _upstash:
+if _tls_redis:
     CELERY_BROKER_USE_SSL = {"ssl_cert_reqs": ssl.CERT_REQUIRED}
     CELERY_REDIS_BACKEND_USE_SSL = {"ssl_cert_reqs": ssl.CERT_REQUIRED}
 
