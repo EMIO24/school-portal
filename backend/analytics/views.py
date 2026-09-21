@@ -107,8 +107,13 @@ class StudentTrendsView(APIView):
             scores     = ScoreEntry.objects.filter(student=student.user, term=term, school=school, is_published=True)
             avg        = scores.aggregate(a=Avg('total_score'))['a']
             remark     = ResultRemark.objects.filter(student=student.user, term=term, school=school).first()
-            attend     = AttendanceRecord.objects.filter(student=student.user, attendance_session__term=term, school=school).aggregate(
-                present=Count('id', filter=Q(status='present')), total=Count('id')
+            attend = AttendanceRecord.objects.filter(
+                student=student.user,
+                attendance_session__term=term,
+                attendance_session__school=school,
+            ).aggregate(
+                present=Count('id', filter=Q(status='present')),
+                total=Count('id')
             )
             attend_pct = round(attend['present'] / attend['total'] * 100) if attend['total'] else None
             result.append({
