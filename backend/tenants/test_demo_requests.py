@@ -17,6 +17,11 @@ class DemoRequestTests(TestCase):
         invalid = dict(self.data, email='not-an-email', phone='123')
         self.assertEqual(self.client.post('/api/demo-requests/', invalid, format='json').status_code, 400)
 
+    def test_honeypot_request_is_rejected_without_creating_a_lead(self):
+        response = self.client.post('/api/demo-requests/', dict(self.data, website='spam.example'), format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(DemoRequest.objects.exists())
+
     def test_only_platform_owner_can_list_requests(self):
         DemoRequest.objects.create(**self.data)
         self.client.force_authenticate(self.school_user)

@@ -127,6 +127,8 @@ class DemoRequestView(APIView):
     throttle_classes = [SignupThrottle]
 
     def post(self, request):
+        if request.data.get('website'):
+            raise serializers.ValidationError({'website': 'Invalid submission.'})
         serializer = DemoRequestInput(data=request.data)
         serializer.is_valid(raise_exception=True)
         lead = serializer.save()
