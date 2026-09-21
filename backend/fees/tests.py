@@ -53,8 +53,65 @@ class PaystackTests(TestCase):
         self.assertEqual(self.start().status_code,400)
     def test_pending_checkout_blocks_duplicate(self):
         self.start()
-        self.assertEqual(self.start().status_code,409)
-        self.assertEqual(PaymentOrder.objects.count(),1)
+
+        order = PaymentOrder.objects.get()
+
+        pending_data = {
+            'status': 'pending',
+            'reference': order.reference,
+            'amount': order.amount_kobo,
+            'currency': 'NGN',
+            'domain': 'test',
+            'customer': {'email': order.payer_email},
+            'id': 123,
+        }
+
+        with patch.object(PaystackService, 'verify', return_value=pending_data):
+            response = self.start()
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(PaymentOrder.objects.count(), 1)
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'pending')
+    def test_failed_pending_checkout_is_reconciled_and_retry_allowed(self):
+        # First checkout succeeds and creates a local pending PaymentOrder.
+        first_response = self.start()
+        self.assertEqual(first_response.status_code, 200)
+
+        first_order = PaymentOrder.objects.get()
+        self.assertEqual(first_order.status, 'pending')
+
+        # Paystack now reports that the transaction actually failed.
+        failed_data = {
+            'status': 'failed',
+            'reference': first_order.reference,
+            'amount': first_order.amount_kobo,
+            'currency': 'NGN',
+            'domain': 'test',
+            'customer': {'email': first_order.payer_email},
+            'id': 456,
+        }
+
+        # When the user tries again, Paideia should reconcile the old
+        # pending transaction before deciding whether to block the retry.
+        with patch.object(PaystackService, 'verify', return_value=failed_data):
+            second_response = self.start()
+
+        self.assertEqual(second_response.status_code, 200)
+
+        first_order.refresh_from_db()
+        self.assertEqual(first_order.status, 'failed')
+
+        # A new checkout should have been created.
+        self.assertEqual(PaymentOrder.objects.count(), 2)
+
+        # The declined transaction must never create a fee payment.
+        self.assertFalse(
+            FeePayment.objects.filter(
+                paystack_reference=first_order.reference
+            ).exists()
+        )
     def test_unmatched_amount_currency_email_reference_or_mode_never_credits(self):
         self.start(); order = PaymentOrder.objects.get()
         for changes in [{'amount':1}, {'currency':'USD'}, {'domain':'live'}, {'reference':'other'}, {'customer':{'email':'stranger@example.test'}}, {'amount':True}]:
