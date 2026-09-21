@@ -20,6 +20,7 @@ import "./ThemeProvider.css";
 function ThemeGate({ children }) {
   const { school, loading, error, refetch } = useTheme();
   const { pathname } = useLocation();
+  const isMarketingPage = ['/', '/features', '/pricing', '/demo', '/contact', '/privacy', '/terms'].includes(pathname);
   if (pathname === "/help" || pathname === "/register-school" || pathname.startsWith("/platform/") || pathname.startsWith("/superadmin/")) return <>{children}</>;
 
   // Show full-page loader only on first load with no cached data
@@ -28,7 +29,7 @@ function ThemeGate({ children }) {
   }
 
   // Show branded error only when fetch failed AND there's nothing cached
-  if (error && !school) {
+  if (error && !school && !isMarketingPage) {
     return <BrandedErrorScreen error={error} onRetry={refetch} />;
   }
 
