@@ -237,7 +237,7 @@ def _assemble_slip_data(school, student, term):
 
         # Position
         'position':       getattr(remark_obj, 'computed_position', None),
-        'class_size':     class_size or 'â€”',
+        'class_size':     class_size or '—',
 
         # Domains
         'affective_rows':   affective_rows,
