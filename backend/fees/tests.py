@@ -156,7 +156,7 @@ class PaystackTests(TestCase):
         with patch.object(PaystackService,'initialize',side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
             r=self.client.post('/api/fees/subscription/',{'plan':'basic'},format='json',**self.headers)
         self.assertEqual(r.status_code,200,r.data)
-        order=PaymentOrder.objects.get();self.assertEqual(order.amount_kobo,120000);self.assertFalse(order.subaccount_code)
+        order=PaymentOrder.objects.get();self.assertEqual(order.amount_kobo,80000);self.assertFalse(order.subaccount_code)
         self.school.is_active=False;self.school.save()
         settle(order.reference,self.data(order));self.school.refresh_from_db(); end=self.school.subscription_ends_on
         settle(order.reference,self.data(order));self.school.refresh_from_db()
@@ -229,7 +229,7 @@ class PaystackTests(TestCase):
         with patch.object(PaystackService,'initialize',side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
             r=self.client.post('/api/fees/subscription/',{'plan':'basic'},format='json',**self.headers)
         self.assertEqual(r.status_code,200,r.data)
-        order=PaymentOrder.objects.get(); self.assertEqual(order.amount_kobo,10800000)
+        order=PaymentOrder.objects.get(); self.assertEqual(order.amount_kobo,7200000)
     def test_owner_controls_work_without_tenant_and_viewer_denied(self):
         self.client.force_authenticate(self.owner)
         self.assertEqual(self.client.get('/api/platform/payments/').status_code,200)
