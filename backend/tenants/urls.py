@@ -22,13 +22,15 @@ urlpatterns = [
     path("school/me/", SchoolMeView.as_view(), name="school-me"),
 ]
 
-from .platform import SchoolRegistration, PlatformSchools, PlatformSchoolDetail, PlatformAdministrators, PlatformProfile
+from .platform import SchoolRegistration, PlatformSchools, PlatformSchoolDetail, PlatformAdministrators, PlatformProfile, DemoRequestView, PlatformDemoRequests
 urlpatterns += [
     path("platform/me/", PlatformProfile.as_view()),
     path("platform/register/", SchoolRegistration.as_view()),
     path("platform/schools/", PlatformSchools.as_view()),
     path("platform/schools/<int:pk>/", PlatformSchoolDetail.as_view()),
     path("platform/schools/<int:pk>/administrators/", PlatformAdministrators.as_view()),
+    path("demo-requests/", DemoRequestView.as_view()),
+    path("platform/demo-requests/", PlatformDemoRequests.as_view()),
 ]
 
 from .security import VerifyMFA

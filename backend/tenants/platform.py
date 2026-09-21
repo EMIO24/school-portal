@@ -12,7 +12,7 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from accounts.permissions import IsSuperAdmin, IsPlatformReader
 from .security import audit
-from .models import School, SchoolActivity
+from .models import School, SchoolActivity, DemoRequest
 from .serializers import SchoolSerializer
 
 User = get_user_model()
@@ -107,6 +107,38 @@ def create_school(data, actor=None):
 
 class SignupThrottle(AnonRateThrottle):
     rate = '5/hour'
+
+
+class DemoRequestInput(serializers.ModelSerializer):
+    class Meta:
+        model = DemoRequest
+        fields = ['school_name', 'contact_name', 'email', 'phone', 'student_population', 'location', 'message']
+        extra_kwargs = {'message': {'required': False, 'allow_blank': True}}
+
+    def validate_phone(self, value):
+        if sum(character.isdigit() for character in value) < 7:
+            raise serializers.ValidationError('Enter a valid phone number.')
+        return value.strip()
+
+
+class DemoRequestView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [SignupThrottle]
+
+    def post(self, request):
+        serializer = DemoRequestInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        lead = serializer.save()
+        audit(request, 'demo.requested', lead.pk, {'school_name': lead.school_name})
+        return Response({'detail': 'Demo request received. We will be in touch.'}, status=201)
+
+
+class PlatformDemoRequests(APIView):
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request):
+        return Response(list(DemoRequest.objects.values('id', 'school_name', 'contact_name', 'email', 'phone', 'student_population', 'location', 'message', 'status', 'created_at')[:100]))
 
 
 class SchoolRegistration(APIView):
