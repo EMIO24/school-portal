@@ -231,6 +231,48 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
 
         return Response(summary)
 
+    # ── GET sessions/student-report/?student=&term= ──────────────────────────
+
+    @action(detail=False, methods=['get'], url_path='student-report')
+    def student_report(self, request):
+        """
+        Return only the attendance records belonging to one student
+        for a specific term.
+
+        Access is protected by SchoolModulePermission, which verifies
+        that a student is requesting their own data or a parent is
+        requesting data for a linked child.
+        """
+        student_id = request.query_params.get('student')
+        term_id = request.query_params.get('term')
+
+        if not (student_id and term_id):
+            return Response(
+                {'detail': 'Both student and term parameters are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        records = (
+            AttendanceRecord.objects
+            .filter(
+                attendance_session__school=self.school,
+                student_id=student_id,
+                attendance_session__term_id=term_id,
+            )
+            .select_related('attendance_session')
+            .order_by('attendance_session__date')
+        )
+
+        return Response([
+            {
+                'date': record.attendance_session.date,
+                'status': record.status,
+                'remark': record.remark,
+                'session_id': record.attendance_session_id,
+            }
+            for record in records
+        ])
+
     # ── GET sessions/class-report/?class_arm=&term= ───────────────────────────
 
     @action(detail=False, methods=['get'], url_path='class-report')

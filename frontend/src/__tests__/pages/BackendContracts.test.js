@@ -73,13 +73,39 @@ test('student result requests use the account ID required by the result backend'
   expect(api.get).toHaveBeenCalledWith('/api/results/slip-data/41/?term=2');
   expect(screen.getByText(/Results are not available/)).toBeVisible();
 });
-test('student attendance requests and filters records by account ID', async () => {
-  api.get.mockImplementation(async url => ({ data: url === '/api/terms/' ? [term] : url.includes('/report/') ? { percentage: 100 } : [
-    { id: 9, date: '2026-09-07', records: [{ student: 7, status: 'present' }, { student: 41, status: 'absent' }] },
-  ] }));
-  await act(async () => renderPage(<MyAttendance />, { auth: { user: { id: 41, student_id: 7 } } }));
-  expect(api.get).toHaveBeenCalledWith('/api/attendance/sessions/report/?student=41&term=2');
-  expect(api.get).toHaveBeenCalledWith('/api/attendance/sessions/?term=2&student=41');
+test('student attendance requests use the student-scoped attendance endpoint', async () => {
+  api.get.mockImplementation(async url => ({
+    data:
+      url === '/api/terms/'
+        ? [term]
+        : url.includes('/report/')
+        ? { percentage: 100 }
+        : url.includes('/student-report/')
+        ? [
+            {
+              date: '2026-09-07',
+              status: 'present',
+              remark: '',
+              session_id: 9,
+            },
+          ]
+        : [],
+  }));
+
+  await act(async () =>
+    renderPage(<MyAttendance />, {
+      auth: { user: { id: 41, student_id: 7 } },
+    })
+  );
+
+  expect(api.get).toHaveBeenCalledWith(
+    '/api/attendance/sessions/report/?student=41&term=2'
+  );
+
+  expect(api.get).toHaveBeenCalledWith(
+    '/api/attendance/sessions/student-report/?student=41&term=2'
+  );
+
   expect(screen.getByText('You are on track.')).toBeVisible();
 });
 test('exam results loads the canonical results URL and pushes grades after confirmation', async () => {

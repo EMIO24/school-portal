@@ -81,21 +81,14 @@ export default function MyAttendance() {
       // Raw records for dot calendar — GET all sessions with this student's mark
       // The backend returns flat records keyed by session date
       const recRes = await api.get(
-        `/api/attendance/sessions/?term=${selectedTerm}&student=${user.id}`
+        `/api/attendance/sessions/student-report/?student=${user.id}&term=${selectedTerm}`
       );
-      const sessions = recRes.data.results ?? recRes.data;
-      // Flatten to {date, status, remark} per session
-      const flat = sessions.flatMap(session =>
-        session.records
-          .filter(r => r.student === user.id)
-          .map(r => ({
-            date:   session.date,
-            status: r.status,
-            remark: r.remark,
-            session_id: session.id,
-          }))
+
+      const attendanceRecords = recRes.data.results ?? recRes.data;
+
+      setRecords(
+        attendanceRecords.sort((a, b) => a.date.localeCompare(b.date))
       );
-      setRecords(flat.sort((a, b) => a.date.localeCompare(b.date)));
     } catch (err) {
       console.error('MyAttendance load error', err);
     } finally {
