@@ -284,9 +284,38 @@ class SchoolSubscription(APIView):
     @transaction.atomic
     def post(self, request):
         school = School.objects.select_for_update().get(pk=request.tenant.pk)
-        previous = PaymentOrder.objects.filter(school=school, kind='subscription', mode=settings.PAYSTACK_MODE, status__in=['initializing', 'pending', 'review']).first()
+        previous = PaymentOrder.objects.filter(
+            school=school,
+            kind='subscription',
+            mode=settings.PAYSTACK_MODE,
+            status__in=['initializing', 'pending', 'review']
+        ).first()
+
         if previous:
-            return Response({'error': 'A subscription payment is awaiting verification. Check its status before paying again.', 'reference': previous.reference}, status=409)
+            if previous.status == 'pending':
+                try:
+                    paystack_data = PaystackService().verify(previous.reference)
+                    previous = settle(previous.reference, paystack_data)
+                except (ValueError, RequestException):
+                    return Response({
+                        'error': (
+                            'The previous subscription payment could not be verified. '
+                            'Check it before paying again.'
+                        ),
+                        'reference': previous.reference,
+                    }, status=409)
+
+                if previous.status == 'failed':
+                    previous = None
+
+            if previous:
+                return Response({
+                    'error': (
+                        'A subscription payment is awaiting verification. '
+                        'Check its status before paying again.'
+                    ),
+                    'reference': previous.reference,
+                }, status=409)
         if school.approval_status != 'approved':
             raise ValidationError('Your school must be approved before subscribing.')
         offer = get_object_or_404(SubscriptionOffer, plan=request.data.get('plan'), enabled=True)

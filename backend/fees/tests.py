@@ -162,6 +162,65 @@ class PaystackTests(TestCase):
         settle(order.reference,self.data(order));self.school.refresh_from_db()
         self.assertEqual(end,self.school.subscription_ends_on);self.assertFalse(self.school.is_active)
         self.assertEqual(self.school.subscription_plan,'basic')
+    def test_failed_pending_subscription_is_reconciled_and_retry_allowed(self):
+        self.client.force_authenticate(self.admin)
+
+        with patch.object(
+            PaystackService,
+            'initialize',
+            side_effect=lambda email, amount, ref, callback, **kw:
+                ('https://checkout.paystack.com/test', ref)
+        ):
+            first_response = self.client.post(
+                '/api/fees/subscription/',
+                {'plan': 'basic'},
+                format='json',
+                **self.headers
+            )
+
+        self.assertEqual(first_response.status_code, 200)
+
+        first_order = PaymentOrder.objects.get()
+        self.assertEqual(first_order.kind, 'subscription')
+        self.assertEqual(first_order.status, 'pending')
+
+        failed_data = {
+            'status': 'failed',
+            'reference': first_order.reference,
+            'amount': first_order.amount_kobo,
+            'currency': 'NGN',
+            'domain': 'test',
+            'customer': {'email': first_order.payer_email},
+            'id': 456,
+        }
+
+        with patch.object(PaystackService, 'verify', return_value=failed_data):
+            with patch.object(
+                PaystackService,
+                'initialize',
+                side_effect=lambda email, amount, ref, callback, **kw:
+                    ('https://checkout.paystack.com/test', ref)
+            ):
+                second_response = self.client.post(
+                    '/api/fees/subscription/',
+                    {'plan': 'basic'},
+                    format='json',
+                    **self.headers
+                )
+
+        self.assertEqual(second_response.status_code, 200)
+
+        first_order.refresh_from_db()
+        self.assertEqual(first_order.status, 'failed')
+
+        self.assertEqual(
+            PaymentOrder.objects.filter(
+                school=self.school,
+                kind='subscription'
+            ).count(),
+            2
+        )
+
     def test_subscription_10_percent_discount_for_100_students_and_above(self):
         self.client.force_authenticate(self.admin)
         for index in range(99):
