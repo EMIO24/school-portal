@@ -27,6 +27,7 @@ import CheckResult    from "./pages/public/CheckResult";
 
 // ── Admin pages ────────────────────────────────────────────────────────────
 import AdminDashboard   from "./pages/admin/AdminDashboard";
+import AcademicSetupWizard from "./pages/admin/AcademicSetupWizard";
 import CalendarSettings from "./pages/admin/CalendarSettings";
 import Students         from "./pages/admin/Students";
 import StudentForm      from "./pages/admin/StudentForm";
@@ -105,6 +106,7 @@ function AppRoutes() {
       <Route path="/admin/*" element={
         <ProtectedRoute allowedRoles={["school_admin"]}>
           <Routes>
+            <Route path="setup-wizard"        element={<AcademicSetupWizard />} />
             <Route path="dashboard"            element={<AdminDashboard />} />
             <Route path="attendance" element={<AttendanceOverview />} />
             <Route path="subjects" element={<SubjectManager />} />

@@ -209,9 +209,16 @@ def _assemble_slip_data(school, student, term):
         class_arm=getattr(profile, 'current_class', None)
     ).count()
 
+    theme = school.get_theme() if hasattr(school, 'get_theme') else {}
+    result_sections = theme.get('result_sections') or [
+        'summary', 'scores', 'attendance', 'remarks', 'affective', 'psychomotor'
+    ]
+
     return {
         # School
         **school_branding_context(school),
+        'result_layout': theme.get('result_layout', 'classic'),
+        'result_sections': result_sections,
 
         # Term / session
         'term_name':      term.name,

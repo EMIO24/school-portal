@@ -107,6 +107,40 @@ class ReadinessChecks(TestCase):
         r = self.client_for(self.student, self.b).get('/api/notifications/logs/')
         self.assertFalse(r.status_code == 200 and any('login code is' in row.get('message_body','') for row in r.data), 'Parent OTP text readable by another school student')
 
+    def test_cross_tenant_attack_vectors_are_blocked(self):
+        from fees.models import FeeCategory, FeeSchedule, FeePayment
+
+        category = FeeCategory.objects.create(school=self.b, name='Tuition')
+        schedule = FeeSchedule.objects.create(
+            school=self.b,
+            term=self.term,
+            class_level=self.level,
+            fee_category=category,
+            amount=Decimal('2500.00'),
+        )
+        payment = FeePayment.objects.create(
+            school=self.b,
+            student=self.other.student_profile,
+            fee_schedule=schedule,
+            amount_paid=Decimal('2500.00'),
+            payment_date=date.today(),
+            method='cash',
+        )
+
+        cross_tenant_client = self.client_for(self.student, self.b)
+        attack_paths = [
+            ('/api/students/', 'student roster'),
+            ('/api/class-levels/', 'class-level catalog'),
+            ('/api/gradebook/entries/', 'gradebook data'),
+            ('/api/cbt/questions/%s/' % self.question.pk, 'question details'),
+            ('/api/fees/receipts/%s/' % payment.pk, 'receipt access'),
+            ('/api/parent/dashboard/%s/' % self.other.student_profile.pk, 'parent dashboard access'),
+        ]
+
+        for path, label in attack_paths:
+            response = cross_tenant_client.get(path)
+            self.assertIn(response.status_code, (401, 403, 404), f'Cross-tenant {label} unexpectedly succeeded: {response.status_code}')
+
     def test_public_result_checker_reaches_input_validation(self):
         r = APIClient(HTTP_X_SCHOOL_SLUG=self.b.slug).post('/api/results/check/', {}, format='json')
         self.assertEqual(r.status_code, 400, 'Plan middleware blocks the public result checker before its view')

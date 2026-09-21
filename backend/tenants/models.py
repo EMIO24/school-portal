@@ -19,6 +19,7 @@ class School(models.Model):
         ("free", "Free"),
         ("basic", "Basic"),
         ("premium", "Premium"),
+        ("enterprise", "Enterprise"),
     ]
 
     # ── Identity ──────────────────────────────────────────────────────────────
@@ -87,15 +88,29 @@ class School(models.Model):
         super().save(*args, **kwargs)
 
     def get_theme(self) -> dict:
-        """Return theme_config with sensible Nigerian-school defaults."""
+        """Return theme_config with sensible school defaults for portal + results."""
         defaults = {
             "layout": "scholar",
             "primary_color": "#173B56",
             "secondary_color": "#256D85",
             "accent_color": "#D8A548",
             "font_family": "Roboto, sans-serif",
+            "result_layout": "classic",
+            "result_sections": [
+                "summary",
+                "scores",
+                "attendance",
+                "remarks",
+                "affective",
+                "psychomotor",
+            ],
         }
-        return {**defaults, **self.theme_config}
+        merged = {**defaults, **self.theme_config}
+        if isinstance(merged.get("result_sections"), list):
+            merged["result_sections"] = merged["result_sections"]
+        else:
+            merged["result_sections"] = defaults["result_sections"]
+        return merged
 
     def __str__(self):
         return f"{self.name} ({self.subdomain})"

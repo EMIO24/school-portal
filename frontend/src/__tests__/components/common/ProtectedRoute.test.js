@@ -54,4 +54,32 @@ describe("ProtectedRoute", () => {
 
     expect(screen.getByText("Protected Content")).toBeInTheDocument();
   });
+
+  it("shows the premium upgrade experience for blocked CBT access", () => {
+    const schoolAdmin = {
+      isAuthenticated: true,
+      isLoading: false,
+      user: { id: 2, role: "school_admin" },
+      login: jest.fn(),
+      logout: jest.fn(),
+      clearError: jest.fn(),
+    };
+
+    render(
+      <MemoryRouter initialEntries={["/admin/question-bank"]}>
+        <ThemeContext.Provider value={{ school: { entitlements: { features: ['core'], labels: { cbt: 'Computer-Based Testing' } } } }}>
+          <AuthContext.Provider value={schoolAdmin}>
+            <Routes>
+              <Route path="/admin/question-bank" element={<ProtectedRoute allowedRoles={['school_admin']}><div>Protected Content</div></ProtectedRoute>} />
+              <Route path="/admin/dashboard" element={<div>Dashboard</div>} />
+            </Routes>
+          </AuthContext.Provider>
+        </ThemeContext.Provider>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('heading', { name: /Computer-Based Testing/i })).toBeInTheDocument();
+    expect(screen.getByText(/CBT is available with Paideia Premium/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /View Premium Features/i })).toBeInTheDocument();
+  });
 });

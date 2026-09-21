@@ -12,7 +12,7 @@ from accounts.models import CustomUser, ParentStudentLink
 from tenants.models import School, PlatformSecurity
 from enrollment.models import StudentProfile, ClassLevel, ClassArm
 from academics.models import AcademicSession, Term
-from .models import FeeCategory, FeeSchedule, FeePayment, SchoolPaymentAccount, PaymentOrder, SubscriptionOffer
+from .models import FeeCategory, FeeSchedule, FeePayment, SchoolPaymentAccount, PaymentOrder, SubscriptionOffer, TermInvoice
 from .payments import settle, add_months
 from .services.paystack import PaystackService
 
@@ -99,7 +99,7 @@ class PaystackTests(TestCase):
         with patch.object(PaystackService,'initialize',side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
             r=self.client.post('/api/fees/subscription/',{'plan':'basic'},format='json',**self.headers)
         self.assertEqual(r.status_code,200,r.data)
-        order=PaymentOrder.objects.get();self.assertEqual(order.amount_kobo,120000);self.assertFalse(order.subaccount_code)
+        order=PaymentOrder.objects.get();self.assertEqual(order.amount_kobo,80000);self.assertFalse(order.subaccount_code)
         self.school.is_active=False;self.school.save()
         settle(order.reference,self.data(order));self.school.refresh_from_db(); end=self.school.subscription_ends_on
         settle(order.reference,self.data(order));self.school.refresh_from_db()
@@ -113,7 +113,85 @@ class PaystackTests(TestCase):
         with patch.object(PaystackService,'initialize',side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
             r=self.client.post('/api/fees/subscription/',{'plan':'basic'},format='json',**self.headers)
         self.assertEqual(r.status_code,200,r.data)
-        order=PaymentOrder.objects.get(); self.assertEqual(order.amount_kobo,10800000)
+        order=PaymentOrder.objects.get(); self.assertEqual(order.amount_kobo,7200000)
+    def test_term_invoice_records_audit_trail_for_subscription_billing(self):
+        session = AcademicSession.objects.create(school=self.school, name='2026/2027', start_date='2026-09-01', end_date='2027-07-31', is_current=True)
+        term = Term.objects.create(session=session, name='first', start_date='2026-09-01', end_date='2026-12-31', is_current=True)
+        for index in range(418):
+            user = CustomUser.objects.create_user(f'invoice{index}@pay.test', 'Password!123', school=self.school, role='student')
+            StudentProfile.objects.create(school=self.school, user=user, current_class=None, admission_number=f'INV{index:03d}')
+        invoice = TermInvoice.objects.create(
+            school=self.school,
+            plan='premium',
+            academic_session=session,
+            term=term,
+            active_student_count=418,
+            snapshot_date=date(2026, 9, 20),
+            standard_rate=Decimal('1500.00'),
+            discount_eligible=True,
+            discount_percentage=10,
+            discount_amount=Decimal('56430.00'),
+            effective_rate=Decimal('1350.00'),
+            subtotal=Decimal('627000.00'),
+            final_amount=Decimal('564300.00'),
+            invoice_number='INV-2026-001',
+            issue_date=date(2026, 9, 20),
+            due_date=date(2026, 10, 4),
+            status='issued',
+            grace_period_days=14,
+            notes='Premium plan rate with 10% discount for 418 active students.'
+        )
+        self.assertEqual(invoice.plan, 'premium')
+        self.assertEqual(invoice.active_student_count, 418)
+        self.assertEqual(invoice.discount_percentage, 10)
+        self.assertEqual(invoice.effective_rate, Decimal('1350.00'))
+        self.assertEqual(invoice.final_amount, Decimal('564300.00'))
+        self.assertIn('10%', invoice.notes)
+
+    def test_term_invoice_is_immutable_after_generation(self):
+        from fees.payments import create_term_invoice_for_payment
+
+        session = AcademicSession.objects.create(school=self.school, name='2026/2027', start_date='2026-09-01', end_date='2027-07-31', is_current=True)
+        term = Term.objects.create(session=session, name='first', start_date='2026-09-01', end_date='2026-12-31', is_current=True)
+
+        for index in range(102):
+            user = CustomUser.objects.create_user(f'freeze{index}@pay.test', 'Password!123', school=self.school, role='student')
+            StudentProfile.objects.create(school=self.school, user=user, current_class=None, admission_number=f'FRZ{index:03d}')
+
+        invoice = create_term_invoice_for_payment(
+            school=self.school,
+            plan_code='premium',
+            academic_session=session,
+            term=term,
+            active_student_count=102,
+            issued_on=date(2026, 9, 20),
+            due_date=date(2026, 10, 4),
+            notes='Initial snapshot for term billing.'
+        )
+        self.assertEqual(invoice.final_amount, Decimal('137700.00'))
+
+        for index in range(102, 99, -1):
+            student = StudentProfile.objects.filter(school=self.school, user__email=f'freeze{index-1}@pay.test').first()
+            if student:
+                student.delete()
+
+        regenerated = create_term_invoice_for_payment(
+            school=self.school,
+            plan_code='premium',
+            academic_session=session,
+            term=term,
+            active_student_count=99,
+            issued_on=date(2026, 9, 21),
+            due_date=date(2026, 10, 5),
+            notes='Late recalculation attempt.'
+        )
+
+        self.assertEqual(regenerated.pk, invoice.pk)
+        regenerated.refresh_from_db()
+        self.assertEqual(regenerated.active_student_count, 102)
+        self.assertEqual(regenerated.final_amount, Decimal('137700.00'))
+        self.assertEqual(regenerated.audit_snapshot['active_student_count'], 102)
+
     def test_owner_controls_work_without_tenant_and_viewer_denied(self):
         self.client.force_authenticate(self.owner)
         self.assertEqual(self.client.get('/api/platform/payments/').status_code,200)

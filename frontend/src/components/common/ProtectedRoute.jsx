@@ -61,6 +61,49 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
   }
 
   const feature = featureForRoute(location.pathname);
-  if (user.role !== 'superadmin' && !hasFeature(school, feature)) return <main className="plan-locked"><span className="workspace-eyebrow">Your school plan</span><h1>More possibilities for your school</h1><p>{school.entitlements.labels?.[feature] || 'This feature'} is available on an upgraded plan.</p>{user.role === 'school_admin' ? <Link className="workspace-action" to="/admin/subscription">Compare plans</Link> : <p>Ask your school administrator about enabling this feature.</p>}<p><Link to={ROLE_DASHBOARDS[user.role]}>Back to dashboard</Link></p></main>;
+  if (user.role !== 'superadmin' && !hasFeature(school, feature)) {
+    const title = school?.entitlements?.labels?.[feature] || 'This feature';
+    const upgradeCopy = {
+      cbt: {
+        title: 'Computer-Based Testing',
+        headline: 'CBT is available with Paideia Premium.',
+        description: 'Upgrade to Premium to create examinations, manage question banks, automatically mark objective tests and analyse examination performance.',
+        cta: 'View Premium Features',
+        to: '/admin/subscription',
+      },
+      analytics: {
+        title: 'Advanced Analytics',
+        headline: 'Advanced Analytics is available with Paideia Premium.',
+        description: 'Upgrade to Premium to unlock dashboards, cohort insights and performance trends across your school.',
+        cta: 'View Premium Features',
+        to: '/admin/subscription',
+      },
+      notifications: {
+        title: 'Notifications',
+        headline: 'Notifications is available with Paideia Premium.',
+        description: 'Upgrade to Premium to send announcements, reminders and parent updates automatically.',
+        cta: 'View Premium Features',
+        to: '/admin/subscription',
+      },
+    };
+    const copy = upgradeCopy[feature] || {
+      title,
+      headline: `${title} is available on an upgraded plan.`,
+      description: 'Upgrade your school plan to unlock this feature and keep your operations moving.',
+      cta: 'View Premium Features',
+      to: '/admin/subscription',
+    };
+
+    return (
+      <main className="plan-locked">
+        <span className="workspace-eyebrow">Your school plan</span>
+        <h1>{copy.title}</h1>
+        <p>{copy.headline}</p>
+        <p>{copy.description}</p>
+        {user.role === 'school_admin' ? <Link className="workspace-action" to={copy.to}>{copy.cta}</Link> : <p>Ask your school administrator about enabling this feature.</p>}
+        <p><Link to={ROLE_DASHBOARDS[user.role]}>Back to dashboard</Link></p>
+      </main>
+    );
+  }
   return children;
 }

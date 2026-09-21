@@ -1,5 +1,8 @@
-﻿from django.conf import settings
+﻿from decimal import Decimal
+
+from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class FeeCategory(models.Model):
@@ -83,10 +86,60 @@ class SchoolPaymentAccount(models.Model):
 
 
 class SubscriptionOffer(models.Model):
-    plan = models.CharField(max_length=20, unique=True, choices=[('basic', 'Basic'), ('premium', 'Premium')])
+    plan = models.CharField(max_length=20, unique=True, choices=[('basic', 'Basic'), ('premium', 'Premium'), ('enterprise', 'Enterprise')])
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     months = models.PositiveSmallIntegerField(default=12)
     enabled = models.BooleanField(default=False)
+
+
+class TermInvoice(models.Model):
+    INVOICE_STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('issued', 'Issued'),
+        ('pending', 'Pending Payment'),
+        ('paid', 'Paid'),
+        ('overdue', 'Overdue'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT, related_name='term_invoices')
+    plan = models.CharField(max_length=20, choices=[('free', 'Free'), ('basic', 'Basic'), ('premium', 'Premium'), ('enterprise', 'Enterprise')], default='premium')
+    academic_session = models.ForeignKey('academics.AcademicSession', on_delete=models.PROTECT, related_name='term_invoices')
+    term = models.ForeignKey('academics.Term', on_delete=models.PROTECT, related_name='term_invoices')
+    active_student_count = models.PositiveIntegerField(default=0)
+    snapshot_date = models.DateField()
+    standard_rate = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    discount_eligible = models.BooleanField(default=False)
+    discount_percentage = models.PositiveSmallIntegerField(default=0)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    effective_rate = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    subtotal = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    final_amount = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    invoice_number = models.CharField(max_length=60, unique=True, blank=True)
+    issue_date = models.DateField(default=timezone.localdate)
+    due_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=INVOICE_STATUS_CHOICES, default='issued')
+    paid_date = models.DateTimeField(null=True, blank=True)
+    grace_period_days = models.PositiveSmallIntegerField(default=14)
+    notes = models.TextField(blank=True)
+    audit_snapshot = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-issue_date', '-id']
+        constraints = [
+            models.UniqueConstraint(fields=['school', 'academic_session', 'term'], name='unique_term_invoice_per_school_term'),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.invoice_number:
+            prefix = 'INV'
+            self.invoice_number = f'{prefix}-{self.issue_date.year}-{self.pk or "NEW"}'
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.invoice_number} — {self.school.name} ({self.term})"
 
 
 class PaymentOrder(models.Model):

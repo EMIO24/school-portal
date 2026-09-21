@@ -113,6 +113,40 @@
   .bio-label { font-size: 7.5pt; color: #555; font-weight: bold; text-transform: uppercase; }
   .bio-value { font-size: 9pt; font-weight: bold; color: {{ document_primary_color|default:"#0f1e3c" }}; }
 
+  body.result-layout-modern {
+    font-size: 8.8pt;
+  }
+
+  body.result-layout-modern .school-header {
+    border-bottom-width: 4px;
+    margin-bottom: 12px;
+  }
+
+  body.result-layout-modern .summary-bar {
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+
+  body.result-layout-compact {
+    font-size: 8.3pt;
+  }
+
+  body.result-layout-compact .bio-strip,
+  body.result-layout-compact .summary-bar,
+  body.result-layout-compact .remarks-section,
+  body.result-layout-compact .footer-strip {
+    margin-bottom: 7px;
+  }
+
+  body.result-layout-compact .score-table th,
+  body.result-layout-compact .score-table td,
+  body.result-layout-compact .domain-table th,
+  body.result-layout-compact .domain-table td,
+  body.result-layout-compact .remark-box {
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+
   /* ── Score table ── */
   table {
     width: 100%;
@@ -320,7 +354,7 @@
   .domain-col { flex: 1; }
 </style>
 </head>
-<body>
+<body class="result-layout-{{ result_layout|default:'classic' }}">
 
 <!-- ── School Header ───────────────────────────────────────────────────── -->
 <div class="school-header">
@@ -375,6 +409,7 @@
   </div>
 </div>
 
+{% if 'scores' in result_sections %}
 <!-- ── Score Table ─────────────────────────────────────────────────────── -->
 <table class="score-table">
   <thead>
@@ -406,7 +441,9 @@
     {% endfor %}
   </tbody>
 </table>
+{% endif %}
 
+{% if 'summary' in result_sections %}
 <!-- ── Summary Bar ─────────────────────────────────────────────────────── -->
 <div class="summary-bar">
   <div class="summary-cell">
@@ -432,12 +469,14 @@
     <span class="s-value">{{ num_subjects }}</span>
   </div>
 </div>
+{% endif %}
 
+{% if 'affective' in result_sections or 'psychomotor' in result_sections %}
 <!-- ── Domain Tables (side by side) ───────────────────────────────────── -->
 <div class="domain-columns">
 
   <!-- Affective -->
-  {% if affective_rows %}
+  {% if 'affective' in result_sections and affective_rows %}
   <div class="domain-col">
     <div class="section-title">Affective Domain</div>
     <table class="domain-table">
@@ -467,7 +506,7 @@
   {% endif %}
 
   <!-- Psychomotor -->
-  {% if psychomotor_rows %}
+  {% if 'psychomotor' in result_sections and psychomotor_rows %}
   <div class="domain-col">
     <div class="section-title">Psychomotor Domain</div>
     <table class="domain-table">
@@ -494,7 +533,7 @@
       </tbody>
     </table>
 
-    <!-- Attendance (placed under psychomotor to balance layout) -->
+    {% if 'attendance' in result_sections %}
     <div class="section-title" style="margin-top:8px">Attendance</div>
     <div class="att-row">
       <div class="att-item">
@@ -510,11 +549,14 @@
         <div class="att-value">{{ att_percentage }}%</div>
       </div>
     </div>
+    {% endif %}
   </div>
   {% endif %}
 
 </div>
+{% endif %}
 
+{% if 'remarks' in result_sections %}
 <!-- ── Remarks ─────────────────────────────────────────────────────────── -->
 <div class="remarks-section">
   <div class="remark-box">
@@ -526,6 +568,7 @@
     <div class="remark-text">{{ principal_remark|default:"—" }}</div>
   </div>
 </div>
+{% endif %}
 
 <!-- ── Footer ──────────────────────────────────────────────────────────── -->
 {% if next_term_date %}

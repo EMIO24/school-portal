@@ -20,8 +20,8 @@ from rest_framework.views import APIView
 from accounts.permissions import IsAuthenticatedTenantUser, IsSchoolAdmin, IsSuperAdmin
 from enrollment.models import StudentProfile
 from tenants.models import School, PlatformEvent
-from tenants.plans import PLAN_FEATURES, FEATURES
-from .models import PaymentOrder, SchoolPaymentAccount, SubscriptionOffer, FeeSchedule, FeePayment
+from tenants.plans import PLAN_FEATURES, FEATURES, calculate_billing_snapshot
+from .models import PaymentOrder, SchoolPaymentAccount, SubscriptionOffer, FeeSchedule, FeePayment, TermInvoice
 from .access import payment_student
 from .services.paystack import PaystackService
 
@@ -32,14 +32,83 @@ def subscription_student_count(school):
 
 def subscription_offer_total(school, offer):
     student_count = subscription_student_count(school)
-    amount = Decimal(student_count) * Decimal(str(offer.amount))
-    if student_count >= 100:
-        amount *= Decimal('0.90')
-    return amount.quantize(Decimal('0.01'))
+    snapshot = calculate_billing_snapshot(
+        school=school,
+        plan_code=offer.plan,
+        active_student_count=student_count,
+    )
+    return Decimal(str(snapshot['final_amount'])).quantize(Decimal('0.01'))
 
 
 def subscription_offer_amount(school, offer):
     return subscription_offer_total(school, offer)
+
+
+def create_term_invoice_for_payment(school, plan_code, academic_session=None, term=None, active_student_count=None, issued_on=None, due_date=None, notes=''):
+    from academics.models import AcademicSession, Term
+
+    if academic_session is None:
+        academic_session = AcademicSession.objects.filter(school=school, is_current=True).order_by('-start_date').first()
+    if term is None:
+        term = Term.objects.filter(session__school=school, is_current=True).order_by('-session__start_date', '-start_date').first()
+    if academic_session is None or term is None:
+        return None
+
+    count = int(active_student_count if active_student_count is not None else StudentProfile.objects.filter(school=school, status='active').count())
+    snapshot = calculate_billing_snapshot(school=school, session=academic_session, term=term, plan_code=plan_code, active_student_count=count)
+    standard_rate = Decimal(str(snapshot['standard_rate']))
+    effective_rate = Decimal(str(snapshot['effective_rate']))
+    subtotal = Decimal(str(snapshot['subtotal']))
+    discount_amount = Decimal(str(snapshot['discount_amount']))
+    final_amount = Decimal(str(snapshot['final_amount']))
+    invoice_date = issued_on or timezone.localdate()
+    due = due_date or invoice_date
+    if isinstance(due, str):
+        due = timezone.datetime.strptime(due, '%Y-%m-%d').date()
+
+    invoice, created = TermInvoice.objects.get_or_create(
+        school=school,
+        academic_session=academic_session,
+        term=term,
+        defaults={
+            'plan': plan_code,
+            'active_student_count': count,
+            'snapshot_date': invoice_date,
+            'standard_rate': standard_rate,
+            'discount_eligible': bool(snapshot['discount_eligible']),
+            'discount_percentage': int(snapshot['discount_percentage']),
+            'discount_amount': discount_amount,
+            'effective_rate': effective_rate,
+            'subtotal': subtotal,
+            'final_amount': final_amount,
+            'invoice_number': f'TERM-{academic_session.name}-{term.name}-{school.pk}',
+            'issue_date': invoice_date,
+            'due_date': due,
+            'status': 'issued',
+            'grace_period_days': 14,
+            'notes': notes or f"{plan_code.title()} plan billing for {academic_session.name} {term.get_name_display()}.",
+            'audit_snapshot': snapshot,
+        },
+    )
+
+    if not created and invoice.status == 'draft':
+        invoice.plan = plan_code
+        invoice.active_student_count = count
+        invoice.snapshot_date = invoice_date
+        invoice.standard_rate = standard_rate
+        invoice.discount_eligible = bool(snapshot['discount_eligible'])
+        invoice.discount_percentage = int(snapshot['discount_percentage'])
+        invoice.discount_amount = discount_amount
+        invoice.effective_rate = effective_rate
+        invoice.subtotal = subtotal
+        invoice.final_amount = final_amount
+        invoice.issue_date = invoice_date
+        invoice.due_date = due
+        invoice.status = 'issued'
+        invoice.notes = notes or invoice.notes or f"{plan_code.title()} plan billing for {academic_session.name} {term.get_name_display()}."
+        invoice.audit_snapshot = snapshot
+        invoice.save(update_fields=['plan', 'active_student_count', 'snapshot_date', 'standard_rate', 'discount_eligible', 'discount_percentage', 'discount_amount', 'effective_rate', 'subtotal', 'final_amount', 'issue_date', 'due_date', 'status', 'notes', 'audit_snapshot'])
+    return invoice
 
 
 def event(user, action, target, details):
@@ -121,6 +190,21 @@ def settle(reference, data):
         school.subscription_plan = order.plan
         school.subscription_ends_on = add_months(start, order.months)
         school.save(update_fields=['subscription_plan', 'subscription_ends_on'])
+        if order.kind == 'subscription':
+            current_session = school.sessions.filter(is_current=True).order_by('-start_date').first()
+            current_term = None
+            if current_session:
+                current_term = current_session.terms.filter(is_current=True).order_by('-start_date').first()
+            create_term_invoice_for_payment(
+                school=school,
+                plan_code=order.plan,
+                academic_session=current_session,
+                term=current_term,
+                active_student_count=StudentProfile.objects.filter(school=school, status='active').count(),
+                issued_on=today,
+                due_date=add_months(today, 1),
+                notes=f"Term subscription invoice for {school.name} on the {order.plan.title()} plan.",
+            )
         # Paying never overrides manual approval or suspension.
     order.status, order.paid_at, order.provider_id, order.note = 'success', timezone.now(), str(data.get('id', '')), ''
     order.save(update_fields=['status', 'paid_at', 'provider_id', 'note'])
@@ -212,20 +296,21 @@ class SchoolSubscription(APIView):
         offers = []
         school_student_count = StudentProfile.objects.filter(school=request.tenant, status='active').count()
         for offer in SubscriptionOffer.objects.filter(enabled=True):
-            base_amount = Decimal(str(offer.amount))
-            total_amount = Decimal(school_student_count) * base_amount
-            if school_student_count >= 100:
-                total_amount *= Decimal('0.90')
+            snapshot = calculate_billing_snapshot(
+                school=request.tenant,
+                plan_code=offer.plan,
+                active_student_count=school_student_count,
+            )
             offers.append({
                 'plan': offer.plan,
                 'amount': float(offer.amount),
                 'months': offer.months,
                 'base_amount': float(offer.amount),
-                'total_amount': float(total_amount.quantize(Decimal('0.01'))),
+                'total_amount': float(snapshot['final_amount']),
                 'student_count': school_student_count,
-                'discount_percent': 10 if school_student_count >= 100 else 0,
-                'discount_applied': school_student_count >= 100,
-                'billing_note': 'per student per term',
+                'discount_percent': snapshot['discount_percentage'],
+                'discount_applied': snapshot['discount_eligible'],
+                'billing_note': 'per active student at the selected plan rate',
             })
         school_summary = f"School size: {school_student_count} active students."
         if school_student_count >= 100:
@@ -291,7 +376,7 @@ class PlatformPayments(APIView):
             return Response(result(order))
         from rest_framework import serializers
         class OfferInput(serializers.Serializer):
-            plan = serializers.ChoiceField(choices=['basic', 'premium'])
+            plan = serializers.ChoiceField(choices=['basic', 'premium', 'enterprise'])
             amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('100'))
             months = serializers.IntegerField(min_value=1, max_value=12)
             enabled = serializers.BooleanField()

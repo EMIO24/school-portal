@@ -7,7 +7,7 @@ import './PortalNavigation.css';
 
 export const ROLE_LINKS = {
   school_admin: [
-    ['dashboard', 'Dashboard'], ['calendar', 'Calendar'], ['students', 'Students'],
+    ['setup-wizard', 'Academic setup'], ['dashboard', 'Dashboard'], ['calendar', 'Calendar'], ['students', 'Students'],
     ['students/new', 'Add student'], ['students/import', 'Import students'],
     ['staff', 'Staff'], ['staff/new', 'Add staff'], ['staff/import', 'Import staff'],
     ['subjects', 'Subjects'], ['subject-assignments', 'Subject assignments'],
