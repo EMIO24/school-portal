@@ -151,10 +151,52 @@ class PaystackInitiateView(APIView):
         account = SchoolPaymentAccount.objects.filter(school=request.tenant, mode=settings.PAYSTACK_MODE).first()
         if not account:
             return Response({'error': 'Your school has not connected its Paystack settlement account. Contact your school administrator.'}, status=409)
-        pending = PaymentOrder.objects.filter(student=student, kind='fees', mode=settings.PAYSTACK_MODE, status__in=['initializing', 'pending', 'review'])
+        pending = PaymentOrder.objects.filter(
+            student=student,
+            kind='fees',
+            mode=settings.PAYSTACK_MODE,
+            status__in=['initializing', 'pending', 'review']
+        )
+
         for previous in pending:
-            if set(ids) & {a['schedule_id'] for a in previous.allocations}:
-                return Response({'error': 'A payment for these fees is awaiting verification. Check it before paying again.', 'reference': previous.reference}, status=409)
+            previous_schedule_ids = {
+                allocation['schedule_id']
+                for allocation in previous.allocations
+            }
+
+            if not (set(ids) & previous_schedule_ids):
+                continue
+
+            # A Paystack checkout may have failed while the local order
+            # remained pending because no verify request/webhook followed.
+            if previous.status == 'pending':
+                try:
+                    service = PaystackService()
+                    data = service.verify(previous.reference)
+                    previous = settle(previous.reference, data)
+                except (RequestException, ValueError):
+                    # If Paystack cannot be reached or verification is invalid,
+                    # fail closed: do not risk creating a duplicate checkout.
+                    return Response({
+                        'error': 'The previous payment could not be verified. Check it before paying again.',
+                        'reference': previous.reference
+                    }, status=409)
+
+                # Failed/abandoned transactions are now reconciled and should
+                # no longer prevent the user from starting another checkout.
+                if previous.status == 'failed':
+                    continue
+
+                # If verification discovered a successful payment, don't create
+                # another checkout. The outstanding balance will be recalculated
+                # below.
+                if previous.status == 'success':
+                    continue
+
+            return Response({
+                'error': 'A payment for these fees is awaiting verification. Check it before paying again.',
+                'reference': previous.reference
+            }, status=409)
         allocations = []
         for schedule in schedules:
             paid = FeePayment.objects.filter(student=student, fee_schedule=schedule).aggregate(total=Sum('amount_paid'))['total'] or Decimal(0)
