@@ -1,12 +1,12 @@
 {
-  "name": "School Parent Portal",
-  "short_name": "Parent Portal",
-  "description": "Stay connected with your child's school",
+  "name": "Paideia Portals",
+  "short_name": "Paideia",
+  "description": "School management portal for students, parents, and staff",
   "start_url": "/parent/dashboard",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#1a6b3c",
-  "background_color": "#ffffff",
+  "theme_color": "#113d5c",
+  "background_color": "#081f31",
   "icons": [
     {
       "src": "/favicon.svg",
