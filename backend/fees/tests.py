@@ -237,6 +237,21 @@ class PaystackTests(TestCase):
         self.assertEqual(r.status_code,200)
         PlatformSecurity.objects.create(user=self.owner,access_level='viewer')
         self.assertEqual(self.client.post('/api/platform/payments/',{},format='json').status_code,403)
+    def test_platform_owner_filters_and_reconciles_orders(self):
+        self.start(); order = PaymentOrder.objects.get()
+        PaymentOrder.objects.create(school=self.other, payer=self.owner, payer_email=self.owner.email,
+            kind='subscription', reference='SCH-filtered', mode='test', amount_kobo=100, status='success')
+        self.client.force_authenticate(self.owner)
+        response = self.client.get('/api/platform/payments/', {'status':'pending', 'kind':'fees', 'school_id':self.school.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item['reference'] for item in response.data['orders']], [order.reference])
+        with patch.object(PaystackService, 'verify', return_value=self.data(order)):
+            response = self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data['status'], 'success')
+            self.assertEqual(self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json').data['status'], 'success')
+        PlatformSecurity.objects.create(user=self.owner, access_level='viewer')
+        self.assertEqual(self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json').status_code, 403)
     def test_subaccount_is_verified_and_cannot_be_shared(self):
         self.client.force_authenticate(self.owner)
         data={'subaccount_code':'ACCT_school','business_name':'School','active':True,'currency':'NGN','domain':'test','account_number':'0123456789','settlement_bank':'Test Bank'}

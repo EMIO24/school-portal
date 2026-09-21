@@ -333,11 +333,28 @@ class PlatformPayments(APIView):
             configured = True
         except ValueError:
             configured = False
+        orders = PaymentOrder.objects.order_by('-id')
+        status = request.query_params.get('status')
+        kind = request.query_params.get('kind')
+        school_id = request.query_params.get('school_id')
+        if status:
+            if status not in dict(PaymentOrder._meta.get_field('status').choices):
+                raise ValidationError('Select a valid payment status.')
+            orders = orders.filter(status=status)
+        if kind:
+            if kind not in dict(PaymentOrder._meta.get_field('kind').choices):
+                raise ValidationError('Select a valid payment type.')
+            orders = orders.filter(kind=kind)
+        if school_id:
+            try:
+                orders = orders.filter(school_id=int(school_id))
+            except (TypeError, ValueError):
+                raise ValidationError('Select a valid school.')
         return Response({'mode': settings.PAYSTACK_MODE, 'configured': configured,
             'schools': list(School.objects.order_by('name').values('id', 'name')),
             'offers': list(SubscriptionOffer.objects.values('plan', 'amount', 'months', 'enabled')),
             'accounts': list(SchoolPaymentAccount.objects.filter(mode=settings.PAYSTACK_MODE).values('school_id', 'business_name', 'bank_name', 'account_last_four', 'subaccount_code')),
-            'orders': [dict(result(o), school_id=o.school_id) for o in PaymentOrder.objects.order_by('-id')[:100]]})
+            'orders': [dict(result(o), school_id=o.school_id) for o in orders[:100]]})
     def post(self, request):
         if request.data.get('action') == 'retry_checkout':
             order = get_object_or_404(PaymentOrder, reference=request.data.get('reference'), mode=settings.PAYSTACK_MODE)
