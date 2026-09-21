@@ -237,6 +237,35 @@ class PaystackTests(TestCase):
         self.assertEqual(r.status_code,200)
         PlatformSecurity.objects.create(user=self.owner,access_level='viewer')
         self.assertEqual(self.client.post('/api/platform/payments/',{},format='json').status_code,403)
+    def test_platform_reconciliation_marks_failed_without_credit(self):
+        self.start(); order = PaymentOrder.objects.get(); self.client.force_authenticate(self.owner)
+        with patch.object(PaystackService, 'verify', return_value=self.data(order, status='failed')):
+            response = self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json')
+        order.refresh_from_db()
+        self.assertEqual(response.data['status'], 'failed'); self.assertEqual(order.status, 'failed'); self.assertFalse(FeePayment.objects.exists())
+    def test_platform_reconciliation_keeps_pending_without_credit(self):
+        self.start(); order = PaymentOrder.objects.get(); self.client.force_authenticate(self.owner)
+        with patch.object(PaystackService, 'verify', return_value=self.data(order, status='pending')):
+            response = self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json')
+        order.refresh_from_db()
+        self.assertEqual(response.data['status'], 'pending'); self.assertEqual(order.status, 'pending'); self.assertFalse(FeePayment.objects.exists())
+    def test_platform_reconciliation_marks_mismatch_for_review_without_credit(self):
+        self.start(); order = PaymentOrder.objects.get(); self.client.force_authenticate(self.owner)
+        with patch.object(PaystackService, 'verify', return_value=self.data(order, amount=1)):
+            response = self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json')
+        order.refresh_from_db()
+        self.assertEqual(response.data['status'], 'review'); self.assertEqual(order.status, 'review'); self.assertFalse(FeePayment.objects.exists())
+    def test_platform_reconciliation_extends_subscription_once(self):
+        self.client.force_authenticate(self.admin)
+        with patch.object(PaystackService, 'initialize', side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
+            self.assertEqual(self.client.post('/api/fees/subscription/', {'plan':'basic'}, format='json', **self.headers).status_code, 200)
+        order = PaymentOrder.objects.get(); self.client.force_authenticate(self.owner)
+        with patch.object(PaystackService, 'verify', return_value=self.data(order)):
+            self.assertEqual(self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json').data['status'], 'success')
+            self.school.refresh_from_db(); first_end = self.school.subscription_ends_on
+            self.assertEqual(self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json').data['status'], 'success')
+        self.school.refresh_from_db()
+        self.assertEqual(self.school.subscription_ends_on, first_end)
     def test_platform_owner_filters_and_reconciles_orders(self):
         self.start(); order = PaymentOrder.objects.get()
         PaymentOrder.objects.create(school=self.other, payer=self.owner, payer_email=self.owner.email,
