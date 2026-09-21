@@ -16,9 +16,34 @@ class PaystackService:
         try:
             data = response.json()
         except ValueError:
-            raise ValueError('Paystack returned an invalid response. Please try again later.')
-        if response.status_code >= 400 or not isinstance(data, dict) or data.get('status') is not True or not isinstance(data.get('data'), dict):
-            raise ValueError('Paystack could not process this request. Please check configuration or try again later.')
+            print(
+                f"Paystack API error: status={response.status_code} "
+                f"message=invalid JSON response"
+            )
+            raise ValueError(
+                'Paystack returned an invalid response. Please try again later.'
+            )
+
+        if (
+            response.status_code >= 400
+            or not isinstance(data, dict)
+            or data.get('status') is not True
+            or not isinstance(data.get('data'), dict)
+        ):
+            # Log only safe diagnostic information.
+            # Never log the secret key, Authorization header, or full request.
+            message = data.get('message', 'Unknown Paystack error') if isinstance(data, dict) else 'Unknown Paystack error'
+
+            print(
+                f"Paystack API error: status={response.status_code} "
+                f"message={message}"
+            )
+
+            raise ValueError(
+                'Paystack could not process this request. '
+                'Please check configuration or try again later.'
+            )
+
         return data['data']
 
     def initialize(self, email, amount_kobo, reference, callback_url, subaccount=None):
