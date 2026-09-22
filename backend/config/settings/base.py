@@ -61,6 +61,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    "config.observability.RequestIDMiddleware",
     "tenants.middleware.TenantMiddleware",
     "tenants.plans.SchoolPlanMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -194,6 +195,8 @@ CORS_ALLOW_HEADERS = [
     "x-school-slug",
     "idempotency-key",  # tenant identification for cross-origin deployments
 ]
+
+CORS_EXPOSE_HEADERS = ["x-request-id"]
 
 # â”€â”€ Cloudinary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Set real values in development.py / production.py via env vars

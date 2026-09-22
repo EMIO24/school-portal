@@ -99,6 +99,28 @@ CORS_ALLOW_HEADERS = [
     "idempotency-key",
 ]
 
+CORS_EXPOSE_HEADERS = ["x-request-id"]
+
+# Railway captures stdout/stderr, so keep production diagnostics structured and
+# dependency-free. Application logs deliberately omit request bodies and headers.
+_log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+if _log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+    _log_level = "INFO"
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "railway": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "railway"},
+    },
+    "root": {"handlers": ["console"], "level": _log_level},
+    "loggers": {
+        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+    },
+}
+
 # â”€â”€ HTTPS / Cookies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 SECURE_SSL_REDIRECT = True

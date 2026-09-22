@@ -255,6 +255,37 @@ class PaystackTests(TestCase):
             response = self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json')
         order.refresh_from_db()
         self.assertEqual(response.data['status'], 'review'); self.assertEqual(order.status, 'review'); self.assertFalse(FeePayment.objects.exists())
+    def test_reconciliation_logs_status_transition_without_customer_data(self):
+        self.start(); order = PaymentOrder.objects.get(); self.client.force_authenticate(self.owner)
+        with self.assertLogs('fees.payments', level='INFO') as captured:
+            with patch.object(PaystackService, 'verify', return_value=self.data(order, status='failed')):
+                response = self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json')
+        output = ' '.join(captured.output)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('payment_reconciliation_completed', output)
+        self.assertIn('resulting_status=failed', output)
+        self.assertNotIn(order.payer_email, output)
+    def test_webhook_rejection_log_excludes_body_and_signature(self):
+        secret = 'SENSITIVE_WEBHOOK_TEST_VALUE'
+        with self.assertLogs('fees.payments', level='WARNING') as captured:
+            response = self.client.post('/api/platform/paystack/webhook/', {'private':secret}, format='json', HTTP_X_PAYSTACK_SIGNATURE=secret)
+        output = ' '.join(captured.output)
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('reason=invalid_signature', output)
+        self.assertNotIn(secret, output)
+    def test_paystack_error_log_excludes_provider_message_and_secret(self):
+        class RejectedResponse:
+            status_code = 400
+            def json(self):
+                return {'status': False, 'message': 'SENSITIVE_PROVIDER_MESSAGE', 'data': {}}
+        service = PaystackService()
+        with self.assertLogs('fees.services.paystack', level='WARNING') as captured:
+            with self.assertRaises(ValueError):
+                service._data(RejectedResponse())
+        output = ' '.join(captured.output)
+        self.assertIn('paystack_response_rejected status_code=400', output)
+        self.assertNotIn('SENSITIVE_PROVIDER_MESSAGE', output)
+        self.assertNotIn('sk_test_fixture', output)
     def test_platform_reconciliation_extends_subscription_once(self):
         self.client.force_authenticate(self.admin)
         with patch.object(PaystackService, 'initialize', side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
