@@ -3,8 +3,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { MarketingPage } from '../../pages/public/Marketing';
 import api from '../../services/api';
+import { openSchoolLogin } from '../../services/schoolAccess';
 
-jest.mock('../../services/api', () => ({ __esModule: true, default: { post: jest.fn() } }));
+jest.mock('../../services/api', () => ({ __esModule: true, default: { get: jest.fn(), post: jest.fn() } }));
+jest.mock('../../services/schoolAccess', () => ({ openSchoolLogin: jest.fn() }));
 
 function show(page) {
   return render(<MemoryRouter><MarketingPage page={page}/></MemoryRouter>);
@@ -40,4 +42,22 @@ test('demo request uses the existing API and shows confirmation', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Send request ↗' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/demo-requests/', expect.objectContaining({ school_name: 'River School', website: '' })));
   expect(await screen.findByText('Your request is with us.')).toBeVisible();
+});
+
+test('school access resolves a name and opens the existing tenant login', async () => {
+  api.get.mockResolvedValueOnce({ data: { found: true, slug: 'bright-future' } });
+  show('access');
+  fireEvent.change(screen.getByLabelText('School name'), { target: { value: '  Bright   Future College  ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Continue →' }));
+  await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/school-lookup/', { params: { name: 'Bright Future College' } }));
+  expect(openSchoolLogin).toHaveBeenCalledWith('bright-future');
+});
+
+test('school access handles an unknown school without exposing a directory', async () => {
+  api.get.mockResolvedValueOnce({ data: { found: false } });
+  show('access');
+  fireEvent.change(screen.getByLabelText('School name'), { target: { value: 'Unknown Academy' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Continue →' }));
+  expect(await screen.findByText("We couldn't find that school. Check the name and try again.")).toBeVisible();
+  expect(openSchoolLogin).not.toHaveBeenCalled();
 });

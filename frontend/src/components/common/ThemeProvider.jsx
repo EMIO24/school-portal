@@ -20,7 +20,7 @@ import "./ThemeProvider.css";
 function ThemeGate({ children }) {
   const { school, loading, error, refetch } = useTheme();
   const { pathname } = useLocation();
-  const isMarketingPage = ['/', '/features', '/pricing', '/demo', '/contact', '/privacy', '/terms'].includes(pathname);
+  const isMarketingPage = ['/', '/features', '/pricing', '/demo', '/contact', '/privacy', '/terms', '/access'].includes(pathname);
   if (isMarketingPage || pathname === "/help" || pathname === "/register-school" || pathname.startsWith("/platform/") || pathname.startsWith("/superadmin/")) return <>{children}</>;
 
   // Show full-page loader only on first load with no cached data

@@ -89,6 +89,7 @@ function AppRoutes() {
       <Route path="/pricing" element={<MarketingPage page="pricing" />} />
       <Route path="/demo" element={<MarketingPage page="demo" />} />
       <Route path="/contact" element={<MarketingPage page="contact" />} />
+      <Route path="/access" element={<MarketingPage page="access" />} />
       <Route path="/privacy" element={<MarketingPage page="privacy" />} />
       <Route path="/terms" element={<MarketingPage page="terms" />} />
       <Route path="/platform/change-password" element={<ProtectedRoute allowedRoles={["superadmin"]}><ChangePassword /></ProtectedRoute>} />

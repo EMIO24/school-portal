@@ -9,7 +9,7 @@ Registered in config/urls.py as:
 
 from django.urls import path
 
-from .views import SchoolDetailView, SchoolMeView, SchoolOnboardingView
+from .views import SchoolDetailView, SchoolLookupView, SchoolMeView, SchoolOnboardingView
 
 urlpatterns = [
     # SuperAdmin: list all schools / create a school
@@ -20,6 +20,7 @@ urlpatterns = [
 
     # Public: returns branding info for the current subdomain tenant
     path("school/me/", SchoolMeView.as_view(), name="school-me"),
+    path("school-lookup/", SchoolLookupView.as_view(), name="school-lookup"),
 ]
 
 from .platform import SchoolRegistration, PlatformSchools, PlatformSchoolDetail, PlatformAdministrators, PlatformProfile, DemoRequestView, PlatformDemoRequests

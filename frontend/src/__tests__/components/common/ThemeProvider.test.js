@@ -40,7 +40,7 @@ test('ThemeProvider keeps cached content available when refresh fails', async ()
   expect(screen.queryByText('School Not Found')).not.toBeInTheDocument();
 });
 
-test.each(['/', '/features', '/pricing', '/demo', '/contact', '/privacy', '/terms'])(
+test.each(['/', '/features', '/pricing', '/demo', '/contact', '/privacy', '/terms', '/access'])(
   'marketing route %s renders while tenant theme is loading', path => {
     global.fetch.mockReturnValue(new Promise(() => {}));
     render(<MemoryRouter initialEntries={[path]}><ThemeProvider><p>Marketing content</p></ThemeProvider></MemoryRouter>);
