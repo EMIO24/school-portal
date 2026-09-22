@@ -66,9 +66,6 @@ import Promotion        from "./pages/admin/Promotion";
 import MyPerformance    from "./pages/student/MyPerformance";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-import { useAuth } from "./hooks/useAuth";
-import { ROLE_DASHBOARDS } from "./utils/roles";
-import LoadingScreen from "./components/common/LoadingScreen";
 import PortalNavigation from "./components/common/PortalNavigation";
 import AttendanceOverview from './pages/admin/AttendanceOverview';
 import SubjectAssignment from './pages/admin/SubjectAssignment';
@@ -80,13 +77,6 @@ import AffinityDomain from './pages/teacher/AffinityDomain';
 import MyTimetable from './pages/teacher/MyTimetable';
 import ScoreEntry from './pages/teacher/ScoreEntry';
 import TakeAttendance from './pages/teacher/TakeAttendance';
-
-function RootRedirect() {
-  const { isAuthenticated, isLoading, user } = useAuth();
-  if (isLoading) return <LoadingScreen />;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <Navigate to={ROLE_DASHBOARDS[user.role] || "/login"} replace />;
-}
 
 function AppRoutes() {
   return (
