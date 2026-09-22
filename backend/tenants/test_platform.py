@@ -1,5 +1,10 @@
 from django.test import TestCase
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
+from io import BytesIO
+from PIL import Image
+from tempfile import TemporaryDirectory
 from rest_framework.test import APIClient
 from accounts.models import CustomUser
 from .models import School, SchoolActivity
@@ -127,3 +132,36 @@ class PlatformTests(TestCase):
         for _ in range(5):
             self.assertEqual(self.client.post('/api/platform/register/', {}, format='json').status_code, 400)
         self.assertEqual(self.client.post('/api/platform/register/', {}, format='json').status_code, 429)
+
+    def logo_file(self, size=(20, 20)):
+        output = BytesIO()
+        Image.new('RGB', size, 'navy').save(output, format='PNG')
+        return SimpleUploadedFile('school.png', output.getvalue(), content_type='image/png')
+
+    def test_owner_uploads_valid_logo_and_branding_returns_url(self):
+        self.client.force_authenticate(self.owner)
+        self.school.logo = 'https://legacy.example.test/logo.png'
+        self.school.save(update_fields=['logo'])
+        self.assertEqual(self.client.get(f'/api/platform/schools/{self.school.pk}/').data['logo'], self.school.logo)
+        with TemporaryDirectory() as directory, override_settings(MEDIA_ROOT=directory, MEDIA_URL='/media/'):
+            response = self.client.post(f'/api/platform/schools/{self.school.pk}/logo/', {'logo': self.logo_file()}, format='multipart')
+            self.assertEqual(response.status_code, 200, response.data)
+            self.school.refresh_from_db()
+            self.assertTrue(self.school.logo.startswith('/media/school-logos/'))
+            first_logo = self.school.logo
+            self.client.post(f'/api/platform/schools/{self.school.pk}/logo/', {'logo': self.logo_file()}, format='multipart')
+            self.school.refresh_from_db()
+            self.assertNotEqual(self.school.logo, first_logo)
+            branding = self.client.get(f'/api/platform/schools/{self.school.pk}/')
+            self.assertEqual(branding.data['logo'], self.school.logo)
+
+    def test_logo_rejects_invalid_oversized_and_unauthorized_uploads(self):
+        url = f'/api/platform/schools/{self.school.pk}/logo/'
+        self.client.force_authenticate(self.owner)
+        invalid = SimpleUploadedFile('fake.png', b'not-an-image', content_type='image/png')
+        self.assertEqual(self.client.post(url, {'logo': invalid}, format='multipart').status_code, 400)
+        oversized = SimpleUploadedFile('large.png', b'x' * (2 * 1024 * 1024 + 1), content_type='image/png')
+        self.assertEqual(self.client.post(url, {'logo': oversized}, format='multipart').status_code, 400)
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.post(url, {'logo': self.logo_file()}, format='multipart').status_code, 403)
+        self.assertEqual(self.client.post('/api/platform/schools/999/logo/', {'logo': self.logo_file()}, format='multipart').status_code, 403)

@@ -88,6 +88,7 @@ export default function PlatformDashboard() {
     </section>}
     {selected && <section ref={panel} className="platform-card" aria-label="School management"><div className="platform-heading"><h2>{selected.name}</h2><button disabled={busy} onClick={() => setSelected(null)}>Close school details</button></div>
       <p>Status: <strong>{statusOf(selected)}</strong> | <a href={'/login?school=' + encodeURIComponent(selected.subdomain)}>School login link</a></p>
+      {selected.setup && <div><h3>Setup readiness</h3><ul>{Object.entries(selected.setup).map(([item,ready])=><li key={item}>{ready?'✓':'○'} {item.replaceAll('_',' ')}</li>)}</ul></div>}
       <div className="platform-actions">{(selected.approval_status === 'pending' ? ['approve','reject'] : selected.approval_status === 'approved' ? [selected.is_active ? 'suspend' : 'activate'] : []).map(action => <button disabled={busy || !canManage} key={action} onClick={() => changeStatus(action)}>{action[0].toUpperCase() + action.slice(1)} school</button>)}</div>
       <form onSubmit={saveDetails} key={selected.id + ':' + selected.activity.length} className="platform-form"><fieldset disabled={busy || !canManage}><legend>School details and subscription</legend><div className="platform-grid">
         <label>School name<input name="name" required defaultValue={selected.name} maxLength={255} /></label>

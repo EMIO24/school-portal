@@ -14,6 +14,7 @@ from accounts.permissions import IsSuperAdmin, IsPlatformReader
 from .security import audit
 from .models import School, SchoolActivity, DemoRequest
 from .serializers import SchoolSerializer
+from .image_uploads import store_uploaded_image
 
 User = get_user_model()
 
@@ -87,7 +88,39 @@ def school_data(school, detail=False):
         data['administrators'] = list(school.users.filter(role='school_admin').values(
             'id', 'email', 'first_name', 'last_name', 'is_active', 'last_login'))
         data['activity'] = list(school.platform_activity.values('action', 'created_at', 'actor__email')[:30])
+        data['setup'] = {
+            'administrator': school.users.filter(role='school_admin', is_active=True).exists(),
+            'identity': bool(school.name and school.email),
+            'logo': bool(school.logo),
+            'plan': school.subscription_plan in dict(School.SUBSCRIPTION_CHOICES),
+            'academic_session': school.sessions.exists(),
+            'current_term': school.sessions.filter(terms__is_current=True).exists(),
+        }
     return data
+
+
+class PlatformSchoolLogo(APIView):
+    permission_classes = [IsSuperAdmin]
+
+    def post(self, request, pk):
+        school = get_object_or_404(School, pk=pk)
+        upload = request.FILES.get('logo')
+        try:
+            school.logo = store_uploaded_image(upload, f'school-logos/{school.pk}')
+        except serializers.ValidationError as exc:
+            raise serializers.ValidationError({'logo': list(exc.detail.values())[0]})
+        school.save(update_fields=['logo'])
+        audit(request, 'school.logo_updated', school.pk)
+        SchoolActivity.objects.create(school=school, actor=request.user, action='School logo updated')
+        return Response({'logo': school.logo})
+
+    def delete(self, request, pk):
+        school = get_object_or_404(School, pk=pk)
+        school.logo = ''
+        school.save(update_fields=['logo'])
+        audit(request, 'school.logo_removed', school.pk)
+        SchoolActivity.objects.create(school=school, actor=request.user, action='School logo removed')
+        return Response({'logo': ''})
 
 
 def create_school(data, actor=None):
