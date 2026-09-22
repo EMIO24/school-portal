@@ -168,6 +168,10 @@ class HolidayViewSet(TenantMixin, viewsets.ModelViewSet):
             raise PermissionDenied("Term does not belong to this school.")
         serializer.save()
 
+    def perform_update(self, serializer):
+        # get_object() has already tenant-scoped the holiday through its term.
+        serializer.save()
+
 
 class CurrentCalendarView(TenantMixin, viewsets.ViewSet):
     """
