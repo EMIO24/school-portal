@@ -20,10 +20,12 @@ test('pricing shows the approved plans and automatic school-size discount', () =
 
 test('role showcase changes with keyboard navigation', () => {
   show('home');
+  expect(screen.getAllByAltText('Paideia administrator dashboard showing school operations')[0]).toHaveAttribute('src', expect.stringContaining('/media/product/'));
   const admin = screen.getByRole('tab', { name: 'Administrator' });
   fireEvent.keyDown(admin, { key: 'ArrowRight' });
   expect(screen.getByRole('tab', { name: 'Teacher' })).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByRole('tabpanel')).toHaveTextContent('Record attendance');
+  expect(screen.getByAltText('Paideia teacher dashboard showing classroom tools')).toBeVisible();
 });
 
 test('demo request uses the existing API and shows confirmation', async () => {
