@@ -275,7 +275,7 @@ class ParentStudentDashboardView(APIView):
         # ── Result summary ─────────────────────────────────────────────────
         result_summary = None
         if term:
-            scores = ScoreEntry.objects.filter(student=student.user, term=term, school=school)
+            scores = ScoreEntry.objects.filter(student=student.user, term=term, school=school, is_published=True)
             avg    = scores.aggregate(a=Avg('total_score'))['a']
             remark = ResultRemark.objects.filter(student=student.user, term=term, school=school).first()
             result_summary = {

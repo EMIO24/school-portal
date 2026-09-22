@@ -7,6 +7,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from accounts.serializers import UserProfileSerializer
+from accounts.school_access import TenantRelationsMixin
 from .models import ClassArm, ClassLevel, StudentProfile, Subject
 
 User = get_user_model()
@@ -69,7 +70,7 @@ class SubjectSerializer(serializers.ModelSerializer):
 
 # ── StudentProfile ─────────────────────────────────────────────────────────
 
-class StudentProfileSerializer(serializers.ModelSerializer):
+class StudentProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     """Full serializer — used for create, retrieve, update."""
 
     # Nested read-only fields
@@ -111,6 +112,15 @@ class StudentProfileSerializer(serializers.ModelSerializer):
             "email", "first_name", "last_name", "full_name",
             "profile_photo", "current_class_name",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not (user and user.is_authenticated and user.role == "school_admin"
+                and user.school_id == instance.school_id):
+            data.pop("religion", None)
+        return data
 
     @transaction.atomic
     def create(self, validated_data):

@@ -8,13 +8,14 @@ for clarity and independent import.
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
+from accounts.school_access import TenantRelationsMixin
 
 from .models import ClassArm, StaffProfile, Subject
 
 User = get_user_model()
 
 
-class StaffProfileSerializer(serializers.ModelSerializer):
+class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     """Full serializer — create, retrieve, update."""
 
     # Read-only user fields
@@ -64,6 +65,16 @@ class StaffProfileSerializer(serializers.ModelSerializer):
             "profile_photo", "role", "is_active",
             "subjects_taught_detail", "assigned_classes_detail",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not (user and user.is_authenticated and user.school_id == instance.school_id
+                and (user.role == "school_admin" or user.pk == instance.user_id)):
+            for field in ("religion", "dob", "address", "phone", "state_of_origin"):
+                data.pop(field, None)
+        return data
 
     def get_subjects_taught_detail(self, obj):
         return [{"id": s.id, "name": s.name, "code": s.code}
