@@ -37,3 +37,13 @@ test('read-only staff cannot load owner payment settings', () => {
   expect(screen.getByText('Only platform owners can manage payment settings.')).toBeVisible();
   expect(api.get).not.toHaveBeenCalled();
 });
+
+test('subscription displays the server Enterprise quote at the discount boundary', async () => {
+  api.get.mockResolvedValue({data:{plan:'enterprise',school_student_count:100,
+    offers:[{plan:'enterprise',amount:'2500',months:3,total_amount:'225000',discount_applied:true}],orders:[]}});
+  renderPage(<Subscription/>);
+  expect(await screen.findByRole('heading', {name:'enterprise'})).toBeVisible();
+  expect(screen.getByText(/2,500.00 per student per term/)).toBeVisible();
+  expect(screen.getByText(/225,000.00/)).toBeVisible();
+  expect(screen.getByText('10% discount is active.')).toBeVisible();
+});

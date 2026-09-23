@@ -24,6 +24,7 @@ from tenants.models import School, PlatformEvent
 from tenants.plans import PLAN_FEATURES, FEATURES
 from .models import PaymentOrder, SchoolPaymentAccount, SubscriptionOffer, FeeSchedule, FeePayment
 from .access import payment_student
+from .billing import active_students, subscription_quote
 from .services.paystack import PaystackService
 
 
@@ -31,15 +32,11 @@ logger = logging.getLogger(__name__)
 
 
 def subscription_student_count(school):
-    return StudentProfile.objects.filter(school=school, status='active').count()
+    return active_students(school).count()
 
 
 def subscription_offer_total(school, offer):
-    student_count = subscription_student_count(school)
-    amount = Decimal(student_count) * Decimal(str(offer.amount))
-    if student_count >= 100:
-        amount *= Decimal('0.90')
-    return amount.quantize(Decimal('0.01'))
+    return subscription_quote(subscription_student_count(school), offer.amount)['total_amount']
 
 
 def subscription_offer_amount(school, offer):
@@ -273,21 +270,15 @@ class SchoolSubscription(APIView):
     permission_classes = [IsSchoolAdmin]
     def get(self, request):
         offers = []
-        school_student_count = StudentProfile.objects.filter(school=request.tenant, status='active').count()
+        school_student_count = subscription_student_count(request.tenant)
         for offer in SubscriptionOffer.objects.filter(enabled=True):
-            base_amount = Decimal(str(offer.amount))
-            total_amount = Decimal(school_student_count) * base_amount
-            if school_student_count >= 100:
-                total_amount *= Decimal('0.90')
+            quote = subscription_quote(school_student_count, offer.amount)
             offers.append({
                 'plan': offer.plan,
                 'amount': float(offer.amount),
                 'months': offer.months,
                 'base_amount': float(offer.amount),
-                'total_amount': float(total_amount.quantize(Decimal('0.01'))),
-                'student_count': school_student_count,
-                'discount_percent': 10 if school_student_count >= 100 else 0,
-                'discount_applied': school_student_count >= 100,
+                **{key: float(value) if isinstance(value, Decimal) else value for key, value in quote.items()},
                 'billing_note': 'per student per term',
             })
         school_summary = f"School size: {school_student_count} active students."
@@ -403,7 +394,7 @@ class PlatformPayments(APIView):
             return Response(result(order))
         from rest_framework import serializers
         class OfferInput(serializers.Serializer):
-            plan = serializers.ChoiceField(choices=['basic', 'premium'])
+            plan = serializers.ChoiceField(choices=['basic', 'premium', 'enterprise'])
             amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('100'))
             months = serializers.IntegerField(min_value=1, max_value=12)
             enabled = serializers.BooleanField()

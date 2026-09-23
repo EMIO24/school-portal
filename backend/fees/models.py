@@ -83,7 +83,7 @@ class SchoolPaymentAccount(models.Model):
 
 
 class SubscriptionOffer(models.Model):
-    plan = models.CharField(max_length=20, unique=True, choices=[('basic', 'Basic'), ('premium', 'Premium')])
+    plan = models.CharField(max_length=20, unique=True, choices=[('basic', 'Basic'), ('premium', 'Premium'), ('enterprise', 'Enterprise')])
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     months = models.PositiveSmallIntegerField(default=12)
     enabled = models.BooleanField(default=False)

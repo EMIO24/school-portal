@@ -19,6 +19,7 @@ class School(models.Model):
         ("free", "Free"),
         ("basic", "Basic"),
         ("premium", "Premium"),
+        ("enterprise", "Enterprise"),
     ]
 
     # ── Identity ──────────────────────────────────────────────────────────────

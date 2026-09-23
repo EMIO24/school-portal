@@ -29,7 +29,8 @@ This document does not authorize or execute a reset.
    PostgreSQL sequences reset. Tables and migration history remain. Django restores
    content types and permissions; already-applied data migrations are not replayed.
 4. Startup runs `migrate --noinput`, then `bootstrap_platform`. The bootstrap
-   atomically creates missing Basic (NGN 800) and Premium (NGN 1,500) offers, enabled
+   atomically creates missing Basic (NGN 800), Premium (NGN 1,500) and Enterprise
+   (NGN 2,500) offers, enabled
    for three months. Existing offers are preserved, including disabled/customized
    offers. No free-plan offer is needed. The existing 100+ active-student 10% discount
    remains unchanged. Bootstrap failure stops startup before owner creation/Gunicorn.
@@ -42,7 +43,7 @@ This document does not authorize or execute a reset.
 
 ## Verification before onboarding
 
-- Verify no pending migrations and exactly one Basic and one Premium offer with
+- Verify no pending migrations and exactly one Basic, Premium and Enterprise offer with
   the default amounts, three-month duration and enabled status after this reset.
 - Verify the configured platform owner exists with superadmin access. Owner MFA
   and other application records were erased too; restore required owner access

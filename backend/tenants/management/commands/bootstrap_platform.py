@@ -6,7 +6,7 @@ from fees.models import SubscriptionOffer
 
 
 # Canonical launch defaults from fees migration 0007; parity is regression-tested.
-DEFAULT_OFFERS = (("basic", "800.00"), ("premium", "1500.00"))
+DEFAULT_OFFERS = (("basic", "800.00"), ("premium", "1500.00"), ("enterprise", "2500.00"))
 
 
 class Command(BaseCommand):

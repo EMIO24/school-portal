@@ -72,7 +72,7 @@ export default function PlatformDashboard() {
     <div className="platform-filters">
       <label>Search schools<input type="search" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} /></label>
       <label>Status<select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}><option value="">All statuses</option>{['pending','active','suspended','rejected'].map(v => <option key={v}>{v}</option>)}</select></label>
-      <label>Plan<select value={plan} onChange={e => { setPlan(e.target.value); setPage(1); }}><option value="">All plans</option>{['free','basic','premium'].map(v => <option key={v}>{v}</option>)}</select></label>
+      <label>Plan<select value={plan} onChange={e => { setPlan(e.target.value); setPage(1); }}><option value="">All plans</option>{['free','basic','premium','enterprise'].map(v => <option key={v}>{v}</option>)}</select></label>
     </div>
     {loading && <p role="status">Loading schools...</p>}
     {!loading && data?.results.length === 0 && <p>No schools match these filters.</p>}
@@ -95,7 +95,7 @@ export default function PlatformDashboard() {
         <label>Contact email<input name="email" type="email" defaultValue={selected.email} /></label>
         <label>Phone<input name="phone" defaultValue={selected.phone} maxLength={20} /></label>
         <label>Address<textarea name="address" defaultValue={selected.address} /></label>
-        <label>Subscription plan<select name="subscription_plan" defaultValue={selected.subscription_plan}>{['free','basic','premium'].map(v => <option key={v}>{v}</option>)}</select></label>
+        <label>Subscription plan<select name="subscription_plan" defaultValue={selected.subscription_plan}>{['free','basic','premium','enterprise'].map(v => <option key={v}>{v}</option>)}</select></label>
         <label>Renewal date<input name="subscription_ends_on" type="date" defaultValue={selected.subscription_ends_on || ''} /></label>
         <label>Owner notes<textarea name="platform_notes" defaultValue={selected.platform_notes} /></label>
       </div><p>The assigned plan activates its included features immediately. This manual change does not collect payment. Renewal dates remain owner-managed; use Payments for Paystack renewals.</p><button type="submit">Save school details</button></fieldset></form>
