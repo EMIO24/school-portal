@@ -33,6 +33,11 @@ questions, not a final refund promise or legal advice.
 
 ## BUSINESS / LEGAL DECISION REQUIRED
 
+Phase 8 now provides operational request/review/decision tracking, without
+automatic provider execution or financial adjustments. See
+[Payment exception operations](PAYMENT_EXCEPTION_OPERATIONS.md). This does not
+finalize refund eligibility or change the unresolved policy questions below.
+
 | Question | Decision required before publishing final terms |
 | --- | --- |
 | Subscription refunds | Eligibility, request/approval process and any legally required rights. |

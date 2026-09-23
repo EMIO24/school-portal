@@ -49,3 +49,7 @@ urlpatterns += [path('platform/paystack/webhook/', PaystackWebhook.as_view()), p
 
 from .platform import PlatformAppearance
 urlpatterns += [path("platform/appearance/", PlatformAppearance.as_view())]
+
+from fees.exceptions import PlatformPaymentExceptions
+urlpatterns += [path('platform/payment-exceptions/', PlatformPaymentExceptions.as_view()),
+                path('platform/payment-exceptions/<int:pk>/', PlatformPaymentExceptions.as_view())]
