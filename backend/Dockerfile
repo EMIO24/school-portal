@@ -30,6 +30,9 @@ RUN SECRET_KEY=dummy-build-secret \
     PAYSTACK_MODE=test \
     PAYSTACK_SECRET_KEY=sk_test_dummy_key \
     PLATFORM_MFA_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
+    CLOUDINARY_CLOUD_NAME=dummy-build-cloud \
+    CLOUDINARY_API_KEY=dummy-build-key \
+    CLOUDINARY_API_SECRET=dummy-build-secret \
     python manage.py collectstatic --noinput
 
 # Non-root user for security
