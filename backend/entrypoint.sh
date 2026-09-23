@@ -14,6 +14,10 @@ if [ "${RUN_MIGRATIONS:-}" = "true" ]; then
     echo "==> Running database migrations..."
     python manage.py migrate --noinput
 
+    if [ "${RESET_DB_ON_DEPLOY:-}" = "true" ]; then
+        python manage.py bootstrap_platform
+    fi
+
     # Create superadmin from env vars (idempotent — skips if email already exists)
     if [ -n "${DJANGO_SUPERUSER_EMAIL:-}" ] && [ -n "${DJANGO_SUPERUSER_PASSWORD:-}" ]; then
         python manage.py shell <<'PYTHON'
