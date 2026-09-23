@@ -7,6 +7,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from accounts.serializers import UserProfileSerializer
+from accounts.school_access import TenantRelationsMixin
 from .models import ClassArm, ClassLevel, StudentProfile, Subject
 
 User = get_user_model()
@@ -69,7 +70,7 @@ class SubjectSerializer(serializers.ModelSerializer):
 
 # ── StudentProfile ─────────────────────────────────────────────────────────
 
-class StudentProfileSerializer(serializers.ModelSerializer):
+class StudentProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     """Full serializer — used for create, retrieve, update."""
 
     # Nested read-only fields
@@ -84,7 +85,7 @@ class StudentProfileSerializer(serializers.ModelSerializer):
     )
 
     # Write-only fields for creating the user account alongside the profile
-    new_email      = serializers.EmailField(write_only=True, required=False)
+    new_email      = serializers.EmailField(write_only=True, required=False, allow_blank=True)
     new_first_name = serializers.CharField(write_only=True, required=False, max_length=150)
     new_last_name  = serializers.CharField(write_only=True, required=False, max_length=150)
 
@@ -112,6 +113,15 @@ class StudentProfileSerializer(serializers.ModelSerializer):
             "profile_photo", "current_class_name",
         ]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not (user and user.is_authenticated and user.role == "school_admin"
+                and user.school_id == instance.school_id):
+            data.pop("religion", None)
+        return data
+
     @transaction.atomic
     def create(self, validated_data):
         """
@@ -123,10 +133,10 @@ class StudentProfileSerializer(serializers.ModelSerializer):
         first_name  = validated_data.pop("new_first_name", "")
         last_name   = validated_data.pop("new_last_name",  "")
 
-        if not email:
-            raise serializers.ValidationError({"new_email": "Email is required."})
+        if not email and (not first_name.strip() or not last_name.strip()):
+            raise serializers.ValidationError("First and last name are required for student name login.")
 
-        if User.objects.filter(email=email).exists():
+        if email and User.objects.filter(email=email).exists():
             raise serializers.ValidationError(
                 {"new_email": f"A user with email '{email}' already exists."}
             )

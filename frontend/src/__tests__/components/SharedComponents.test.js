@@ -137,6 +137,17 @@ test('QuestionEditor saves an edited question and updates the live preview', asy
   expect(api.patch).toHaveBeenCalledWith('/api/cbt/questions/1/', expect.objectContaining({ question_text: 'Updated question', options: [] }));
 });
 
+test('QuestionEditor uploads an image file and removes the URL input', async () => {
+  api.post.mockResolvedValue({ data: { url: 'https://images.example.test/question.png' } });
+  render(<QuestionEditor question={{ id: 1, subject: 2, class_level: 3, question_type: 'fill_blank', question_text: 'Image question', correct_answer: '4' }} subjects={[]} classLevels={[]} onSaved={jest.fn()} onClose={jest.fn()} />);
+  const file = new File(['image'], 'diagram.png', { type: 'image/png' });
+  fireEvent.change(screen.getByLabelText('Choose question image (optional)'), { target: { files: [file] } });
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/cbt/questions/image/', expect.any(FormData), expect.any(Object)));
+  expect(screen.queryByText('Image URL (optional)')).not.toBeInTheDocument();
+  expect(await screen.findByText('diagram.png')).toBeVisible();
+  expect(screen.getByRole('img')).toHaveAttribute('src', 'https://images.example.test/question.png');
+});
+
 const csv = 'first_name,last_name,email,gender,dob,class_level,guardian_name,guardian_phone\nAda,Okafor,ada@example.com,female,2010-01-01,JSS1,Parent,08012345678';
 
 test('BulkImport rejects non-CSV files and disables uploads with missing columns', async () => {

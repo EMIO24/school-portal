@@ -23,7 +23,7 @@ export const ROLE_LINKS = {
     ['results', 'Results'], ['exams', 'Exams'], ['fees', 'Fees'], ['performance', 'Performance']]
     .map(([path, label]) => [`/student/${path}`, label]),
   parent: [['/parent/dashboard', 'Dashboard']],
-  superadmin: [['/superadmin/appearance', 'Portal designs'], ['/superadmin/payments', 'Payments'], ['/superadmin/dashboard', 'Schools'], ['/superadmin/team', 'Platform staff and activity']],
+  superadmin: [['/superadmin/appearance', 'Portal designs'], ['/superadmin/payments', 'Payments'], ['/superadmin/demo-requests', 'Demo requests'], ['/superadmin/dashboard', 'Schools'], ['/superadmin/team', 'Platform staff and activity']],
 };
 
 export default function PortalNavigation({ children }) {

@@ -15,7 +15,7 @@ import "./BulkImportPage.css";
 
 const CONFIGS = {
   students: {
-    requiredCols: ['first_name', 'last_name', 'email', 'gender', 'dob', 'class_level', 'guardian_name', 'guardian_phone'],
+    requiredCols: ['first_name', 'last_name', 'gender', 'dob', 'class_level', 'guardian_name', 'guardian_phone'],
     templateName: 'student_import_template.csv',
     title:        "Bulk Student Import",
     backPath:     "/admin/students",

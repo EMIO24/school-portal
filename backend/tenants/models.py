@@ -134,3 +134,18 @@ class PlatformEvent(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-id"]
+
+
+class DemoRequest(models.Model):
+    school_name = models.CharField(max_length=255)
+    contact_name = models.CharField(max_length=150)
+    email = models.EmailField()
+    phone = models.CharField(max_length=30)
+    student_population = models.PositiveIntegerField()
+    location = models.CharField(max_length=255)
+    message = models.TextField(max_length=2000, blank=True)
+    status = models.CharField(max_length=20, default='new', choices=[('new', 'New'), ('contacted', 'Contacted')])
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']

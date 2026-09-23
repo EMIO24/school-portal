@@ -23,6 +23,9 @@ const calAPI = {
   createTerm:     (data)   => api.post("/api/terms/", data),
   deleteTerm:     (id)     => api.delete(`/api/terms/${id}/`),
   setCurrentTerm: (id)     => api.post(`/api/terms/${id}/set-current/`),
+  createHoliday:  (data)   => api.post("/api/holidays/", data),
+  updateHoliday:  (id,data)=> api.patch(`/api/holidays/${id}/`, data),
+  deleteHoliday:  (id)     => api.delete(`/api/holidays/${id}/`),
 };
 
 // ── Tiny helpers ───────────────────────────────────────────────────────────
@@ -265,7 +268,20 @@ function CreateTermForm({ session, onSave, onClose, loading }) {
 
 // ── Term Row ───────────────────────────────────────────────────────────────
 
-function TermRow({ term, onSetCurrent, onDelete, busy }) {
+function HolidayForm({ term, holiday, onSave, onClose, loading }) {
+  const [form,setForm]=useState({term:term.id,name:holiday?.name||'',start_date:holiday?.start_date||'',end_date:holiday?.end_date||'',holiday_type:holiday?.holiday_type||'public'});
+  const set=(key,value)=>setForm(current=>({...current,[key]:value}));
+  return <form className="cs-form" onSubmit={e=>{e.preventDefault();onSave(form,holiday?.id);}}>
+    <div className="cs-form-field"><label>Holiday name<input required value={form.name} onChange={e=>set('name',e.target.value)}/></label></div>
+    <div className="cs-form-row cs-form-row--2col"><div className="cs-form-field"><label>Start date<input required type="date" value={form.start_date} onChange={e=>set('start_date',e.target.value)}/></label></div><div className="cs-form-field"><label>End date<input required type="date" value={form.end_date} onChange={e=>set('end_date',e.target.value)}/></label></div></div>
+    <div className="cs-form-field"><label>Holiday type<select value={form.holiday_type} onChange={e=>set('holiday_type',e.target.value)}><option value="public">Public Holiday</option><option value="school">School Holiday</option><option value="exam_break">Exam Break</option></select></label></div>
+    <div className="cs-form-actions"><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={loading}>{loading?'Saving…':holiday?'Save correction':'Add holiday'}</button></div>
+  </form>;
+}
+
+const holidayType={public:'Public Holiday',school:'School Holiday',exam_break:'Exam Break'};
+
+function TermRow({ term, onSetCurrent, onDelete, onHoliday, onDeleteHoliday, busy }) {
   const TERM_DOTS = { first: "cs-dot--1", second: "cs-dot--2", third: "cs-dot--3" };
   const weeks = weeksApart(term.start_date, term.end_date);
 
@@ -285,6 +301,7 @@ function TermRow({ term, onSetCurrent, onDelete, busy }) {
         </div>
       </div>
       <div className="cs-term-actions">
+        <button className="btn btn-sm btn-accent" onClick={() => onHoliday(term)} disabled={busy}>+ Holiday</button>
         {!term.is_current && (
           <button
             className="btn btn-sm btn-secondary"
@@ -303,13 +320,14 @@ function TermRow({ term, onSetCurrent, onDelete, busy }) {
           ✕
         </button>
       </div>
+      {(term.holidays || []).length > 0 && <div className="cs-holidays">{term.holidays.map(holiday=><div className="cs-holiday" key={holiday.id}><div><strong>{holiday.name}</strong><span>{fmt(holiday.start_date)} → {fmt(holiday.end_date)}</span><small>{holidayType[holiday.holiday_type]}</small></div><div><button className="btn btn-sm btn-secondary" onClick={()=>onHoliday(term,holiday)} disabled={busy}>Edit</button><button className="btn btn-sm btn-ghost" onClick={()=>onDeleteHoliday(holiday.id)} disabled={busy}>Delete</button></div></div>)}</div>}
     </div>
   );
 }
 
 // ── Session Card ───────────────────────────────────────────────────────────
 
-function SessionCard({ session, onSetCurrent, onSetCurrentTerm, onDeleteTerm, onAddTerm, busy }) {
+function SessionCard({ session, onSetCurrent, onSetCurrentTerm, onDeleteTerm, onAddTerm, onHoliday, onDeleteHoliday, busy }) {
   const [expanded, setExpanded] = useState(session.is_current);
 
   return (
@@ -370,6 +388,8 @@ function SessionCard({ session, onSetCurrent, onSetCurrentTerm, onDeleteTerm, on
                   term={term}
                   onSetCurrent={onSetCurrentTerm}
                   onDelete={onDeleteTerm}
+                  onHoliday={onHoliday}
+                  onDeleteHoliday={onDeleteHoliday}
                   busy={busy}
                 />
               ))}
@@ -391,6 +411,7 @@ export default function CalendarSettings() {
   const [toast,          setToast]          = useState(null);
   const [showNewSession, setShowNewSession] = useState(false);
   const [addTermTarget,  setAddTermTarget]  = useState(null);  // session obj
+  const [holidayTarget,  setHolidayTarget]  = useState(null);
 
   function showToast(msg, type = "success") {
     setToast({ msg, type });
@@ -482,6 +503,23 @@ export default function CalendarSettings() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleSaveHoliday(formData, id) {
+    setBusy(true);
+    try {
+      if (id) await calAPI.updateHoliday(id, formData); else await calAPI.createHoliday(formData);
+      await load(); setHolidayTarget(null); showToast(id ? "Holiday corrected." : "Holiday added.");
+    } catch (err) { showToast(err.response?.data?.end_date?.[0] || "Failed to save holiday.", "error"); }
+    finally { setBusy(false); }
+  }
+
+  async function handleDeleteHoliday(id) {
+    if (!window.confirm("Delete this holiday?")) return;
+    setBusy(true);
+    try { await calAPI.deleteHoliday(id); await load(); showToast("Holiday deleted."); }
+    catch { showToast("Failed to delete holiday.", "error"); }
+    finally { setBusy(false); }
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -576,6 +614,8 @@ export default function CalendarSettings() {
               onSetCurrentTerm={handleSetCurrentTerm}
               onDeleteTerm={handleDeleteTerm}
               onAddTerm={setAddTermTarget}
+              onHoliday={(term,holiday)=>setHolidayTarget({term,holiday})}
+              onDeleteHoliday={handleDeleteHoliday}
               busy={busy}
             />
           ))}
@@ -603,6 +643,8 @@ export default function CalendarSettings() {
           />
         </Modal>
       )}
+
+      {holidayTarget && <Modal title={holidayTarget.holiday ? "Correct Holiday" : "Add Holiday"} onClose={()=>setHolidayTarget(null)}><HolidayForm term={holidayTarget.term} holiday={holidayTarget.holiday} onSave={handleSaveHoliday} onClose={()=>setHolidayTarget(null)} loading={busy}/></Modal>}
 
     </div>
   );

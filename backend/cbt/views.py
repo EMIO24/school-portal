@@ -38,6 +38,7 @@ from rest_framework.viewsets import ModelViewSet
 
 from accounts.permissions import IsSchoolAdminOrTeacher
 from tenants.mixins import TenantMixin
+from tenants.image_uploads import store_uploaded_image
 from .models import Topic, Question, CBTExam, StudentExamSession, StudentAnswer
 from .serializers import (
     TopicSerializer, QuestionSerializer, QuestionWriteSerializer,
@@ -108,6 +109,11 @@ class QuestionViewSet(TenantMixin, ModelViewSet):
 
     def perform_update(self, serializer):
         serializer.save(school=self.school)
+
+    @action(detail=False, methods=['post'], url_path='image', permission_classes=[IsSchoolAdminOrTeacher])
+    def image(self, request):
+        url = store_uploaded_image(request.FILES.get('image'), f'question-images/{self.school.pk}')
+        return Response({'url': url}, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'])
     def stats(self, request):

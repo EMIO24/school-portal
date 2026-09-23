@@ -4,9 +4,12 @@ tenants/views.py
 Views for School onboarding (SuperAdmin) and tenant self-inspection.
 """
 
+import re
+
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
 from .models import School
@@ -14,6 +17,36 @@ from .serializers import SchoolPublicSerializer, SchoolSerializer
 
 
 from accounts.permissions import IsSuperAdmin
+
+
+class SchoolLookupThrottle(AnonRateThrottle):
+    rate = "20/min"
+
+
+class SchoolLookupView(APIView):
+    """Resolve one active, approved school without exposing a tenant directory."""
+
+    permission_classes = []
+    throttle_classes = [SchoolLookupThrottle]
+
+    def get(self, request):
+        name = re.sub(r"\s+", " ", request.query_params.get("name", "").strip())
+        if len(name) < 3:
+            return Response({"found": False})
+
+        schools = School.objects.filter(is_active=True, approval_status="approved")
+        exact = list(schools.filter(name__iexact=name).values_list("slug", flat=True)[:2])
+        if len(exact) == 1:
+            return Response({"found": True, "slug": exact[0]})
+        if len(exact) > 1:
+            return Response({"found": False, "ambiguous": True})
+
+        partial = list(schools.filter(name__icontains=name).values_list("slug", flat=True)[:2])
+        if len(partial) == 1:
+            return Response({"found": True, "slug": partial[0]})
+        if len(partial) > 1:
+            return Response({"found": False, "ambiguous": True})
+        return Response({"found": False})
 
 
 class SchoolOnboardingView(APIView):

@@ -150,10 +150,10 @@ export function AuthProvider({ children }) {
       return { success: true };
   }, [navigate]);
 
-  const login = useCallback(async (email, password) => {
+  const login = useCallback(async (email, password, admissionNumber) => {
     dispatch({ type: "AUTH_LOADING" });
     try {
-      const { data } = await authAPI.login(email, password);
+      const { data } = await authAPI.login(email, password, admissionNumber);
 
       if (data.mfa_required) {
         dispatch({ type: "AUTH_FAILED" });

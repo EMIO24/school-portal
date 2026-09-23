@@ -20,10 +20,12 @@ import ProtectedRoute from "./components/common/ProtectedRoute";
 // ── Public ─────────────────────────────────────────────────────────────────
 import PlatformTeam from "./pages/platform/PlatformTeam";
 import PlatformDashboard from "./pages/platform/PlatformDashboard";
+import DemoRequests from "./pages/platform/DemoRequests";
 import SchoolSignup from "./pages/platform/SchoolSignup";
 import Login          from "./pages/public/Login";
 import ChangePassword from "./pages/public/ChangePassword";
 import CheckResult    from "./pages/public/CheckResult";
+import { MarketingPage } from "./pages/public/Marketing";
 
 // ── Admin pages ────────────────────────────────────────────────────────────
 import AdminDashboard   from "./pages/admin/AdminDashboard";
@@ -64,9 +66,6 @@ import Promotion        from "./pages/admin/Promotion";
 import MyPerformance    from "./pages/student/MyPerformance";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-import { useAuth } from "./hooks/useAuth";
-import { ROLE_DASHBOARDS } from "./utils/roles";
-import LoadingScreen from "./components/common/LoadingScreen";
 import PortalNavigation from "./components/common/PortalNavigation";
 import AttendanceOverview from './pages/admin/AttendanceOverview';
 import SubjectAssignment from './pages/admin/SubjectAssignment';
@@ -79,19 +78,20 @@ import MyTimetable from './pages/teacher/MyTimetable';
 import ScoreEntry from './pages/teacher/ScoreEntry';
 import TakeAttendance from './pages/teacher/TakeAttendance';
 
-function RootRedirect() {
-  const { isAuthenticated, isLoading, user } = useAuth();
-  if (isLoading) return <LoadingScreen />;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <Navigate to={ROLE_DASHBOARDS[user.role] || "/login"} replace />;
-}
-
 function AppRoutes() {
   return (
     <Routes>
 
       {/* ── Public ───────────────────────────────────────────────────────── */}
       <Route path="/register-school" element={<SchoolSignup />} />
+      <Route path="/" element={<MarketingPage page="home" />} />
+      <Route path="/features" element={<MarketingPage page="features" />} />
+      <Route path="/pricing" element={<MarketingPage page="pricing" />} />
+      <Route path="/demo" element={<MarketingPage page="demo" />} />
+      <Route path="/contact" element={<MarketingPage page="contact" />} />
+      <Route path="/access" element={<MarketingPage page="access" />} />
+      <Route path="/privacy" element={<MarketingPage page="privacy" />} />
+      <Route path="/terms" element={<MarketingPage page="terms" />} />
       <Route path="/platform/change-password" element={<ProtectedRoute allowedRoles={["superadmin"]}><ChangePassword /></ProtectedRoute>} />
       <Route path="/platform/login" element={<Login platform />} />
       <Route path="/login"           element={<Login />} />
@@ -233,12 +233,12 @@ function AppRoutes() {
       <Route path="/superadmin/appearance" element={<ProtectedRoute allowedRoles={["superadmin"]}><PortalDesigns /></ProtectedRoute>} />
       <Route path="/superadmin/payments" element={<ProtectedRoute allowedRoles={["superadmin"]}><PlatformPayments /></ProtectedRoute>} />
       <Route path="/superadmin/team" element={<ProtectedRoute allowedRoles={["superadmin"]}><PlatformTeam /></ProtectedRoute>} />
+      <Route path="/superadmin/demo-requests" element={<ProtectedRoute allowedRoles={["superadmin"]}><DemoRequests /></ProtectedRoute>} />
       <Route path="/superadmin/dashboard" element={
         <ProtectedRoute allowedRoles={["superadmin"]}>
           <PlatformDashboard />
         </ProtectedRoute>
       } />
-      <Route path="/"  element={<RootRedirect />} />
       <Route path="*"  element={<Navigate to="/" replace />} />
     </Routes>
   );

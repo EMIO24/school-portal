@@ -84,6 +84,8 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
 
   const [topics,  setTopics]  = useState([]);
   const [saving,  setSaving]  = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageName, setImageName] = useState('');
   const [error,   setError]   = useState(null);
 
   const [form, setForm] = useState(() => {
@@ -132,6 +134,21 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
       ...f,
       options: f.options.map(o => o.id === id ? { ...o, text } : o),
     }));
+  };
+
+  const chooseImage = async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      setError('Choose a PNG, JPEG or WebP image up to 2 MB.'); event.target.value = ''; return;
+    }
+    setImageBusy(true); setError(null);
+    try {
+      const body = new FormData(); body.append('image', file);
+      const { data } = await api.post('/api/cbt/questions/image/', body, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setField('question_image', data.url); setImageName(file.name);
+    } catch (err) { setError(JSON.stringify(err?.response?.data || 'Image upload failed.')); }
+    finally { setImageBusy(false); }
   };
 
   const handleSave = async () => {
@@ -246,15 +263,14 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
               />
             </div>
 
-            {/* Image URL */}
+            {/* Question image */}
             <div className="qe-field">
-              <label className="qe-label">Image URL (optional)</label>
-              <input
-                className="qe-input"
-                value={form.question_image}
-                onChange={e => setField('question_image', e.target.value)}
-                placeholder="https://res.cloudinary.com/…"
-              />
+              <label className="qe-label">Choose question image (optional)
+                <input type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseImage} disabled={imageBusy} />
+              </label>
+              {imageName && <span>{imageName}</span>}
+              {form.question_image && <button type="button" className="btn btn-ghost" onClick={()=>{setField('question_image','');setImageName('');}}>Remove image</button>}
+              <small>PNG, JPEG or WebP, up to 2 MB.</small>
             </div>
 
             {/* Options (MCQ / True-False) */}

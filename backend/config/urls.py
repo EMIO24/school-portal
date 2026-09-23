@@ -12,7 +12,7 @@ from results.urls import results_urlpatterns, scratch_card_urlpatterns
 
 
 def health_check(request):
-    return JsonResponse({"status": "ok", "version": "1.0"})
+    return JsonResponse({"status": "ok"})
 
 
 urlpatterns = [

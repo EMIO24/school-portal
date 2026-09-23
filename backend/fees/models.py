@@ -110,3 +110,28 @@ class PaymentOrder(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     paid_at = models.DateTimeField(null=True, blank=True)
 
+
+class PaymentException(models.Model):
+    TYPES = [('refund', 'Refund request'), ('duplicate', 'Suspected duplicate'),
+             ('incorrect', 'Incorrect payment'), ('provider', 'Provider discrepancy'),
+             ('manual', 'Manual review')]
+    STATES = [(value, value.replace('_', ' ').title()) for value in
+              ('requested', 'under_review', 'approved', 'rejected', 'provider_pending',
+               'provider_failed', 'resolved')]
+    order = models.ForeignKey(PaymentOrder, on_delete=models.PROTECT, related_name='exceptions')
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    kind = models.CharField(max_length=20, choices=TYPES)
+    status = models.CharField(max_length=20, choices=STATES, default='requested')
+    reason = models.TextField(max_length=2000)
+    admin_notes = models.TextField(max_length=2000, blank=True)
+    provider_ref = models.CharField(max_length=100, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+')
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+', null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    resolved_at = models.DateTimeField(null=True)
+
+    class Meta:
+        ordering = ['-id']
+        constraints = [models.UniqueConstraint(fields=['order', 'kind'], name='unique_order_exception_kind')]
+

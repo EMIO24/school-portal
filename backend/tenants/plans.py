@@ -26,7 +26,7 @@ def required_feature(path):
     # Billing, callbacks and historical receipt retrieval remain reachable.
     if path == '/api/results/check/':
         return None
-    if path.startswith(('/api/fees/subscription/', '/api/fees/pay/verify/', '/api/fees/receipts/')):
+    if path.startswith(('/api/fees/subscription/', '/api/fees/pay/verify/', '/api/fees/receipts/', '/api/fees/exceptions/')):
         return None
     if path.startswith('/api/parent/dashboard/'):
         return 'results'
