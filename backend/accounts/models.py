@@ -24,19 +24,19 @@ from django.utils import timezone
 class CustomUserManager(BaseUserManager):
     """
     Manager for CustomUser.
-    Email is the unique identifier — no username field.
+    Email remains unique when supplied; only students may omit it.
     """
 
     def _create_user(self, email, password, **extra_fields):
-        if not email:
+        if not email and extra_fields.get("role", "student") != "student":
             raise ValueError("Email address is required.")
-        email = self.normalize_email(email)
+        email = self.normalize_email(email) if email else None
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
 
-    def create_user(self, email, password=None, **extra_fields):
+    def create_user(self, email=None, password=None, **extra_fields):
         extra_fields.setdefault("is_staff", False)
         extra_fields.setdefault("is_superuser", False)
         return self._create_user(email, password, **extra_fields)
@@ -82,7 +82,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     ]
 
     # ── Identity ──────────────────────────────────────────────────────────────
-    email      = models.EmailField(unique=True, verbose_name="Email address")
+    email      = models.EmailField(unique=True, null=True, blank=True, verbose_name="Email address")
     first_name = models.CharField(max_length=150)
     last_name  = models.CharField(max_length=150)
 
@@ -136,6 +136,10 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     objects = CustomUserManager()
 
     class Meta:
+        constraints = [models.CheckConstraint(
+            check=models.Q(role="student") | models.Q(email__isnull=False),
+            name="nonstudent_email_required",
+        )]
         verbose_name = "User"
         verbose_name_plural = "Users"
         ordering = ["last_name", "first_name"]
@@ -187,6 +191,10 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     def clean(self):
         from django.core.exceptions import ValidationError
         super().clean()
+        if not self.email:
+            if self.role != "student":
+                raise ValidationError({"email": "Email address is required."})
+            self.email = None
         if self.role != "superadmin" and self.school is None:
             raise ValidationError(
                 {"school": "A school is required for all non-superadmin roles."}

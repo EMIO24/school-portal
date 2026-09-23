@@ -61,6 +61,19 @@ const renderLoginPage = (mockAuthValue = null) => {
 };
 
 describe("Login Page", () => {
+  it("submits a student name and optional admission number without an email", async () => {
+    const login = jest.fn().mockResolvedValue({ success: true });
+    renderLoginPage({ isAuthenticated: false, isLoading: false, user: null, error: null, login, clearError: jest.fn() });
+    fireEvent.change(screen.getByLabelText("Email or student name"), { target: { value: "Emmanuel Osarodion" } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: "Password!26" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
+    await waitFor(() => expect(login).toHaveBeenCalledWith("emmanuel osarodion", "Password!26"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sign In" })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText("Admission number (if needed)"), { target: { value: " PAI/2026/0142 " } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
+    await waitFor(() => expect(login).toHaveBeenLastCalledWith("emmanuel osarodion", "Password!26", "PAI/2026/0142"));
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
@@ -97,7 +110,7 @@ describe("Login Page", () => {
       fireEvent.click(loginButton);
 
       await waitFor(() => {
-        expect(screen.getByText(/email address is required/i)).toBeInTheDocument();
+        expect(screen.getByText(/email or student name is required/i)).toBeInTheDocument();
       });
     });
 
@@ -119,7 +132,7 @@ describe("Login Page", () => {
       const passwordInput = screen.getByLabelText(/^password$/i);
       const loginButton = screen.getByRole("button", { name: /sign in|login/i });
 
-      fireEvent.change(emailInput, { target: { value: "invalid-email" } });
+      fireEvent.change(emailInput, { target: { value: "invalid@email" } });
       fireEvent.change(passwordInput, { target: { value: "password123" } });
       fireEvent.click(loginButton);
 

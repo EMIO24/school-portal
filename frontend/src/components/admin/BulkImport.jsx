@@ -12,12 +12,13 @@ import api from "../../services/api";
 import "./BulkImport.css";
 
 const REQUIRED_COLS = [
-  "first_name","last_name","email",
+  "first_name","last_name",
   "gender","dob","class_level",
   "guardian_name","guardian_phone",
 ];
 
 const OPTIONAL_COLS = [
+  "email",
   "state_of_origin","religion",
   "guardian_email","guardian_relationship",
 ];
@@ -207,7 +208,7 @@ export default function BulkImport({
   endpoint = '/api/students/bulk-import/',
   requiredCols = REQUIRED_COLS,
   templateCols = [...REQUIRED_COLS, ...OPTIONAL_COLS],
-  exampleRow = 'Amaka,Okonkwo,amaka@school.edu.ng,female,2008-05-14,JSS1,Mrs Okonkwo,08012345678,Lagos,Christianity,parent@example.com,mother',
+  exampleRow = 'Amaka,Okonkwo,female,2008-05-14,JSS1,Mrs Okonkwo,08012345678,,Lagos,Christianity,parent@example.com,mother',
   title = 'Bulk Student Import',
   entityLabel = 'Students',
   templateName = 'student_import_template.csv',

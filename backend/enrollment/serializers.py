@@ -85,7 +85,7 @@ class StudentProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer
     )
 
     # Write-only fields for creating the user account alongside the profile
-    new_email      = serializers.EmailField(write_only=True, required=False)
+    new_email      = serializers.EmailField(write_only=True, required=False, allow_blank=True)
     new_first_name = serializers.CharField(write_only=True, required=False, max_length=150)
     new_last_name  = serializers.CharField(write_only=True, required=False, max_length=150)
 
@@ -133,10 +133,10 @@ class StudentProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer
         first_name  = validated_data.pop("new_first_name", "")
         last_name   = validated_data.pop("new_last_name",  "")
 
-        if not email:
-            raise serializers.ValidationError({"new_email": "Email is required."})
+        if not email and (not first_name.strip() or not last_name.strip()):
+            raise serializers.ValidationError("First and last name are required for student name login.")
 
-        if User.objects.filter(email=email).exists():
+        if email and User.objects.filter(email=email).exists():
             raise serializers.ValidationError(
                 {"new_email": f"A user with email '{email}' already exists."}
             )

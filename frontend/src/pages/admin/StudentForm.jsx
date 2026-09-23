@@ -54,7 +54,7 @@ export default function StudentForm() {
   function field(key, label, type = "text", options = null) {
     const account = key.startsWith("new_");
     const props = { id: key, name: key, value: form[key], disabled: saving || (Boolean(id) && account),
-      required: account && !id, onChange: e => setForm(prev => ({ ...prev, [key]: e.target.value })),
+      required: account && key !== "new_email" && !id, onChange: e => setForm(prev => ({ ...prev, [key]: e.target.value })),
       "aria-invalid": Boolean(errors[key]), "aria-describedby": errors[key] ? `${key}-error` : undefined };
     return <div className="stf-field" key={key}>
       <label htmlFor={key}>{label}</label>
@@ -70,7 +70,7 @@ export default function StudentForm() {
       <section className="stf-section"><h2>Student details</h2>
         <p>{id ? "Account name and email are read-only here." : "The admission number is generated when you save. It is also the student's initial password."}</p>
         <div className="stf-grid stf-grid--3">
-          {field("new_first_name", "First name")}{field("new_last_name", "Last name")}{field("new_email", "Email", "email")}
+          {field("new_first_name", "First name")}{field("new_last_name", "Last name")}{field("new_email", "Email (optional)", "email")}
           {field("dob", "Date of birth", "date")}
           {field("gender", "Gender", "text", [["", "Select gender"], ["male", "Male"], ["female", "Female"]])}
           {field("current_class", "Class", "text", [["", "No class assigned"], ...classes.map(arm => [arm.id, arm.full_name || arm.name])])}

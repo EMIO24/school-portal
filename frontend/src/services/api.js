@@ -125,8 +125,8 @@ async function _refreshAccessToken() {
 // ── Focused API modules ────────────────────────────────────────────────────
 
 export const authAPI = {
-  login:          (email, password) =>
-    api.post("/api/auth/login/", { email, password }),
+  login:          (email, password, admissionNumber) =>
+    api.post("/api/auth/login/", { email, password, ...(admissionNumber ? { admission_number: admissionNumber } : {}) }),
 
   me:             ()                =>
     api.get(window.location.pathname.startsWith("/superadmin/") || window.location.pathname.startsWith("/platform/")

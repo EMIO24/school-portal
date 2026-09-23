@@ -38,7 +38,7 @@ User = get_user_model()
 # ── CSV column config ──────────────────────────────────────────────────────
 
 REQUIRED_CSV_COLS = {
-    "first_name", "last_name", "email",
+    "first_name", "last_name",
     "gender", "dob", "class_level",
     "guardian_name", "guardian_phone",
 }
@@ -230,9 +230,9 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
         Form field: file (CSV)
 
         CSV columns (header row required):
-          first_name, last_name, email, gender, dob,
+          first_name, last_name, gender, dob,
           class_level, guardian_name, guardian_phone
-          Optional: state_of_origin, religion, guardian_email,
+          Optional: email, state_of_origin, religion, guardian_email,
                     guardian_relationship
 
         Returns:
@@ -309,12 +309,12 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
             dob_raw    = (row.get("dob")        or "").strip()
             level_name = (row.get("class_level")or "").strip().lower()
 
-            if not email:      add_error("email is empty.");       continue
+            # Email is optional for student accounts.
             if not first_name: add_error("first_name is empty.");  continue
             if not last_name:  add_error("last_name is empty.");   continue
 
             # ── Validate email uniqueness ─────────────────────────────────
-            if User.objects.filter(email=email).exists():
+            if email and User.objects.filter(email=email).exists():
                 add_error(f"Email '{email}' already exists."); continue
 
             # ── Validate gender ───────────────────────────────────────────
