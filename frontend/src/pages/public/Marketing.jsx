@@ -120,6 +120,76 @@ function Demo() {
 
 function Contact() { return <Layout><section className="marketing-page-hero"><div className="marketing-shell"><p className="marketing-overline">CONTACT PAIDEIA</p><h1>Start with your school’s story.</h1><p>Tell us what your school is working toward. We’ll use your demo request to start the right conversation.</p><Actions/></div></section><section className="marketing-section"><div className="marketing-shell marketing-split"><h2>A more relevant conversation begins with context.</h2><p>Official direct contact details will appear here when the business confirms them. Until then, the demo form is the reliable way to reach the Paideia team.</p></div></section></Layout>; }
 
-function Legal({ kind }) { const privacy = kind === 'privacy'; return <Layout><section className="marketing-page-hero"><div className="marketing-shell"><p className="marketing-overline">DRAFT FOR BUSINESS AND LEGAL REVIEW</p><h1>{privacy ? 'Privacy' : 'Terms of service'}</h1><p>This draft requires business and legal review before it becomes a final policy.</p></div></section><section className="marketing-section"><div className="marketing-shell marketing-legal"><h2>{privacy ? 'School and student information' : 'Using the service'}</h2><p>{privacy ? 'Paideia processes account and contact details, enrollment, attendance, results, assessment activity and payment records to operate school portals. Schools control the educational information they enter and the people they authorize. Schools may collect sensitive optional demographic information for their administrative purposes; it is not required for core portal functionality and access is restricted. Paystack processes online payments. Configured hosting, image storage and messaging providers support service delivery; account and security records support access control and service operations.' : 'Schools are responsible for their accounts, authorized users, acceptable use and subscription payments. Access may be limited or ended according to the agreed service arrangement.'}</p><h2>{privacy ? 'Access and retention' : 'Availability, payments and data'}</h2><p>{privacy ? 'Access is controlled through role-based accounts. Retention, support contacts, legal basis and data-request procedures require confirmation with the business and legal advisers.' : 'Service availability, billing, termination, data handling, limitations and support arrangements require confirmation in the school service agreement.'}</p></div></section></Layout>; }
+function Legal({ kind }) {
+  const privacy = kind === 'privacy';
+  const sections = privacy ? [
+  [
+    "Purpose and school responsibilities",
+    "Paideia provides customized digital school portals. Schools decide which educational records to enter, keep them accurate and authorize their users. Paideia operates the platform and enforces its implemented access controls. Formal data protection roles and any processing agreement are LEGAL REVIEW REQUIRED; this draft does not declare either party a controller or processor."
+  ],
+  [
+    "Information used by the portal",
+    "Records include student names, admission identifiers, optional student email, enrollment, guardian contacts and profile image references; parent accounts and child links; and staff accounts, contacts, employment details and teaching assignments. Academic records include attendance, scores, results, report remarks, school report ratings and assessment activity. Schools may collect sensitive optional demographic information for administrative purposes; it is not required for core portal functionality and access is restricted."
+  ],
+  [
+    "Accounts, payments and enquiries",
+    "Account and authentication information supports sign-in and security. Payment orders, amounts, references and receipts support subscriptions, school fees and reconciliation. Uploaded school branding and assessment images support portal use. Demo submissions include school and contact details, population, location and the message supplied, so Paideia can respond to an enquiry. Platform security and diagnostic records support service operations."
+  ],
+  [
+    "Who can access records",
+    "School and role controls restrict access. Parents need an explicit link to a child for protected child records; students access their own protected information. Authorized school administrators manage school data, and platform administrators have operational access under platform permissions. Public school lookup supplies only the information needed to reach the school portal. Existing result checking requires admission details and scratch-card credentials."
+  ],
+  [
+    "Service providers and uploaded media",
+    "Railway supports backend/database hosting, Vercel frontend hosting, Paystack online payments and Cloudinary configured image storage. Configured messaging services support email and SMS delivery. These services receive information needed for their functions. Image URLs are not a secure document vault: do not upload confidential documents through public image facilities. Provider arrangements, data locations and any transfer requirements are LEGAL REVIEW REQUIRED."
+  ],
+  [
+    "Retention, suspension and requests",
+    "Suspension restricts normal school access while preserving records; it does not immediately delete school data. Retention periods, deletion/anonymization and backup handling remain LEGAL REVIEW REQUIRED and BUSINESS DECISION REQUIRED. No retention period or deletion deadline is promised. The school administrator is the first contact for corrections to school records and account access. Contact and request procedures must be finalized before this draft becomes a final policy."
+  ],
+  [
+    "Security and review status",
+    "The platform uses implemented authentication, tenant and role controls. These controls are not a guarantee against every incident. Schools and users should protect credentials and report suspected misuse through their agreed support channel. Legal obligations for children's data, sensitive information, requests and incident notification require professional review. This draft makes no compliance certification or legal approval claim."
+  ]
+] : [
+  [
+    "The service and school accounts",
+    "Paideia supplies a customized digital school portal to each participating school. Features depend on the selected plan and agreed configuration. Public school registration is subject to approval; submitting a demo request does not activate a school or create a service commitment. Authorized school representatives should confirm their service schedule before onboarding."
+  ],
+  [
+    "School and user responsibilities",
+    "Schools are responsible for accurate records, appropriate collection, permitted uploads, administrator appointments, role assignments and valid parent-child links. Users should protect credentials, change initial passwords and report compromised accounts. Student name login is school-scoped and may require an admission number when names are shared; other roles retain their existing authentication methods."
+  ],
+  [
+    "Acceptable use",
+    "Do not access accounts or school records without authorization, attempt cross-school access, share credentials with unauthorized people, scrape protected student data, bypass permissions, upload malware or malicious content, abuse assessment systems, commit payment fraud or attack service availability. School/student information must not be used unlawfully. Contractual enforcement, notices and remedies are BUSINESS / LEGAL DECISION REQUIRED."
+  ],
+  [
+    "Subscription and payment",
+    "Basic costs ₦800 per active student per term; Premium costs ₦1,500 per active student per term. A 10% discount applies automatically at 100 or more active students, using the checkout count. Schools arrange subscription payment; student school-fee payments are separate. Paystack payments require server verification before settlement. Pending or mismatched transactions need verification or review. Repeated settlement is protected against duplicate credit, but separate charges may need investigation."
+  ],
+  [
+    "Billing questions and refunds",
+    "The configured subscription duration must be confirmed against the agreed school billing term; no annual commitment or automatic debit is established by this draft. Refund eligibility, mistaken or duplicate payments, school-fee refunds, partial refunds, cancellations and disputes are BUSINESS / LEGAL DECISION REQUIRED. This draft promises neither automatic refunds nor a blanket no-refund rule. Contact the school administrator about school fees and the agreed Paideia channel about subscriptions."
+  ],
+  [
+    "Availability, support and third parties",
+    "The service uses hosting, payment, image-storage and messaging providers, including Railway, Vercel, Paystack and configured Cloudinary storage. Availability and recovery depend on operational and provider conditions. No uptime, recovery-time or support-response guarantee is established. Backup schedules, cloud-media recovery and support commitments must be confirmed in the school agreement."
+  ],
+  [
+    "Suspension and termination",
+    "Existing owner controls can suspend school access while preserving history. Payment settlement does not automatically reactivate a suspended school. Contractual grounds, notice, remedies, termination procedures, balances and export arrangements require BUSINESS / LEGAL DECISION REQUIRED approval. Ending access does not promise immediate deletion; eventual retention/deletion must follow an approved policy."
+  ],
+  [
+    "Content, intellectual property and confidentiality",
+    "School-provided educational records, branding and materials remain school content for operational purposes; this draft does not transfer their ownership to Paideia. Final platform licensing, content-processing permissions, third-party rights and confidentiality obligations are LEGAL REVIEW REQUIRED. Schools should supply only content they are authorized to use."
+  ],
+  [
+    "Changes and unresolved legal provisions",
+    "Changes to service, plans or terms need an agreed notification and acceptance procedure before these documents become final. Legal entity details, governing law, jurisdiction, liability limitations, indemnities, warranties, statutory rights and dispute procedures are LEGAL REVIEW REQUIRED. No jurisdiction, liability cap or financial guarantee is selected by this draft."
+  ]
+];
+  return <Layout><section className="marketing-page-hero"><div className="marketing-shell"><p className="marketing-overline">DRAFT FOR BUSINESS AND LEGAL REVIEW</p><h1>{privacy ? 'Privacy' : 'Terms of service'}</h1><p>LEGAL REVIEW REQUIRED. This working draft is not legal advice or a final professionally reviewed policy.</p></div></section><section className="marketing-section"><div className="marketing-shell marketing-legal">{sections.map(([heading, text]) => <section key={heading}><h2>{heading}</h2><p>{text}</p></section>)}<h2>Contact</h2><p>Use your school administrator for school records and account matters. For a general Paideia enquiry, visit <Link to="/contact">Contact</Link> or use the existing <Link to="/demo">enquiry form</Link>. Official support and privacy-request channels still require confirmation. Do not submit passwords, payment credentials or detailed student records through that form.</p></div></section></Layout>;
+}
 
 export function MarketingPage({ page }) { return { home: <Home/>, features: <Features/>, pricing: <Pricing/>, demo: <Demo/>, contact: <Contact/>, access: <SchoolAccess/>, privacy: <Legal kind="privacy"/>, terms: <Legal kind="terms"/> }[page]; }
