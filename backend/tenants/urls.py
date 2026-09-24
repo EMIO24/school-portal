@@ -51,5 +51,8 @@ from .platform import PlatformAppearance
 urlpatterns += [path("platform/appearance/", PlatformAppearance.as_view())]
 
 from fees.exceptions import PlatformPaymentExceptions
+from fees.invoice_views import OwnerInvoices
+urlpatterns += [path('platform/invoices/', OwnerInvoices.as_view()),
+                path('platform/invoices/<int:pk>/', OwnerInvoices.as_view())]
 urlpatterns += [path('platform/payment-exceptions/', PlatformPaymentExceptions.as_view()),
                 path('platform/payment-exceptions/<int:pk>/', PlatformPaymentExceptions.as_view())]

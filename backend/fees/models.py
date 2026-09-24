@@ -1,6 +1,8 @@
 ﻿from django.conf import settings
 from django.db import models
 
+from .invoice_models import TermInvoice  # Register the invoice model with this app.
+
 
 class FeeCategory(models.Model):
     school         = models.ForeignKey('tenants.School', on_delete=models.CASCADE, related_name='fee_categories')
