@@ -57,8 +57,9 @@ def checkout(request, **values):
     except ValueError as exc:
         logger.error("payment_checkout_configuration_failed kind=%s error_type=%s", values.get('kind', 'unknown'), type(exc).__name__)
         return Response({'error': str(exc)}, status=503)
+    prefix = f"SCH-I{values['invoice'].pk}-" if values.get('invoice') else 'SCH-'
     order = PaymentOrder.objects.create(school=request.tenant, payer=request.user,
-        payer_email=request.user.email, mode=service.mode, reference='SCH-' + uuid.uuid4().hex, **values)
+        payer_email=request.user.email, mode=service.mode, reference=prefix + uuid.uuid4().hex, **values)
     callback = origin + '/payments/return?' + urlencode({'school': request.tenant.subdomain})
     try:
         url, _ = service.initialize(order.payer_email, order.amount_kobo, order.reference, callback, subaccount=order.subaccount_code or None)
@@ -67,6 +68,7 @@ def checkout(request, **values):
         # A timeout can occur AFTER Paystack creates the transaction. Keep its reference.
         return Response({'error': 'Unable to start checkout. Contact your school with this reference before retrying.', 'reference': order.reference}, status=502)
     PaymentOrder.objects.filter(pk=order.pk, status='initializing').update(status='pending', authorization_url=url)
+    event(request.user, 'payment.checkout_initialized', order.reference, {'school_id': order.school_id, 'invoice_id': order.invoice_id})
     return Response({'authorization_url': url, 'reference': order.reference})
 
 
@@ -79,12 +81,21 @@ def add_months(day, months):
 
 @transaction.atomic
 def settle(reference, data):
+    school_id = PaymentOrder.objects.values_list('school_id', flat=True).get(reference=reference)
+    School.objects.select_for_update().get(pk=school_id)
     order = PaymentOrder.objects.select_for_update().get(reference=reference)
     if order.status == 'success':
         logger.info("payment_settlement_idempotent order_id=%s reference=%s", order.pk, order.reference)
         return order
     if not isinstance(data, dict):
         return order
+    if data.get('reference') == order.reference:
+        received = data.get('amount')
+        order.received_amount_kobo = received if type(received) is int and 0 <= received < 2**63 else None
+        currency = data.get('currency')
+        order.received_currency = currency if isinstance(currency, str) and len(currency) == 3 else ''
+        order.verified_at = timezone.now()
+        order.save(update_fields=['received_amount_kobo', 'received_currency', 'verified_at'])
     if data.get('status') in ('failed', 'abandoned') and data.get('reference') == order.reference and data.get('domain') == order.mode == settings.PAYSTACK_MODE:
         order.status = 'failed'
         order.save(update_fields=['status'])
@@ -104,6 +115,9 @@ def settle(reference, data):
         logger.warning("payment_review_required order_id=%s reference=%s reason=validation_mismatch", order.pk, order.reference)
         return order
     school = School.objects.select_for_update().get(pk=order.school_id)
+    if order.invoice_id:
+        from .invoice_payments import settle_invoice_order
+        return settle_invoice_order(order, school, data)
     if order.kind == 'fees':
         for allocation in order.allocations:
             schedule = FeeSchedule.objects.filter(pk=allocation['schedule_id'], school=school).first()
@@ -140,6 +154,9 @@ def settle(reference, data):
 def result(order):
     return {'reference': order.reference, 'status': order.status, 'kind': order.kind,
         'amount': str(Decimal(order.amount_kobo) / 100), 'note': order.note,
+        'invoice_id': order.invoice_id, 'verified_at': order.verified_at,
+        'received_amount': str(Decimal(order.received_amount_kobo) / 100) if order.received_amount_kobo is not None else None,
+        'received_currency': order.received_currency,
         'receipts': list(FeePayment.objects.filter(paystack_reference=order.reference, school=order.school).values('id', 'receipt_number'))}
 
 
@@ -293,48 +310,9 @@ class SchoolSubscription(APIView):
             'school_student_count': school_student_count,
             'offers': offers,
             'orders': [result(o) for o in PaymentOrder.objects.filter(school=request.tenant, kind='subscription').order_by('-id')[:30]]})
-    @transaction.atomic
     def post(self, request):
-        school = School.objects.select_for_update().get(pk=request.tenant.pk)
-        previous = PaymentOrder.objects.filter(
-            school=school,
-            kind='subscription',
-            mode=settings.PAYSTACK_MODE,
-            status__in=['initializing', 'pending', 'review']
-        ).first()
-
-        if previous:
-            if previous.status == 'pending':
-                try:
-                    paystack_data = PaystackService().verify(previous.reference)
-                    previous = settle(previous.reference, paystack_data)
-                except (ValueError, RequestException):
-                    return Response({
-                        'error': (
-                            'The previous subscription payment could not be verified. '
-                            'Check it before paying again.'
-                        ),
-                        'reference': previous.reference,
-                    }, status=409)
-
-                if previous.status == 'failed':
-                    previous = None
-
-            if previous:
-                return Response({
-                    'error': (
-                        'A subscription payment is awaiting verification. '
-                        'Check its status before paying again.'
-                    ),
-                    'reference': previous.reference,
-                }, status=409)
-        if school.approval_status != 'approved':
-            raise ValidationError('Your school must be approved before subscribing.')
-        offer = get_object_or_404(SubscriptionOffer, plan=request.data.get('plan'), enabled=True)
-        if school.subscription_ends_on and school.subscription_ends_on >= timezone.localdate() and school.subscription_plan not in ('free', offer.plan):
-            raise ValidationError('Contact the platform owner to change plans during a paid period.')
-        final_amount = subscription_offer_total(school, offer)
-        return checkout(request, kind='subscription', plan=offer.plan, months=offer.months, amount_kobo=int(final_amount * 100))
+        from .invoice_payments import initialize_invoice_payment
+        return initialize_invoice_payment(request)
 
 
 class PlatformPayments(APIView):
@@ -370,6 +348,8 @@ class PlatformPayments(APIView):
     def post(self, request):
         if request.data.get('action') == 'retry_checkout':
             order = get_object_or_404(PaymentOrder, reference=request.data.get('reference'), mode=settings.PAYSTACK_MODE)
+            if order.invoice_id:
+                raise ValidationError('Use the school invoice checkout to reopen this payment safely.')
             if order.status not in ('initializing','pending'):
                 raise ValidationError('Only unfinished checkouts can be reopened.')
             if order.authorization_url:

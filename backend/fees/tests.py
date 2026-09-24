@@ -37,6 +37,11 @@ class PaystackTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(self.user)
         self.headers = {'HTTP_X_SCHOOL_SLUG':'pay'}
+    def subscription_invoice(self):
+        from .invoices import issue_invoice
+        from django.utils import timezone
+        return issue_invoice(school_id=self.school.pk, term_id=self.fee.term_id,
+                             due_date=timezone.localdate(), actor=self.owner)[0]
     def start(self):
         with patch.object(PaystackService, 'initialize', side_effect=lambda email, amount, ref, callback, **kw: ('https://checkout.paystack.com/test', ref)):
             return self.client.post('/api/fees/pay/initiate/', {'student_id': self.student.pk, 'fee_schedule_ids':[self.fee.pk]}, format='json', **self.headers)
@@ -154,7 +159,7 @@ class PaystackTests(TestCase):
     def test_subscription_extends_once_and_never_unsuspends(self):
         self.client.force_authenticate(self.admin)
         with patch.object(PaystackService,'initialize',side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
-            r=self.client.post('/api/fees/subscription/',{'plan':'basic'},format='json',**self.headers)
+            r=self.client.post('/api/fees/subscription/',{'invoice_id': self.subscription_invoice().pk},format='json',**self.headers)
         self.assertEqual(r.status_code,200,r.data)
         order=PaymentOrder.objects.get();self.assertEqual(order.amount_kobo,80000);self.assertFalse(order.subaccount_code)
         self.school.is_active=False;self.school.save()
@@ -173,7 +178,7 @@ class PaystackTests(TestCase):
         ):
             first_response = self.client.post(
                 '/api/fees/subscription/',
-                {'plan': 'basic'},
+                {'invoice_id': self.subscription_invoice().pk},
                 format='json',
                 **self.headers
             )
@@ -203,7 +208,7 @@ class PaystackTests(TestCase):
             ):
                 second_response = self.client.post(
                     '/api/fees/subscription/',
-                    {'plan': 'basic'},
+                    {'invoice_id': self.subscription_invoice().pk},
                     format='json',
                     **self.headers
                 )
@@ -227,7 +232,7 @@ class PaystackTests(TestCase):
             user = CustomUser.objects.create_user(f'bulk{index}@pay.test', 'Password!123', school=self.school, role='student')
             StudentProfile.objects.create(school=self.school, user=user, current_class=None, admission_number=f'BULK{index:03d}')
         with patch.object(PaystackService,'initialize',side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
-            r=self.client.post('/api/fees/subscription/',{'plan':'basic'},format='json',**self.headers)
+            r=self.client.post('/api/fees/subscription/',{'invoice_id': self.subscription_invoice().pk},format='json',**self.headers)
         self.assertEqual(r.status_code,200,r.data)
         order=PaymentOrder.objects.get(); self.assertEqual(order.amount_kobo,7200000)
     def test_owner_controls_work_without_tenant_and_viewer_denied(self):
@@ -289,7 +294,7 @@ class PaystackTests(TestCase):
     def test_platform_reconciliation_extends_subscription_once(self):
         self.client.force_authenticate(self.admin)
         with patch.object(PaystackService, 'initialize', side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
-            self.assertEqual(self.client.post('/api/fees/subscription/', {'plan':'basic'}, format='json', **self.headers).status_code, 200)
+            self.assertEqual(self.client.post('/api/fees/subscription/', {'invoice_id': self.subscription_invoice().pk}, format='json', **self.headers).status_code, 200)
         order = PaymentOrder.objects.get(); self.client.force_authenticate(self.owner)
         with patch.object(PaystackService, 'verify', return_value=self.data(order)):
             self.assertEqual(self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json').data['status'], 'success')

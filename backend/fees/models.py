@@ -92,6 +92,10 @@ class SubscriptionOffer(models.Model):
 
 
 class PaymentOrder(models.Model):
+    invoice = models.ForeignKey('fees.TermInvoice', on_delete=models.PROTECT, null=True, blank=True, related_name='payment_attempts')
+    received_amount_kobo = models.PositiveBigIntegerField(null=True, blank=True)
+    received_currency = models.CharField(max_length=3, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
     school = models.ForeignKey('tenants.School', on_delete=models.PROTECT, related_name='payment_orders')
     payer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     student = models.ForeignKey('enrollment.StudentProfile', on_delete=models.PROTECT, null=True, blank=True)
@@ -111,6 +115,12 @@ class PaymentOrder(models.Model):
     note = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['invoice'], condition=models.Q(invoice__isnull=False, status__in=['initializing', 'pending']), name='one_open_invoice_checkout'),
+            models.CheckConstraint(check=models.Q(invoice__isnull=True) | models.Q(kind='subscription'), name='invoice_subscription_only'),
+        ]
 
 
 class PaymentException(models.Model):

@@ -91,7 +91,13 @@ class EnterpriseSubscriptionTests(TestCase):
         self.assertEqual(offer['amount'], 2500)
         self.assertEqual(offer['total_amount'], 2500)
         with patch.object(PaystackService, 'initialize', return_value=('https://checkout.paystack.com/test', 'test')):
-            response = self.client.post('/api/fees/subscription/', {'plan': 'enterprise'})
+            from academics.models import AcademicSession, Term
+            from django.utils import timezone
+            from .invoices import issue_invoice
+            session = AcademicSession.objects.create(school=self.school, name='2026/27', start_date='2026-09-01', end_date='2027-07-31')
+            term = Term.objects.create(session=session, name='first', start_date='2026-09-01', end_date='2026-12-31')
+            invoice, _ = issue_invoice(school_id=self.school.pk, term_id=term.pk, actor=self.owner, due_date=timezone.localdate())
+            response = self.client.post('/api/fees/subscription/', {'invoice_id': invoice.pk})
         self.assertEqual(response.status_code, 200, response.data)
         order = PaymentOrder.objects.get()
         self.assertEqual(order.amount_kobo, 250000)

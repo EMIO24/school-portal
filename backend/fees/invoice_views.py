@@ -15,6 +15,14 @@ from .models import SubscriptionOffer, TermInvoice
 
 class InvoiceSerializer(serializers.ModelSerializer):
     status = serializers.CharField(source='display_status')
+    receipt_number = serializers.SerializerMethodField()
+    payment_reference = serializers.SerializerMethodField()
+
+    def get_receipt_number(self, invoice):
+        return 'RCP-' + invoice.invoice_number if invoice.status == 'paid' and invoice.payment_id else None
+
+    def get_payment_reference(self, invoice):
+        return invoice.payment.reference if invoice.payment_id else None
 
     class Meta:
         model = TermInvoice
@@ -22,7 +30,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
                   'term', 'term_name', 'billing_context', 'plan', 'active_student_count', 'snapshot_at',
                   'standard_rate', 'discount_applied', 'discount_percentage', 'discount_amount',
                   'effective_rate', 'subtotal', 'final_amount', 'currency', 'issue_date', 'due_date',
-                  'grace_period_days', 'status', 'paid_at', 'voided_at', 'void_reason']
+                  'grace_period_days', 'status', 'paid_at', 'voided_at', 'void_reason',
+                  'subscription_months', 'receipt_number', 'payment_reference']
         read_only_fields = fields
 
 
@@ -57,6 +66,11 @@ class VoidInput(StrictInput):
     reason = serializers.CharField(max_length=500)
 
 
+class DurationInput(StrictInput):
+    action = serializers.ChoiceField(choices=['set_duration'])
+    months = serializers.IntegerField(min_value=1, max_value=12)
+
+
 class InvoicePagination(PageNumberPagination):
     page_size = 50
 
@@ -66,12 +80,16 @@ class SchoolInvoices(APIView):
     filters = InvoiceFilters
 
     def invoices(self, request):
-        return TermInvoice.objects.filter(school=request.tenant)
+        return TermInvoice.objects.filter(school=request.tenant).select_related('payment')
 
     def get(self, request, pk=None):
         invoices = self.invoices(request)
         if pk is not None:
-            return Response(InvoiceSerializer(get_object_or_404(invoices, pk=pk)).data)
+            invoice = get_object_or_404(invoices, pk=pk)
+            data = dict(InvoiceSerializer(invoice).data)
+            from .payments import result
+            data['payment_attempts'] = [result(order) for order in invoice.payment_attempts.order_by('-id')[:30]]
+            return Response(data)
         form = self.filters(data=request.query_params)
         form.is_valid(raise_exception=True)
         values = dict(form.validated_data)
@@ -94,10 +112,16 @@ class OwnerInvoices(SchoolInvoices):
     filters = OwnerInvoiceFilters
 
     def invoices(self, request):
-        return TermInvoice.objects.all()
+        return TermInvoice.objects.select_related('payment')
 
     def post(self, request, pk=None):
         if pk is not None:
+            if request.data.get('action') == 'set_duration':
+                from .invoice_payments import assign_legacy_duration
+                form = DurationInput(data=request.data)
+                form.is_valid(raise_exception=True)
+                invoice = assign_legacy_duration(pk, months=form.validated_data['months'], actor=request.user)
+                return Response(InvoiceSerializer(invoice).data)
             form = VoidInput(data=request.data)
             form.is_valid(raise_exception=True)
             invoice = void_invoice(pk, actor=request.user, reason=form.validated_data['reason'])
@@ -109,3 +133,17 @@ class OwnerInvoices(SchoolInvoices):
                                         due_date=values['due_date'], grace_period_days=values['grace_period_days'],
                                         actor=request.user)
         return Response(InvoiceSerializer(invoice).data, status=201 if created else 200)
+
+
+class SchoolInvoiceDocument(SchoolInvoices):
+    def get(self, request, pk, document):
+        from .invoice_documents import invoice_document
+        invoice = get_object_or_404(self.invoices(request), pk=pk)
+        return invoice_document(invoice, receipt=document == 'receipt')
+
+
+class OwnerInvoiceDocument(SchoolInvoiceDocument):
+    permission_classes = [IsSuperAdmin]
+
+    def invoices(self, request):
+        return TermInvoice.objects.select_related('payment')

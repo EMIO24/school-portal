@@ -31,6 +31,7 @@ class TermInvoice(models.Model):
     session_name = models.CharField(max_length=20)
     term_name = models.CharField(max_length=50)
     plan = models.CharField(max_length=20)
+    subscription_months = models.PositiveSmallIntegerField(null=True, blank=True)
     billing_context = models.CharField(max_length=20, default='subscription', editable=False)
     active_student_count = models.PositiveIntegerField()
     snapshot_at = models.DateTimeField(default=timezone.now, editable=False)

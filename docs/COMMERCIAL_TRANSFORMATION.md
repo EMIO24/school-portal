@@ -116,9 +116,73 @@ A two-connection PostgreSQL generation test is included; local SQLite runs skip 
 Local Docker was unavailable, so PostgreSQL concurrency verification remains a
 pre-promotion gate. No production database or environment was modified.
 
-Next: invoice-linked checkout/reconciliation and customer-facing invoice screens/PDFs.
-Existing paid periods and historical payments need an explicit compatibility policy;
-do not invent historical term invoices or apply a second subscription extension.
+The invoice payment hook above was the Batch 2 boundary. Batch 3 connects it to
+checkout/verification as described below; no historical invoices are fabricated.
 
 After invoices: Basic workflows, theme system, Premium hardening, necessary
 Enterprise foundations, full school simulation, then release freeze and full checks.
+
+## Batch 3: invoice payment and document workflow
+
+New subscription checkout POST `/api/fees/subscription/` accepts only `invoice_id`.
+The old plan-only checkout is no longer an initiation path. The quote GET remains
+available for compatibility, but cannot determine an invoice charge. The server
+uses the invoice amount/currency and snapshotted `subscription_months`, converts
+Decimal to integer kobo, and binds the attempt using `PaymentOrder.invoice` plus
+an invoice-specific reference prefix. Parent/student school-fee payments stay in
+their existing FeePayment domain and cannot settle subscription invoices.
+
+Per the commercial decision, successful invoice payment retains rolling-month
+subscription extension, not academic-term-end coverage. Newly issued invoices
+snapshot the configured offer duration. Existing invoices receive NULL duration
+in additive migration `0011`; an owner must explicitly confirm it once through
+POST `/api/platform/invoices/<id>/` with `action: "set_duration"` and `months`
+(1–12) before checkout. The action is audited and only accepts unpaid legacy
+invoices with no attempts. It does not infer historical terms or offer values.
+Legacy unlinked payments still verify/settle using their saved amount/duration;
+they are never automatically assigned to invoices. Their unfinished attempts must
+be reconciled before another school subscription checkout begins.
+
+Checkout/settlement/voiding now consistently lock school before payment/invoice.
+A partial unique constraint prevents multiple initializing/pending attempts per
+invoice; review attempts block new checkout in the service. Pending retries verify
+and reuse the original checkout; verified failed/abandoned attempts allow a new
+attempt. Ambiguous initialization/verification remains blocked for investigation.
+Voiding is blocked while an attempt is initializing, pending or under review.
+
+Trusted verification and signed webhooks use the existing settlement function.
+Reference, amount, currency, provider mode, customer, invoice association, school,
+plan, duration and payable status must agree. Mismatches become review cases;
+no invoice or subscription credit is applied. Received amount/currency and the
+verification timestamp are stored without provider credential payloads. Invoice
+payment, paid status, audit event and one subscription extension commit together.
+Repeated successful verification returns the settled order without extending again.
+
+School subscription screens now provide paginated invoice cards, filters, detailed
+pricing, payment history, safe checkout, verification and protected PDF downloads.
+The existing owner Payments page includes cross-school invoice filtering and
+expected/received amount visibility using existing reconciliation controls.
+Owner duration confirmation handles legacy invoices. Interfaces include loading,
+empty/error/retry states and responsive shared styles; no theme redesign was made.
+
+School document endpoints append `invoice.pdf` or `receipt.pdf` to the invoice
+detail URL; equivalent owner endpoints use `/api/platform/invoices/<id>/`.
+Documents use saved school/calendar names and monetary snapshots. A receipt is
+available only for a paid invoice with its verified payment link. Its stable number
+is `RCP-<invoice number>`; repeat downloads never create additional receipt records.
+WeasyPrint uses the new branded subscription template with no remote assets; the
+existing text PDF utility is the fallback where native rendering is unavailable.
+Document responses are authenticated, tenant scoped and marked no-store.
+
+Verification: affected backend suite 128 passed, 0 failed, 2 PostgreSQL-only tests
+skipped; frontend billing/platform/download suites 19 passed. After correcting an
+effect-cleanup lint warning, all 6 invoice UI tests passed again and the production
+frontend build compiled successfully with CI warnings treated as errors. Local invoice/receipt
+PDF tests exercised the fallback because WeasyPrint native libraries are unavailable.
+Before promotion verify the styled documents and responsive browser presentation
+in the deployment-compatible environment.
+
+**PRE-PROMOTION POSTGRESQL TEST REQUIRED**: invoice-generation and simultaneous
+verification/webhook settlement tests must pass against disposable PostgreSQL.
+Docker's local engine was unavailable; no installation/reconfiguration was attempted.
+No production data, provider credentials, Railway settings or deployment was changed.

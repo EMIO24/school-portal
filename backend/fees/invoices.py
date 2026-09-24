@@ -39,7 +39,7 @@ def issue_invoice(*, school_id, term_id, due_date, actor, grace_period_days=0):
     invoice = TermInvoice.objects.create(
         school=school, academic_session=term.session, term=term,
         school_name=school.name, session_name=term.session.name, term_name=term.get_name_display(),
-        plan=offer.plan, active_student_count=quote['student_count'],
+        plan=offer.plan, subscription_months=offer.months, active_student_count=quote['student_count'],
         standard_rate=quote['standard_rate'], discount_applied=quote['discount_applied'],
         discount_percentage=quote['discount_percent'], discount_amount=quote['discount_amount'],
         effective_rate=quote['effective_rate'], subtotal=quote['subtotal'], final_amount=quote['total_amount'],
@@ -61,11 +61,15 @@ def _transition(invoice, **fields):
 
 @transaction.atomic
 def void_invoice(invoice_id, *, actor, reason):
+    school_id = get_object_or_404(TermInvoice, pk=invoice_id).school_id
+    School.objects.select_for_update().get(pk=school_id)
     invoice = get_object_or_404(TermInvoice.objects.select_for_update(), pk=invoice_id)
     if invoice.status == 'void':
         return invoice
     if invoice.status != 'issued':
         raise ValidationError('Only unpaid invoices can be voided; paid invoices require a separate refund workflow.')
+    if invoice.payment_attempts.filter(status__in=['initializing', 'pending', 'review']).exists():
+        raise ValidationError('Reconcile the unfinished payment before voiding this invoice.')
     reason = reason.strip()
     if not reason or len(reason) > 500:
         raise ValidationError('Provide a reason of 1–500 characters.')
@@ -80,13 +84,15 @@ def record_invoice_payment(invoice_id, *, payment_id):
 
     Not called by current checkout and not exposed as an arbitrary HTTP status edit.
     """
+    school_id = get_object_or_404(TermInvoice, pk=invoice_id).school_id
+    School.objects.select_for_update().get(pk=school_id)
     payment = get_object_or_404(PaymentOrder.objects.select_for_update(), pk=payment_id)
     invoice = get_object_or_404(TermInvoice.objects.select_for_update(), pk=invoice_id)
     if invoice.status == 'paid' and invoice.payment_id == payment.pk:
         return invoice
     if invoice.status != 'issued':
         raise ValidationError('Only unpaid invoices can receive a payment.')
-    if (payment.status != 'success' or payment.kind != 'subscription'
+    if (payment.invoice_id != invoice.pk or payment.status != 'success' or payment.kind != 'subscription'
             or payment.school_id != invoice.school_id or payment.plan != invoice.plan
             or payment.currency != invoice.currency or payment.amount_kobo != invoice.final_amount * 100
             or not payment.paid_at or payment.created_at < invoice.snapshot_at

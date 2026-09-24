@@ -21,9 +21,11 @@ urlpatterns = [
 from .payments import SchoolSubscription
 urlpatterns += [path('subscription/', SchoolSubscription.as_view())]
 
-from .invoice_views import SchoolInvoices
+from .invoice_views import SchoolInvoices, SchoolInvoiceDocument
 urlpatterns += [path('subscription/invoices/', SchoolInvoices.as_view()),
                 path('subscription/invoices/<int:pk>/', SchoolInvoices.as_view())]
+urlpatterns += [path('subscription/invoices/<int:pk>/invoice.pdf', SchoolInvoiceDocument.as_view(), {'document': 'invoice'}),
+                path('subscription/invoices/<int:pk>/receipt.pdf', SchoolInvoiceDocument.as_view(), {'document': 'receipt'})]
 
 from .exceptions import SchoolPaymentExceptions
 urlpatterns += [path('exceptions/', SchoolPaymentExceptions.as_view()),

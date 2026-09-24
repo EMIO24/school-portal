@@ -1,0 +1,21 @@
+.invoice-workspace { margin: 24px 0; color: var(--text-primary,#173447); }
+.invoice-workspace button { min-height: 44px; cursor: pointer; }
+.invoice-workspace button:disabled { cursor: wait; opacity: .6; }
+.invoice-workspace button:focus-visible,.invoice-workspace select:focus-visible { outline: 3px solid #b59458; outline-offset: 3px; }
+.invoice-eyebrow { letter-spacing: .12em; font-size: .78rem; font-weight: 700; }
+.invoice-filters,.invoice-actions,.invoice-pages { display:flex; flex-wrap:wrap; gap:16px; align-items:center; margin:20px 0; }
+.invoice-filters label { display:grid; gap:6px; flex:1 1 170px; }
+.invoice-filters select { padding:10px; border:1px solid #cbd5dc; border-radius:6px; background:#fff; }
+.invoice-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr)); gap:18px; }
+.invoice-cards article,.invoice-detail,.invoice-empty { background:#fff; border:1px solid #d7dde0; border-radius:10px; padding:24px; }
+.invoice-cards h3 { text-transform:capitalize; }
+.invoice-number { overflow-wrap:anywhere; font-size:.85rem; color:#52616b; }
+.invoice-total { font-size:1.5rem; font-weight:700; }
+.invoice-badge { display:inline-block; padding:4px 10px; border-radius:5px; font-size:.85rem; font-weight:700; background:#edf1f5; color:#344454; }
+.invoice-badge.paid { background:#e6f3eb; color:#17643b; }.invoice-badge.overdue { background:#fff0dc; color:#844300; }
+.invoice-detail { margin-top:28px; border-top:4px solid #b59458; }.invoice-detail-header { display:flex; gap:16px; justify-content:space-between; align-items:start; }
+.invoice-breakdown div { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:12px 0; border-bottom:1px solid #e5e9ec; }
+.invoice-breakdown dd { margin:0; text-align:right; overflow-wrap:anywhere; }.invoice-breakdown dt { color:#52616b; }
+.invoice-attempt { border-top:1px solid #d7dde0; padding:16px 0; }
+@media(max-width:560px) { .invoice-detail-header { flex-direction:column; }.invoice-detail,.invoice-cards article {padding:16px;}.invoice-actions button {width:100%;} }
+@media print { .invoice-filters,.invoice-cards,.invoice-pages,.invoice-actions,.invoice-workspace button {display:none;} .invoice-detail {border:0;} }

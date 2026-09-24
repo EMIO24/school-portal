@@ -57,11 +57,11 @@ class InvoiceTests(TestCase):
         return issue_invoice(school_id=(school or self.school).pk, term_id=(term or self.term).pk,
                              actor=self.owner, due_date=kwargs.pop('due_date', self.due), **kwargs)
 
-    def payment(self, invoice, **kwargs):
-        values = dict(school=invoice.school, payer=self.admin, kind='subscription',
+    def payment(self, bill, **kwargs):
+        values = dict(invoice=bill, school=bill.school, payer=self.admin, kind='subscription',
                       reference=f'INV-PAY-{PaymentOrder.objects.count()}', mode='test',
-                      amount_kobo=int(invoice.final_amount * 100), currency='NGN', payer_email=self.admin.email,
-                      plan=invoice.plan, months=3, status='success', paid_at=timezone.now())
+                      amount_kobo=int(bill.final_amount * 100), currency='NGN', payer_email=self.admin.email,
+                      plan=bill.plan, months=3, status='success', paid_at=timezone.now())
         values.update(kwargs)
         return PaymentOrder.objects.create(**values)
 
@@ -194,7 +194,7 @@ class InvoiceTests(TestCase):
         self.students(1)
         invoice, _ = self.issue()
         for overrides in [{'status': 'pending'}, {'status': 'review'}, {'amount_kobo': 1},
-                          {'school': self.other}, {'kind': 'fees'}, {'plan': 'basic'}, {'currency': 'USD'},
+                          {'school': self.other}, {'invoice': None}, {'plan': 'basic'}, {'currency': 'USD'},
                           {'paid_at': invoice.snapshot_at - timedelta(days=1)}]:
             with self.subTest(overrides=overrides):
                 payment = self.payment(invoice, **overrides)
