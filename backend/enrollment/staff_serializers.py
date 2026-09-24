@@ -85,6 +85,24 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
                 for a in obj.assigned_classes.all()]
 
     @transaction.atomic
+    def update(self, instance, validated_data):
+        state = validated_data.get('employment_status')
+        if state in ('suspended', 'terminated', 'resigned') and instance.user_id == self.context['request'].user.pk:
+            raise serializers.ValidationError('Ask another administrator to deactivate your account.')
+        # Account creation fields must never be silently written onto a profile.
+        for key in ('new_email', 'new_first_name', 'new_last_name', 'new_role'):
+            validated_data.pop(key, None)
+        instance = super().update(instance, validated_data)
+        if state in ('active', 'suspended', 'terminated', 'resigned'):
+            instance.user.is_active = state == 'active'
+            instance.user.save(update_fields=['is_active'])
+            from tenants.models import PlatformEvent
+            actor = self.context['request'].user
+            PlatformEvent.objects.create(actor=actor, actor_email=actor.email, action='school.staff_access_changed',
+                target=str(instance.pk), details={'school_id':instance.school_id, 'active':instance.user.is_active})
+        return instance
+
+    @transaction.atomic
     def create(self, validated_data):
         school      = validated_data.pop("school")
         email       = validated_data.pop("new_email",      None)

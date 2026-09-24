@@ -23,6 +23,7 @@ from rest_framework.response import Response
 
 from accounts.permissions import IsSchoolAdmin, IsSchoolAdminOrTeacher, IsAuthenticatedTenantUser
 from tenants.mixins import TenantMixin
+from .safety import RetainAcademicHistoryMixin
 
 from .models import ClassArm, ClassLevel, StudentProfile, Subject
 from .serializers import (
@@ -56,7 +57,7 @@ def _parse_date(val: str):
 
 # ── ClassLevel ViewSet ─────────────────────────────────────────────────────
 
-class ClassLevelViewSet(TenantMixin, viewsets.ModelViewSet):
+class ClassLevelViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
     serializer_class = ClassLevelSerializer
     queryset         = ClassLevel.objects.all()
 
@@ -68,7 +69,7 @@ class ClassLevelViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── ClassArm ViewSet ───────────────────────────────────────────────────────
 
-class ClassArmViewSet(TenantMixin, viewsets.ModelViewSet):
+class ClassArmViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
     serializer_class = ClassArmSerializer
     queryset         = ClassArm.objects.select_related(
         "class_level", "class_teacher"
@@ -89,7 +90,7 @@ class ClassArmViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── Subject ViewSet ────────────────────────────────────────────────────────
 
-class SubjectViewSet(TenantMixin, viewsets.ModelViewSet):
+class SubjectViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
     serializer_class = SubjectSerializer
     queryset         = Subject.objects.prefetch_related("class_levels")
 
@@ -123,6 +124,19 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = StudentProfile.objects.select_related(
         "user", "school", "current_class", "current_class__class_level"
     )
+
+    def perform_destroy(self, instance):
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError('Student history must be retained. Change the enrollment status instead of deleting the student.')
+
+    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser], url_path='photo')
+    def photo(self, request, pk=None):
+        from tenants.image_uploads import store_uploaded_image
+        student = self.get_object()
+        url = store_uploaded_image(request.FILES.get('photo'), f'student-photos/{request.tenant.pk}/{student.pk}')
+        student.user.profile_photo = url
+        student.user.save(update_fields=['profile_photo'])
+        return Response({'profile_photo': url})
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -313,6 +327,14 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
             if not first_name: add_error("first_name is empty.");  continue
             if not last_name:  add_error("last_name is empty.");   continue
 
+            if email:
+                from django.core.validators import validate_email
+                from django.core.exceptions import ValidationError
+                try:
+                    validate_email(email)
+                except ValidationError:
+                    add_error('Enter a valid email address.'); continue
+
             # ── Validate email uniqueness ─────────────────────────────────
             if email and User.objects.filter(email=email).exists():
                 add_error(f"Email '{email}' already exists."); continue
@@ -337,7 +359,16 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
 
             level      = level_map[level_name]
             level_arms = arm_map.get(level_name, [])
-            class_arm  = level_arms[0] if level_arms else None
+            arm_name = (row.get('class_arm') or '').strip().casefold()
+            matches = [arm for arm in level_arms if not arm_name or arm.name.casefold() == arm_name or arm.full_name.casefold() == arm_name]
+            if len(matches) > 1 or (arm_name and len(matches) != 1):
+                add_error('Select one existing class arm using the class_arm column; no student was created.')
+                continue
+            class_arm = matches[0] if matches else None
+            if not email and StudentProfile.objects.filter(school=tenant, user__first_name__iexact=first_name,
+                    user__last_name__iexact=last_name, dob=dob, current_class=class_arm).exists():
+                add_error('A student with this name, date of birth and class already exists. Review the record before adding individually.')
+                continue
 
             # ── Create user + profile in a savepoint ──────────────────────
             try:
@@ -370,8 +401,8 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
 
                 success_count += 1
 
-            except Exception as exc:
-                add_error(str(exc))
+            except Exception:
+                add_error('This row could not be imported. Check its values and retry.')
 
         return Response(
             {

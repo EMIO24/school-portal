@@ -75,12 +75,18 @@ class AttendanceSessionCreateSerializer(TenantRelationsMixin, serializers.ModelS
         fields = ['class_arm', 'term', 'date', 'period', 'mode']
 
     def validate(self, attrs):
+        attrs = super().validate(attrs)
         school    = self.context['request'].tenant
         class_arm = attrs['class_arm']
         term      = attrs['term']
         date      = attrs['date']
         mode      = attrs.get('mode', AttendanceSession.Mode.DAILY)
         period    = attrs.get('period')
+
+        if not term.start_date <= date <= term.end_date:
+            raise serializers.ValidationError({'date':'Choose a date within the selected term.'})
+        if (mode == AttendanceSession.Mode.PER_PERIOD) != bool(period):
+            raise serializers.ValidationError({'period':'Choose a period for period attendance, or leave it empty for daily attendance.'})
 
         # Reject if a session already exists for this slot
         qs = AttendanceSession.objects.filter(

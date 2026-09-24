@@ -14,7 +14,7 @@ FEATURES = {
 }
 PLAN_FEATURES = {
     'free': ['core'],
-    'basic': ['core', 'attendance', 'results', 'fees', 'timetable', 'notifications'],
+    'basic': ['core', 'attendance', 'results', 'fees', 'timetable', 'notifications', 'bulk_import'],
     'premium': list(FEATURES),
     # Enterprise inherits shipped capabilities; institutional modules are separate slices.
     'enterprise': list(FEATURES),

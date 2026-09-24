@@ -14,7 +14,7 @@ class PlansBrandingTests(TestCase):
         self.client = APIClient(HTTP_X_SCHOOL_SLUG='design')
         self.client.force_authenticate(self.admin)
     def test_basic_cannot_call_premium_api_directly(self):
-        for path in ['/api/cbt/topics/', '/api/analytics/overview/', '/api/students/bulk-import/', '/api/staff/bulk-import/', '/api/promotion/', '/api/scratch-cards/']:
+        for path in ['/api/cbt/topics/', '/api/analytics/overview/', '/api/promotion/', '/api/scratch-cards/']:
             response = self.client.get(path)
             self.assertEqual(response.status_code,403,path)
             self.assertEqual(response.json()['code'],'plan_feature_required')

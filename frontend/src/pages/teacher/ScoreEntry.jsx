@@ -12,7 +12,7 @@
  *   - CA Total and Grade/Remark update client-side as user types
  *   - Row background tinted green/amber/red by result band
  *   - "Save Draft"    → POST bulk-update/ (is_published stays false)
- *   - "Publish"       → Save + POST publish/
+ *   - Administrators review and publish saved drafts in Result Management.
  *   - Unsaved dot on page title while there are pending changes
  *   - Per-cell error display for max exceeded violations
  */
@@ -95,7 +95,7 @@ export default function ScoreEntry() {
 
       const active = termList.find(x => x.is_current);
       if (active) setSelTerm(String(active.id));
-    });
+    }).catch(() => setAlert({type:'error',msg:'Could not load score-entry options. Reload this page to retry.'}));
   }, []);
 
   // ── Load scores when all selectors are set ──────────────────────────────────
@@ -106,15 +106,11 @@ export default function ScoreEntry() {
     setErrors({});
     try {
       const { data } = await api.get(
-        `/api/gradebook/entries/?class_arm=${selClass}&subject=${selSubject}&term=${selTerm}`
+        '/api/gradebook/entries/sheet/?class_arm=' + selClass + '&subject=' + selSubject + '&term=' + selTerm
       );
-      const entries = data.results ?? data;
-
-      // Also fetch the full enrolled student list so ungraded students appear
-      const { data: stuData } = await api.get(
-        `/api/students/?class_arm=${selClass}`
-      );
-      const allStudents = (stuData.results ?? stuData).map(stu => ({ ...stu, id: stu.user }));
+      const entries = data.entries;
+      const allStudents = data.students.map(stu => ({...stu, id:stu.user}));
+      setSelSession(String(data.session));
       setStudents(allStudents);
 
       // Build row map — start from API data, fill blanks for ungraded students
@@ -139,6 +135,9 @@ export default function ScoreEntry() {
             };
       });
       setRows(rowMap);
+    } catch {
+      setStudents([]); setRows({});
+      setAlert({type:'error',msg:'Could not load this score sheet. Check your class, subject and term assignment.'});
     } finally {
       setLoading(false);
     }
@@ -178,7 +177,7 @@ export default function ScoreEntry() {
   }, [students]);
 
   // ── Save draft ──────────────────────────────────────────────────────────────
-  const save = async (publish = false) => {
+  const save = async () => {
     if (!selSession) {
       setAlert({ type: 'error', msg: 'Please select an academic session before saving.' });
       return;
@@ -186,7 +185,7 @@ export default function ScoreEntry() {
     setSaving(true);
     setAlert(null);
 
-    const scores = students.map(stu => ({
+    const scores = students.filter(stu => !rows[stu.id]?.is_published).map(stu => ({
       student_id:  stu.id,
       first_test:  rows[stu.id]?.first_test  || 0,
       second_test: rows[stu.id]?.second_test || 0,
@@ -210,14 +209,7 @@ export default function ScoreEntry() {
         setAlert({ type: 'error', msg: 'Some rows have validation errors. Please correct them.' });
       } else {
         setDirty(false);
-        if (publish) {
-          await api.post(
-            `/api/gradebook/entries/publish/?class_arm=${selClass}&subject=${selSubject}&term=${selTerm}`
-          );
-          setAlert({ type: 'success', msg: 'Scores saved and published to students.' });
-        } else {
-          setAlert({ type: 'success', msg: 'Scores saved as draft.' });
-        }
+        setAlert({ type: 'success', msg: 'Draft saved. Your school administrator can review and publish these scores.' });
         await loadScores();
       }
     } catch (err) {
@@ -252,7 +244,6 @@ export default function ScoreEntry() {
   }, [students, computed]);
 
   const canRender = selTerm && selSession && selClass && selSubject;
-  const isPublished = students.length > 0 && students.every(s => rows[s.id]?.is_published);
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
@@ -276,7 +267,7 @@ export default function ScoreEntry() {
         ].map(({ label, val, set, opts, labelKey }) => (
           <div key={label} className="gb-field-group">
             <label>{label}</label>
-            <select className="gb-select" value={val} onChange={e => set(e.target.value)}>
+            <select aria-label={label} className="gb-select" value={val} onChange={e => set(e.target.value)}>
               <option value="">— {label} —</option>
               {opts.map(o => <option key={o.id} value={o.id}>{o[labelKey]}</option>)}
             </select>
@@ -293,13 +284,7 @@ export default function ScoreEntry() {
             >
               {saving ? 'Saving…' : '💾 Save Draft'}
             </button>
-            <button
-              className="gb-btn gb-btn--publish"
-              onClick={() => save(true)}
-              disabled={saving || !canRender || isPublished}
-            >
-              {isPublished ? '✓ Published' : '🚀 Publish'}
-            </button>
+            <span>School administrators review and publish saved drafts.</span>
           </div>
         </div>
       </div>

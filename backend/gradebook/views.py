@@ -58,6 +58,12 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
             return ScoreEntryWriteSerializer
         return ScoreEntryReadSerializer
 
+    def perform_destroy(self, instance):
+        from rest_framework.exceptions import ValidationError
+        if instance.is_published:
+            raise ValidationError('Published grades are locked. Reopen through an audited correction first.')
+        instance.delete()
+
     def get_queryset(self):
         qs = (
             ScoreEntry.objects
@@ -77,6 +83,24 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     # ── GET grade-scale ───────────────────────────────────────────────────────
+
+    @action(detail=False, methods=['get'])
+    def sheet(self, request):
+        from rest_framework import serializers
+        from django.shortcuts import get_object_or_404
+        from academics.models import Term
+        from enrollment.models import ClassArm, Subject, StudentProfile
+        from enrollment.serializers import StudentListSerializer
+        ids = {key:serializers.IntegerField(min_value=1).run_validation(request.query_params.get(key))
+               for key in ('class_arm', 'subject', 'term')}
+        arm = get_object_or_404(ClassArm, pk=ids['class_arm'], school=self.school)
+        get_object_or_404(Subject, pk=ids['subject'], school=self.school)
+        term = get_object_or_404(Term, pk=ids['term'], session__school=self.school)
+        require_assignment(request, arm.pk, term.pk, ids['subject'])
+        students = StudentProfile.objects.filter(school=self.school, current_class=arm, status='active').select_related('user','current_class__class_level')
+        entries = self.get_queryset().filter(class_arm=arm, subject_id=ids['subject'], term=term)
+        return Response({'students':StudentListSerializer(students, many=True).data,
+                         'entries':ScoreEntryReadSerializer(entries, many=True).data, 'session':term.session_id})
 
     @action(detail=False, url_path='grade-scale', methods=['get'])
     def grade_scale(self, request):

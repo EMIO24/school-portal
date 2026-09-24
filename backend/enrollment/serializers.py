@@ -16,6 +16,14 @@ User = get_user_model()
 # ── ClassLevel ─────────────────────────────────────────────────────────────
 
 class ClassLevelSerializer(serializers.ModelSerializer):
+    def validate_name(self, value):
+        qs = ClassLevel.objects.filter(school=self.context['request'].tenant, name=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError('This class level already exists.')
+        return value
+
     class Meta:
         model  = ClassLevel
         fields = ["id", "name", "order_index"]
@@ -24,7 +32,18 @@ class ClassLevelSerializer(serializers.ModelSerializer):
 
 # ── ClassArm ───────────────────────────────────────────────────────────────
 
-class ClassArmSerializer(serializers.ModelSerializer):
+class ClassArmSerializer(TenantRelationsMixin, serializers.ModelSerializer):
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        level = attrs.get('class_level', getattr(self.instance, 'class_level', None))
+        name = attrs.get('name', getattr(self.instance, 'name', None))
+        qs = ClassArm.objects.filter(school=self.context['request'].tenant, class_level=level, name=name)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError({'name':'This class arm already exists.'})
+        return attrs
+
     full_name         = serializers.ReadOnlyField()
     class_level_name  = serializers.CharField(source="class_level.name", read_only=True)
     teacher_name      = serializers.CharField(
@@ -46,10 +65,15 @@ class ClassArmSerializer(serializers.ModelSerializer):
     def get_student_count(self, obj) -> int:
         return obj.students.filter(status="active").count()
 
+    def validate_class_teacher(self, value):
+        if value and (value.role != 'teacher' or not value.is_active):
+            raise serializers.ValidationError('Select an active teacher.')
+        return value
+
 
 # ── Subject ────────────────────────────────────────────────────────────────
 
-class SubjectSerializer(serializers.ModelSerializer):
+class SubjectSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     class Meta:
         model  = Subject
         fields = [
@@ -59,6 +83,7 @@ class SubjectSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "max_total"]
 
     def validate(self, attrs):
+        attrs = super().validate(attrs)
         ca   = attrs.get("max_ca_score",   getattr(self.instance, "max_ca_score",   40))
         exam = attrs.get("max_exam_score",  getattr(self.instance, "max_exam_score", 60))
         if ca + exam != 100:

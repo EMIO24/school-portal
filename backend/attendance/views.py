@@ -84,6 +84,20 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
     permission_classes = [SchoolModulePermission]
     http_method_names  = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
+    def create(self, request, *args, **kwargs):
+        return self.start(request)
+
+    def update(self, request, *args, **kwargs):
+        from rest_framework.exceptions import ValidationError
+        self.get_object()
+        raise ValidationError('Use attendance marking to edit records. The class, term and date of an existing register cannot be moved.')
+
+    def get_object(self):
+        from accounts.school_access import require_assignment
+        session = super().get_object()
+        require_assignment(self.request, session.class_arm_id, session.term_id)
+        return session
+
     def get_serializer_class(self):
         if self.action == 'start':
             return AttendanceSessionCreateSerializer
@@ -190,8 +204,9 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': 'Session is already finalized.'})
 
         # Guard: ensure every enrolled student has a record
-        total_enrolled = session.class_arm.students.filter(school=self.school).count()
-        total_marked   = session.records.count()
+        enrolled = session.class_arm.students.filter(school=self.school, status='active').values_list('user_id', flat=True)
+        total_enrolled = enrolled.count()
+        total_marked = session.records.filter(student_id__in=enrolled).count()
 
         if total_marked < total_enrolled:
             return Response(

@@ -186,3 +186,69 @@ in the deployment-compatible environment.
 verification/webhook settlement tests must pass against disposable PostgreSQL.
 Docker's local engine was unavailable; no installation/reconfiguration was attempted.
 No production data, provider credentials, Railway settings or deployment was changed.
+
+## Batch 4: Basic operations — safety and setup slice
+
+Verified a connected fresh Basic-school API journey: identity, calendar, classes,
+subjects, staff creation/initial password change, teacher assignment, student
+creation, explicit parent linking, attendance, draft scores, administrator
+publication, linked-parent results, manual part payment, balance and PDF receipt.
+This uses the existing fixed assessment/default grading scheme. It does not certify
+the complete Batch 4 target or browser/mobile acceptance.
+
+Corrected tenant-relation validation for class arms, subject levels, assignments
+and attendance creation. Bulk teacher assignment validates the whole replacement
+before removing old assignments; the existing staff action now accepts the scoped
+term/session contract. Attendance registers cannot be moved by generic PATCH;
+teacher mutation checks include the term, and finalization counts active enrollment.
+Published scores cannot be deleted through the portal. Student/staff deletion is
+rejected in favor of status changes, and in-use academic configuration is retained.
+Staff suspension/termination/resignation updates login access without deleting
+assignments. Withdrawal preserves scores and remains excluded from billing counts.
+
+Basic now includes the existing standard CSV imports through the central catalog;
+CBT and other Premium features remain gated. Student imports validate optional
+email, reject ambiguous/invalid arms, and report duplicate name/date/class rows.
+An optional `class_arm` column disambiguates arms. Existing imports into a class
+level with no arms still create an unassigned student. Row failures no longer expose
+raw exception messages. The existing preview/confirm interface is reused.
+
+New `/api/school/setup/` derives readiness without persistent wizard state and
+permits only school identity/contact edits. `/admin/setup` adds identity/logo and
+class creation, progress and links to existing operational screens. Logo uploads
+reuse the existing validated storage service. Platform pricing/plan/theme controls
+are excluded from this school endpoint.
+
+Administrators explicitly grant/revoke parent links from a student's profile.
+The endpoint scopes both sides to the school, reuses parent phone-login accounts,
+rejects mismatched existing accounts and audits link changes using IDs. Guardian
+contact fields alone grant no access. Parent OTP delivery still needs the existing
+configured SMS service. Student photos now update the selected student's account
+through validated server upload, fixing the former update to the administrator.
+
+The class-scoped gradebook `entries/sheet/` returns the complete active class and
+checks teacher/class/subject/term authorization. It fixes the 20-student truncation.
+The teacher screen saves drafts for administrator review and no longer offers an
+unauthorized publish action. The existing admin publication/reopening flow remains.
+
+Verification: 18 new backend workflow/security tests passed during targeted work
+and the broader run. The broader affected run discovered 178 tests: 175 passed,
+2 PostgreSQL-only skips, and 1 import compatibility failure. After restoring the
+unassigned import behavior, all 14 affected login/import retests passed. Frontend
+affected suites: 21 passed. Django system and migration checks passed; no migration
+or dependency was added. The production frontend build passed with CI warnings
+treated as errors. Existing parent UI tests emit an act() warning but pass.
+
+Remaining P1: configurable assessment structures with historical versioning;
+validated grading edits; explicit submitted/reviewed state and missing-score
+semantics; general student/staff account-name editing. Existing subject CA/exam
+settings are not authoritative for the fixed gradebook and need the assessment
+work before claiming custom splits are supported.
+Remaining P2: selector pagination beyond the current first page, further import
+validation UX, and hands-on responsive checks. Setup checks are operational aids,
+not a launch-readiness certificate. Existing result templates/calculations are reused.
+
+**PRE-PROMOTION POSTGRESQL TEST REQUIRED** remains for both invoice concurrency
+tests. Styled invoice/receipt PDFs and responsive billing screens still require
+deployment-compatible verification; local PDF tests use the supported fallback.
+No Docker retries, production changes, merge or deployment were performed.

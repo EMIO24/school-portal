@@ -7,6 +7,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import ClassArmViewSet, ClassLevelViewSet, StudentViewSet, SubjectViewSet
 from .staff_views import StaffViewSet
+from .parent_links import StudentParents
 from .assignment_views import SubjectAssignmentViewSet, AssignSubjectsMixin, SubjectByClassMixin
 
 # Patch mixins onto existing ViewSets (avoids inheritance conflicts)
@@ -22,6 +23,7 @@ router.register(r"staff",               StaffViewSet,             basename="staf
 router.register(r"subject-assignments", SubjectAssignmentViewSet, basename="subject-assignment")
 
 urlpatterns = [
+    path('students/<int:pk>/parents/', StudentParents.as_view()),
     path("", include(router.urls)),
 ]
 

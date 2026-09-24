@@ -52,6 +52,10 @@ class StaffViewSet(TenantMixin, viewsets.ModelViewSet):
         "user", "school"
     ).prefetch_related("subjects_taught", "assigned_classes")
 
+    def perform_destroy(self, instance):
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError('Staff history must be retained. Change the employment status instead of deleting the staff member.')
+
     def get_serializer_class(self):
         return StaffListSerializer if self.action == "list" else StaffProfileSerializer
 
@@ -91,6 +95,9 @@ class StaffViewSet(TenantMixin, viewsets.ModelViewSet):
         POST /api/staff/{id}/assign-subjects/
         Body: { "subjects": [1, 2, 3] }
         """
+        if 'session_id' in request.data or 'term_id' in request.data:
+            from .assignment_views import AssignSubjectsMixin
+            return AssignSubjectsMixin.assign_subjects(self, request, pk)
         staff   = self.get_object()
         tenant  = self._get_tenant()
         ids     = request.data.get("subjects", [])

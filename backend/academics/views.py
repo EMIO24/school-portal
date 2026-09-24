@@ -28,7 +28,10 @@ from .serializers import (
 )
 
 
-class SessionViewSet(TenantMixin, viewsets.ModelViewSet):
+from enrollment.safety import RetainAcademicHistoryMixin
+
+
+class SessionViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
     """
     CRUD for AcademicSession + set-current action.
 
@@ -68,7 +71,7 @@ class SessionViewSet(TenantMixin, viewsets.ModelViewSet):
         )
 
 
-class TermViewSet(TenantMixin, viewsets.ModelViewSet):
+class TermViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
     """
     CRUD for Term + set-current action.
 

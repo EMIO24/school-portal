@@ -18,7 +18,7 @@ def require_assignment(request, class_arm, term=None, subject=None):
     if request.user.role != 'teacher':
         return
     from enrollment.models import SubjectAssignment
-    qs = SubjectAssignment.objects.filter(school=request.tenant, teacher__user=request.user, class_arm_id=class_arm)
+    qs = SubjectAssignment.objects.filter(school=request.tenant, teacher__user=request.user, teacher__employment_status='active', class_arm_id=class_arm)
     if term: qs = qs.filter(term_id=term)
     if subject: qs = qs.filter(subject_id=subject)
     if not qs.exists():
@@ -90,4 +90,9 @@ class TenantRelationsMixin:
             raise serializers.ValidationError({'term':'Term must belong to the selected session.'})
         if arm:
             require_assignment(request, arm.pk, getattr(term,'pk',None), getattr(subject,'pk',None))
+            student = attrs.get('student', getattr(self.instance, 'student', None))
+            if student is not None and hasattr(student, 'role'):
+                from enrollment.models import StudentProfile
+                if student.role != 'student' or not StudentProfile.objects.filter(user=student, school=request.tenant, current_class=arm).exists():
+                    raise serializers.ValidationError({'student':'Select a student enrolled in this class.'})
         return attrs

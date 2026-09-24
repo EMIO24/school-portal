@@ -185,46 +185,24 @@ class AssignSubjectsMixin:
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        errors  = []
-        created = []
-
+        # Validate the full replacement before removing any current assignments.
+        rows = []
+        for item in assignments:
+            row = SubjectAssignmentSerializer(data={
+                'teacher': teacher.pk, 'subject': item['subject_id'],
+                'class_arm': item['class_arm_id'], 'session': session.pk, 'term': term.pk,
+            }, context=self.get_serializer_context())
+            row.is_valid(raise_exception=True)
+            rows.append(row.validated_data)
         with transaction.atomic():
-            # Remove all existing assignments for this teacher + term
-            SubjectAssignment.objects.filter(
-                school=tenant, teacher=teacher, term=term
-            ).delete()
-
-            for item in assignments:
-                try:
-                    subject   = Subject.objects.get(pk=item["subject_id"],   school=tenant)
-                    class_arm = ClassArm.objects.get(pk=item["class_arm_id"], school=tenant)
-                except (Subject.DoesNotExist, ClassArm.DoesNotExist):
-                    errors.append({
-                        "subject_id":   item.get("subject_id"),
-                        "class_arm_id": item.get("class_arm_id"),
-                        "error": "Subject or class arm not found.",
-                    })
-                    continue
-
-                try:
-                    assignment, _ = SubjectAssignment.objects.get_or_create(
-                        school=tenant, teacher=teacher,
-                        subject=subject, class_arm=class_arm,
-                        session=session, term=term,
-                    )
-                    created.append(assignment)
-                except Exception as e:
-                    errors.append({
-                        "subject_id":   item["subject_id"],
-                        "class_arm_id": item["class_arm_id"],
-                        "error": str(e),
-                    })
-
-        return Response({
-            "created":       len(created),
-            "errors":        errors,
-            "assignments":   SubjectAssignmentSerializer(created, many=True).data,
-        }, status=status.HTTP_200_OK)
+            StaffProfile.objects.select_for_update().get(pk=teacher.pk, school=tenant)
+            SubjectAssignment.objects.filter(school=tenant, teacher=teacher, term=term).delete()
+            created = []
+            for values in rows:
+                assignment, _ = SubjectAssignment.objects.get_or_create(school=tenant, **values)
+                created.append(assignment)
+        return Response({'created': len(created), 'errors': [],
+                         'assignments': SubjectAssignmentSerializer(created, many=True).data})
 
 
 # ── Subject by-class action ────────────────────────────────────────────────

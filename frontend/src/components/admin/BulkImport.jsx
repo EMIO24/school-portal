@@ -20,7 +20,7 @@ const REQUIRED_COLS = [
 const OPTIONAL_COLS = [
   "email",
   "state_of_origin","religion",
-  "guardian_email","guardian_relationship",
+  "guardian_email","guardian_relationship","class_arm",
 ];
 
 // ── CSV parser (client-side preview only) ─────────────────────────────────
@@ -208,7 +208,7 @@ export default function BulkImport({
   endpoint = '/api/students/bulk-import/',
   requiredCols = REQUIRED_COLS,
   templateCols = [...REQUIRED_COLS, ...OPTIONAL_COLS],
-  exampleRow = 'Amaka,Okonkwo,female,2008-05-14,JSS1,Mrs Okonkwo,08012345678,,Lagos,Christianity,parent@example.com,mother',
+  exampleRow = 'Amaka,Okonkwo,female,2008-05-14,JSS1,Mrs Okonkwo,08012345678,,Lagos,,parent@example.com,mother,A',
   title = 'Bulk Student Import',
   entityLabel = 'Students',
   templateName = 'student_import_template.csv',
