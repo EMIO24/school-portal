@@ -43,21 +43,21 @@ test("retains input and displays backend field errors", async () => {
   expect(screen.getByLabelText("Email (optional)")).toHaveValue("ada@test.example");
   expect(screen.getByRole("button", { name: "Add Student" })).toBeEnabled();
 });
-test("updates profile fields without submitting read-only account fields", async () => {
+test("updates account and profile fields together", async () => {
   api.get.mockImplementation(async url => ({ data: url.includes("/students/") ?
     { id: 9, first_name: "Ada", last_name: "Test", email: "ada@test.example", current_class: 4, guardian_name: "Old guardian" } :
     [{ id: 4, full_name: "JSS1A" }] }));
   api.patch.mockResolvedValue({ data: { id: 9 } });
   renderPage(<StudentForm />, { path: "/students/9/edit", route: "/students/:id/edit" });
-  expect(await screen.findByLabelText("Email (optional)")).toBeDisabled();
+  expect(await screen.findByLabelText("Email (optional)")).toBeEnabled();
   fireEvent.change(screen.getByLabelText("Guardian name"), { target: { value: "New guardian" } });
   fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
   await waitFor(() => expect(api.patch).toHaveBeenCalled());
   const [url, payload] = api.patch.mock.calls[0];
   expect(url).toBe("/api/students/9/");
   expect(payload.guardian_name).toBe("New guardian");
-  expect(payload).not.toHaveProperty("new_email");
-  expect(payload).not.toHaveProperty("new_first_name");
+  expect(payload.new_email).toBe("ada@test.example");
+  expect(payload.new_first_name).toBe("Ada");
 });
 test("does not allow saving when reference data fails to load", async () => {
   api.get.mockRejectedValue(new Error("Offline"));

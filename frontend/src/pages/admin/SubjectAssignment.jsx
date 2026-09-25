@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 /**
  * pages/admin/SubjectAssignment.jsx
  *
@@ -295,6 +296,7 @@ export default function SubjectAssignmentPage() {
   const [classArms,    setClassArms]    = useState([]);
   const [selectedTerm, setSelectedTerm] = useState(null);
   const [selectedTeacher, setSelectedTeacher] = useState(null);
+  const [assignmentReady,setAssignmentReady] = useState(false), [assignmentError,setAssignmentError] = useState(""), [retry,setRetry] = useState(0);
   const [existing,     setExisting]     = useState([]);  // teacher's current assignments
   const [grid,         setGrid]         = useState(null);
   const [gridArms,     setGridArms]     = useState([]);
@@ -314,10 +316,10 @@ export default function SubjectAssignmentPage() {
   // Load reference data once
   useEffect(() => {
     Promise.all([
-      api.get("/api/sessions/"),
-      api.get("/api/staff/?role=teacher&page_size=200"),
-      api.get("/api/subjects/"),
-      api.get("/api/class-arms/"),
+      referenceOptions("/api/sessions/"),
+      referenceOptions("/api/staff/?role=teacher&status=active"),
+      referenceOptions("/api/subjects/"),
+      referenceOptions("/api/class-arms/"),
     ]).then(([sess, teach, sub, arms]) => {
       setSessions(sess.data.results || sess.data);
       setTeachers(teach.data.results || teach.data);
@@ -352,23 +354,25 @@ export default function SubjectAssignmentPage() {
     else { setGrid(null); setAssignmentCounts({}); }
   }, [selectedTerm, loadGrid]);
 
-  // Load existing assignments for selected teacher+term
+  // Never replace assignments from an incomplete or stale selection.
   useEffect(() => {
-    if (!selectedTeacher || !selectedTerm) { setExisting([]); return; }
-    api.get(`/api/subject-assignments/?teacher=${selectedTeacher.id}&term=${selectedTerm.id}`)
-      .then(({ data }) => setExisting(data.results || data))
-      .catch(() => setExisting([]));
-  }, [selectedTeacher, selectedTerm]);
+    let active=true;setAssignmentReady(false);setAssignmentError('');setExisting([]);
+    if (!selectedTeacher || !selectedTerm) return;
+    referenceOptions(`/api/subject-assignments/?teacher=${selectedTeacher.id}&term=${selectedTerm.id}`)
+      .then(({data})=>{if(active){setExisting(data);setAssignmentReady(true);}})
+      .catch(()=>{if(active)setAssignmentError('Could not load existing assignments. Retry before saving.');});
+    return ()=>{active=false;};
+  }, [selectedTeacher, selectedTerm, retry]);
 
   async function handleSave(payload) {
-    if (!selectedTeacher || !selectedTerm) return;
+    if (!selectedTeacher || !selectedTerm || !assignmentReady) return;
     setSaving(true);
     try {
       await api.post(`/api/staff/${selectedTeacher.id}/assign-subjects/`, payload);
       showToast("Assignments saved.");
       await loadGrid(selectedTerm.id);
       // Reload this teacher's assignments
-      const { data } = await api.get(
+      const { data } = await referenceOptions(
         `/api/subject-assignments/?teacher=${selectedTeacher.id}&term=${selectedTerm.id}`
       );
       setExisting(data.results || data);
@@ -385,6 +389,7 @@ export default function SubjectAssignmentPage() {
 
   return (
     <div className="sa-root">
+      {assignmentError && <p role="alert">{assignmentError} <button onClick={()=>setRetry(n=>n+1)}>Retry</button></p>}
 
       {toast && (
         <div className={`sa-toast sa-toast--${toast.type}`}>
@@ -447,7 +452,7 @@ export default function SubjectAssignmentPage() {
               classArms={classArms}
               existing={existing}
               onSave={handleSave}
-              saving={saving}
+              saving={saving || !assignmentReady}
             />
           )}
         </div>

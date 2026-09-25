@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import api from "../../services/api";
@@ -12,6 +13,7 @@ const initialForm = {
 export default function StudentForm() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [originalStatus,setOriginalStatus] = useState("active");
   const [form, setForm] = useState(initialForm);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,11 +25,12 @@ export default function StudentForm() {
   useEffect(() => {
     let active = true;
     setLoading(true); setLoadError("");
-    Promise.all([api.get("/api/class-arms/"), id ? api.get(`/api/students/${id}/`) : Promise.resolve(null)])
+    Promise.all([referenceOptions("/api/class-arms/"), id ? api.get(`/api/students/${id}/`) : Promise.resolve(null)])
       .then(([arms, student]) => {
         if (!active) return;
         setClasses(Array.isArray(arms.data) ? arms.data : arms.data.results || []);
         const data = student?.data;
+        setOriginalStatus(data?.status || "active");
         setForm(data ? { ...initialForm, ...Object.fromEntries(Object.keys(initialForm).map(key => [key, data[key] ?? initialForm[key]])),
           new_first_name: data.first_name || "", new_last_name: data.last_name || "", new_email: data.email || "" } : initialForm);
       })
@@ -38,9 +41,10 @@ export default function StudentForm() {
 
   async function submit(event) {
     event.preventDefault();
+    if (id && form.status !== originalStatus && form.status !== "active" && !window.confirm("Deactivate this student account? Login will be disabled; academic and payment history will remain.")) return;
     setSaving(true); setErrors({}); setError("");
     const payload = { ...form, dob: form.dob || null, current_class: form.current_class ? Number(form.current_class) : null };
-    if (id) { delete payload.new_email; delete payload.new_first_name; delete payload.new_last_name; }
+
     try {
       const { data } = id ? await api.patch(`/api/students/${id}/`, payload) : await api.post("/api/students/", payload);
       navigate(`/admin/students/${data.id}`, { replace: true });
@@ -53,7 +57,7 @@ export default function StudentForm() {
 
   function field(key, label, type = "text", options = null) {
     const account = key.startsWith("new_");
-    const props = { id: key, name: key, value: form[key], disabled: saving || (Boolean(id) && account),
+    const props = { id: key, name: key, value: form[key], disabled: saving,
       required: account && key !== "new_email" && !id, onChange: e => setForm(prev => ({ ...prev, [key]: e.target.value })),
       "aria-invalid": Boolean(errors[key]), "aria-describedby": errors[key] ? `${key}-error` : undefined };
     return <div className="stf-field" key={key}>
@@ -68,7 +72,7 @@ export default function StudentForm() {
     {loading ? <p role="status">Loading student form...</p> : loadError ? <p role="alert">{loadError}</p> : <form className="stf-form" onSubmit={submit}>
       {error && <div role="alert" className="stf-api-error">{error}</div>}
       <section className="stf-section"><h2>Student details</h2>
-        <p>{id ? "Account name and email are read-only here." : "The admission number is generated when you save. It is also the student's initial password."}</p>
+        <p>{id ? "Changing a name or email changes future sign-in details. Admission number and history remain unchanged." : "The admission number is generated when you save. It is also the student's initial password."}</p>
         <div className="stf-grid stf-grid--3">
           {field("new_first_name", "First name")}{field("new_last_name", "Last name")}{field("new_email", "Email (optional)", "email")}
           {field("dob", "Date of birth", "date")}

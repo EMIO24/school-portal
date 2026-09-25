@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 import React, {useEffect, useState} from 'react';
 import api from '../../services/api';
 import {scoringError} from './ScoringConfiguration';
@@ -5,7 +6,7 @@ import {scoringError} from './ScoringConfiguration';
 export default function ResultReview({classArm,term}) {
   const [subjects,setSubjects]=useState([]), [subject,setSubject]=useState(''), [sheet,setSheet]=useState(null);
   const [error,setError]=useState(''), [busy,setBusy]=useState(false), [reason,setReason]=useState(''), [revision,setRevision]=useState(0);
-  useEffect(()=>{api.get('/api/subjects/').then(r=>setSubjects(r.data.results ?? r.data)).catch(e=>setError(scoringError(e)));},[]);
+  useEffect(()=>{referenceOptions('/api/subjects/').then(r=>setSubjects(r.data.results ?? r.data)).catch(e=>setError(scoringError(e)));},[]);
   useEffect(()=>{
     let active=true;setSheet(null);setError('');
     if(classArm && term && subject) api.get(`/api/gradebook/entries/sheet/?class_arm=${classArm}&term=${term}&subject=${subject}`).then(r=>{if(active)setSheet(r.data);}).catch(e=>{if(active)setError(scoringError(e));});

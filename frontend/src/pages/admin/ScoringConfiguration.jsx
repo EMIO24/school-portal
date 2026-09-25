@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 import React, {useEffect, useState} from 'react';
 import api from '../../services/api';
 
@@ -9,7 +10,7 @@ export function scoringError(error) {
 export default function ScoringConfiguration({onSaved}) {
   const [terms,setTerms]=useState([]), [term,setTerm]=useState(''), [config,setConfig]=useState(null);
   const [busy,setBusy]=useState(false), [error,setError]=useState(''), [notice,setNotice]=useState('');
-  useEffect(() => {api.get('/api/terms/').then(r => setTerms(r.data.results ?? r.data)).catch(e => setError(scoringError(e)));},[]);
+  useEffect(() => {referenceOptions('/api/terms/').then(r => setTerms(r.data.results ?? r.data)).catch(e => setError(scoringError(e)));},[]);
   useEffect(() => {
     let active=true; setConfig(null); setError(''); setNotice('');
     if(term) api.get(`/api/gradebook/configuration/?term=${term}`).then(r => {if(active)setConfig(r.data);}).catch(e => {if(active)setError(scoringError(e));});

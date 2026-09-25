@@ -34,8 +34,37 @@ class StudentParents(APIView):
     def get(self, request, pk):
         student = self.student(request, pk)
         links = ParentStudentLink.objects.filter(student=student, school=request.tenant, parent__school=request.tenant).select_related('parent')
-        return Response([{'id':link.pk, 'name':link.parent.full_name, 'email':link.parent.email,
+        if request.query_params.get('search'):
+            from django.db.models import Q
+            query = request.query_params['search'].strip()[:150]
+            parents = CustomUser.objects.filter(school=request.tenant, role='parent').filter(
+                Q(first_name__icontains=query)|Q(last_name__icontains=query)|Q(email__icontains=query)|Q(phone_number__icontains=query)).order_by('last_name','id')[:20]
+            return Response([{'first_name':p.first_name,'last_name':p.last_name,'email':p.email,'phone':p.phone_number} for p in parents])
+        return Response([{'id':link.pk, 'name':link.parent.full_name, 'first_name':link.parent.first_name, 'last_name':link.parent.last_name, 'is_active':link.parent.is_active, 'email':link.parent.email,
             'phone':link.parent.phone_number, 'relationship':link.relationship} for link in links])
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        school = School.objects.select_for_update().get(pk=request.tenant.pk)
+        student = self.student(request, pk)
+        link_id = serializers.IntegerField(min_value=1).run_validation(request.query_params.get('link'))
+        link = get_object_or_404(ParentStudentLink, pk=link_id, student=student, school=school, parent__school=school, parent__role='parent')
+        form = ParentLinkInput(data=request.data, partial=True)
+        form.is_valid(raise_exception=True)
+        changes = dict(form.validated_data)
+        if 'phone' in changes:
+            phone = changes.pop('phone')
+            if CustomUser.objects.filter(school=school,role='parent',phone_number=phone).exclude(pk=link.parent_id).exists():
+                raise serializers.ValidationError('This phone cannot be used. Check the parent details.')
+            changes['phone_number'] = phone
+        if 'is_active' in request.data:
+            changes['is_active'] = serializers.BooleanField().run_validation(request.data['is_active'])
+        relationship = changes.pop('relationship', link.relationship)
+        from .account_editing import edit_account
+        edit_account(request, link.parent, changes)
+        link.relationship = relationship
+        link.save(update_fields=['relationship'])
+        return Response({'id':link.pk})
 
     @transaction.atomic
     def post(self, request, pk):
@@ -59,6 +88,7 @@ class StudentParents(APIView):
             target=str(student.pk), details={'school_id':school.pk, 'parent_id':parent.pk, 'link_id':link.pk})
         return Response({'id':link.pk}, status=201 if created else 200)
 
+    @transaction.atomic
     def delete(self, request, pk):
         student = self.student(request, pk)
         link_id = serializers.IntegerField(min_value=1).run_validation(request.query_params.get('link'))

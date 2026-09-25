@@ -303,3 +303,51 @@ behavior still needs deployment-compatible verification. Styled invoice/receipt
 PDFs, updated academic PDFs and responsive browser layouts remain manual promotion
 checks; native WeasyPrint libraries are unavailable locally. No dependencies,
 production-data changes, merge or deployment were introduced.
+
+
+## Batch 4C: Basic account and operational completion
+
+Student/staff identity edits update the existing account atomically and retain
+passwords, generated identifiers, assignments and historical records. Access-state
+changes retain records; staff on leave retain the existing access behavior. Parent
+search, reuse, account editing and unlinking are school-admin scoped; unlinking
+removes only that child's relationship. Account edits record field names, not
+sensitive values, in the audit event. No plan entitlements changed.
+
+Existing CSV preview/confirmation and per-row partial imports are reused. Invalid
+student dates now return row errors instead of failing after earlier rows commit.
+Duplicate headers, malformed rows, invalid emails and supplied identifier/tenant
+columns are rejected. Identifiers remain generated; imports create new records.
+Guardian contact data alone does not grant parent portal access.
+
+Reference selectors load every page; student/staff directories stay paginated.
+Teachers see their own paginated assignments. Session-aware term selection reduces
+ambiguous academic context. Failed staff loads prevent saving; failed/incomplete
+assignment loads prevent replacing existing assignments and offer retry. Existing
+setup readiness and role navigation remain in place.
+
+Verification: 13 focused backend tests passed. The broader Basic run had 172
+passing tests, two PostgreSQL-only skips and one loader error from an incorrect
+login test-module name. Running the correct accounts.test_student_login module
+separately passed all 12 tests. Final staff leave-state regression passed separately.
+Frontend: 32 tests passed in the broader targeted run; 13 passed after the final
+loading protections (including two new cases), covering 34 distinct tests across
+runs. The final seven BasicCompletion frontend tests also passed after the staff
+leave-state confirmation correction. Django system and migration checks passed;
+no new migrations/dependencies.
+Production frontend build passed. These are local checks, not browser/device proof.
+
+Measured SQLite directory baseline and 500-student fixture both used 3 SQL queries;
+500 students still returned 20 rows per page. This demonstrates bounded response
+size/query count, not production latency or concurrent-user capacity. Main JS build
+was 315.07 kB gzip (about +1.74 kB); no production performance claim is made.
+
+Remaining P2: CSV preview shows the first five rows and is not a server dry run;
+richer migration/import validation remains separate. Hands-on desktop/tablet/mobile
+and slow-network Basic journeys remain unverified. This slice does not certify the
+entire Basic product. Next recommended batch: Commercial Simulation; not started.
+
+**PRE-PROMOTION POSTGRESQL TEST REQUIRED** remains for both billing concurrency
+tests and deployment-compatible transaction behavior. Styled invoice/receipt and
+academic PDFs require native WeasyPrint verification; responsive billing and Basic
+browser/device workflows remain promotion gates. No merge, push or deployment.

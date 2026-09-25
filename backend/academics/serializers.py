@@ -25,6 +25,7 @@ class HolidaySerializer(serializers.ModelSerializer):
 
 
 class TermSerializer(serializers.ModelSerializer):
+    session_name = serializers.CharField(source='session.name', read_only=True)
     holidays           = HolidaySerializer(many=True, read_only=True)
     name_display       = serializers.CharField(source="get_name_display", read_only=True)
     name_display_short = serializers.CharField(
@@ -35,7 +36,7 @@ class TermSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Term
         fields = [
-            "id", "session", "name", "name_display", "name_display_short",
+            "id", "session", "session_name", "name", "name_display", "name_display_short",
             "start_date", "end_date", "is_current",
             "next_term_begins", "duration_weeks", "holidays",
         ]

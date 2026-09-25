@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 /**
  * frontend/src/pages/teacher/TakeAttendance.jsx
  *
@@ -83,8 +84,8 @@ export default function TakeAttendance() {
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/api/terms/'),
-      api.get('/api/class-arms/'),
+      referenceOptions('/api/terms/'),
+      referenceOptions('/api/class-arms/'),
       api.get('/api/timetable/periods/'),
       api.get('/api/school/me/'),       // includes attendance_mode
     ]).then(([t, c, p, s]) => {
@@ -228,7 +229,7 @@ export default function TakeAttendance() {
             <select className="att-select" value={selectedTerm}
               onChange={e => setSelectedTerm(e.target.value)}>
               <option value="">— Select term —</option>
-              {terms.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {terms.map(t => <option key={t.id} value={t.id}>{t.name_display || t.name}{t.session_name ? ` / ${t.session_name}` : ""}</option>)}
             </select>
           </div>
 

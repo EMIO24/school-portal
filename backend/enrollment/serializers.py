@@ -148,22 +148,31 @@ class StudentProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer
         return data
 
     @transaction.atomic
+    def update(self, instance, validated_data):
+        from .account_editing import account_changes, edit_account
+        changes = account_changes(validated_data)
+        if 'status' in validated_data:
+            changes['is_active'] = validated_data['status'] == 'active'
+        edit_account(self.context['request'], instance.user, changes)
+        return super().update(instance, validated_data)
+
+    @transaction.atomic
     def create(self, validated_data):
         """
         Create both the User account and the StudentProfile in one transaction.
         Password defaults to the admission number — user must change on first login.
         """
         school      = validated_data.pop("school")
-        email       = validated_data.pop("new_email",      None)
+        email       = (validated_data.pop("new_email", None) or "").strip().lower()
         first_name  = validated_data.pop("new_first_name", "")
         last_name   = validated_data.pop("new_last_name",  "")
 
         if not email and (not first_name.strip() or not last_name.strip()):
             raise serializers.ValidationError("First and last name are required for student name login.")
 
-        if email and User.objects.filter(email=email).exists():
+        if email and User.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError(
-                {"new_email": f"A user with email '{email}' already exists."}
+                {"new_email": "This email cannot be used. Check the account details."}
             )
 
         user = User.objects.create_user(
@@ -174,6 +183,7 @@ class StudentProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer
             role="student",
             school=school,
             must_change_password=True,
+            is_active=validated_data.get("status", "active") == "active",
         )
 
         profile = StudentProfile.objects.create(

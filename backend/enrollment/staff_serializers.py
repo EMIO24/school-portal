@@ -89,9 +89,9 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
         state = validated_data.get('employment_status')
         if state in ('suspended', 'terminated', 'resigned') and instance.user_id == self.context['request'].user.pk:
             raise serializers.ValidationError('Ask another administrator to deactivate your account.')
-        # Account creation fields must never be silently written onto a profile.
-        for key in ('new_email', 'new_first_name', 'new_last_name', 'new_role'):
-            validated_data.pop(key, None)
+        from .account_editing import account_changes, edit_account
+        edit_account(self.context['request'], instance.user, account_changes(validated_data))
+        validated_data.pop('new_role', None)
         instance = super().update(instance, validated_data)
         if state in ('active', 'suspended', 'terminated', 'resigned'):
             instance.user.is_active = state == 'active'
@@ -105,7 +105,7 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         school      = validated_data.pop("school")
-        email       = validated_data.pop("new_email",      None)
+        email       = (validated_data.pop("new_email", None) or "").strip().lower()
         first_name  = validated_data.pop("new_first_name", "")
         last_name   = validated_data.pop("new_last_name",  "")
         role        = validated_data.pop("new_role",       "teacher")
@@ -116,9 +116,9 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
         if not email:
             raise serializers.ValidationError({"new_email": "Email is required."})
 
-        if User.objects.filter(email=email).exists():
+        if User.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError(
-                {"new_email": f"A user with email '{email}' already exists."}
+                {"new_email": "This email cannot be used. Check the account details."}
             )
 
         user = User.objects.create_user(
@@ -129,6 +129,7 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
             role=role,
             school=school,
             must_change_password=True,
+            is_active=validated_data.get("employment_status", "active") not in ("suspended", "terminated", "resigned"),
         )
 
         profile = StaffProfile.objects.create(

@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 /** Term-configured score sheet. Saved totals and grades are authoritative. */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import GradeCell, { GradeBadge, ComputedCell, rowClass } from '../../components/teacher/GradeCell';
@@ -37,10 +38,10 @@ export default function ScoreEntry() {
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/api/terms/'),
-      api.get('/api/sessions/'),
-      api.get('/api/class-arms/'),
-      api.get('/api/subjects/'),
+      referenceOptions('/api/terms/'),
+      referenceOptions('/api/sessions/'),
+      referenceOptions('/api/class-arms/'),
+      referenceOptions('/api/subjects/'),
     ]).then(([t, s, c, sub]) => {
       const termList = t.data.results ?? t.data;
       setTerms(termList);
@@ -49,7 +50,7 @@ export default function ScoreEntry() {
       setSubjects(sub.data.results ?? sub.data);
 
       const active = termList.find(x => x.is_current);
-      if (active) setSelTerm(String(active.id));
+      if (active) {setSelTerm(String(active.id));setSelSession(String(active.session));}
     }).catch(() => setAlert({type:'error',msg:'Could not load score-entry options. Reload this page to retry.'}));
   }, []);
 
@@ -193,8 +194,8 @@ export default function ScoreEntry() {
       {/* Controls */}
       <div className="gb-controls">
         {[
-          { label: 'Term',    val: selTerm,    set: setSelTerm,    opts: terms,     labelKey: 'name' },
-          { label: 'Session', val: selSession, set: setSelSession, opts: sessions,  labelKey: 'name' },
+          { label: 'Term',    val: selTerm,    set: setSelTerm,    opts: terms.filter(t=>!selSession || String(t.session)===selSession), labelKey: 'name' },
+          { label: 'Session', val: selSession, set: value=>{setSelSession(value);setSelTerm('');}, opts: sessions, labelKey: 'name' },
           { label: 'Class',   val: selClass,   set: setSelClass,   opts: classArms, labelKey: 'name' },
           { label: 'Subject', val: selSubject, set: setSelSubject, opts: subjects,  labelKey: 'name' },
         ].map(({ label, val, set, opts, labelKey }) => (

@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 /**
  * frontend/src/pages/admin/ResultManagement.jsx
  *
@@ -106,8 +107,8 @@ export default function ResultManagement() {
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/api/terms/'),
-      api.get('/api/class-arms/'),
+      referenceOptions('/api/terms/'),
+      referenceOptions('/api/class-arms/'),
     ]).then(([t, c]) => {
       const termList = t.data.results ?? t.data;
       setTerms(termList);
@@ -207,7 +208,7 @@ export default function ResultManagement() {
           <label>Term</label>
           <select className="res-select" value={selTerm} onChange={e => setSelTerm(e.target.value)}>
             <option value="">— Select term —</option>
-            {terms.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {terms.map(t => <option key={t.id} value={t.id}>{t.name_display || t.name}{t.session_name ? ` / ${t.session_name}` : ""}</option>)}
           </select>
         </div>
         <div className="res-field-group">

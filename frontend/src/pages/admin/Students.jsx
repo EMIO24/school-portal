@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../services/api";
@@ -14,7 +15,7 @@ export default function Students() {
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     let active = true;
-    api.get("/api/class-arms/").then(({ data }) => { if (active) setClasses(data.results ?? data); }).catch(() => {});
+    referenceOptions("/api/class-arms/").then(({ data }) => { if (active) setClasses(data.results ?? data); }).catch(() => {});
     return () => { active = false; };
   }, []);
   useEffect(() => {

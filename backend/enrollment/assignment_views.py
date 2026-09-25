@@ -61,6 +61,8 @@ class SubjectAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
             "session", "term",
         ).filter(school=tenant)
 
+        if self.request.query_params.get('mine') == 'true':
+            qs = qs.filter(teacher__user=self.request.user, teacher__employment_status='active')
         for param in ("term", "class_arm", "teacher", "subject", "session"):
             val = self.request.query_params.get(param)
             if val:

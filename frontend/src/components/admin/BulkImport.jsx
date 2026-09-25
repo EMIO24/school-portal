@@ -298,7 +298,10 @@ export default function BulkImport({
           <p className="bi-sub">
             Upload multiple records from a CSV file.
             Required columns: {requiredCols.join(", ")}.
+            Optional columns: {templateCols.filter(c => !requiredCols.includes(c)).join(', ')}.
           </p>
+          <p>Review the preview before importing. Valid rows are saved individually; failed rows are listed with their row number and are not saved. Re-import only corrected failures. Paideia generates account identifiers; do not include identifier or school columns.</p>
+          {endpoint.includes('/students/') && <p>Use an existing class level (for example JSS1). If it has multiple arms, include class_arm with the arm name (for example A). Guardian details do not grant parent portal access.</p>}
         </div>
         <TemplateDownload columns={templateCols} exampleRow={exampleRow} templateName={templateName} />
       </div>
@@ -325,7 +328,7 @@ export default function BulkImport({
                   {preview && ` · ${preview.totalRows} rows`}
                 </div>
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={reset} type="button">
+              <button className="btn btn-ghost btn-sm" disabled={uploading} onClick={reset} type="button">
                 Remove ✕
               </button>
             </div>
@@ -356,6 +359,7 @@ export default function BulkImport({
               <button
                 className="btn btn-ghost"
                 onClick={reset}
+                disabled={uploading}
                 type="button"
               >
                 Cancel

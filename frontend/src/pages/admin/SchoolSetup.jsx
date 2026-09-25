@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 import React, {useCallback, useEffect, useState} from 'react';
 import {Link} from 'react-router-dom';
 import api from '../../services/api';
@@ -20,7 +21,7 @@ export default function SchoolSetup() {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [s,l,a] = await Promise.all([api.get('/api/school/setup/'),api.get('/api/class-levels/'),api.get('/api/class-arms/')]);
+      const [s,l,a] = await Promise.all([api.get('/api/school/setup/'),referenceOptions('/api/class-levels/'),referenceOptions('/api/class-arms/')]);
       setSetup(s.data); setIdentity(s.data.identity); setLevels(l.data.results ?? l.data); setArms(a.data.results ?? a.data);
     } catch(e) {setError(message(e));} finally {setLoading(false);}
   },[]);
