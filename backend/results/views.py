@@ -54,6 +54,7 @@ from .serializers import (
 )
 
 from gradebook.models import ScoreEntry, AffectiveDomain, PsychomotorDomain
+from gradebook.scoring import entry_components
 from attendance.models import AttendanceRecord
 
 
@@ -124,7 +125,7 @@ def _assemble_slip_data(school, student, term):
     scores = (
         ScoreEntry.objects
         .filter(school=school, student=student, term=term, is_published=True)
-        .select_related('subject')
+        .select_related('subject', 'policy', 'class_arm__class_level')
         .order_by('subject__name')
     )
 
@@ -132,6 +133,8 @@ def _assemble_slip_data(school, student, term):
     for entry in scores:
         score_rows.append({
             'subject':     entry.subject.name,
+            'components': entry_components(entry),
+            'grading_bands': entry.policy.bands if entry.policy_id else [],
             'first_test':  float(entry.first_test  or 0),
             'second_test': float(entry.second_test or 0),
             'assignment':  float(entry.assignment  or 0),
@@ -221,7 +224,7 @@ def _assemble_slip_data(school, student, term):
         # Student
         'student_name':   f"{student.last_name} {student.first_name}".strip(),
         'admission_no':   getattr(profile, 'admission_number', ''),
-        'class_name':     str(getattr(profile, 'current_class', '')),
+        'class_name':     str(scores[0].class_arm if scores else getattr(profile, 'current_class', '')),
         'gender':         getattr(profile, 'gender', ''),
         'date_of_birth':  getattr(profile, 'date_of_birth', ''),
         'photo_url':      _safe_asset_url(getattr(profile, 'photo_url', '')),
@@ -371,7 +374,10 @@ class ResultRemarkView(TenantMixin, APIView):
             return Response({'detail': 'No result found.'}, status=404)
         return Response(ResultRemarkSerializer(obj).data)
 
+    @transaction.atomic
     def patch(self, request, student_id):
+        from gradebook.lifecycle import lock_school, require_unpublished
+        lock_school(self.school)
         term_id = request.query_params.get('term')
         if not term_id:
             return Response({'detail': 'term param required.'}, status=400)
@@ -386,6 +392,7 @@ class ResultRemarkView(TenantMixin, APIView):
         except (StudentProfile.DoesNotExist, Term.DoesNotExist):
             return Response({'detail': 'Student or term not found.'}, status=404)
 
+        require_unpublished(self.school, profile.user, term)
         class_arm_id = request.data.get('class_arm') or getattr(profile, 'current_class_id', None)
         if not class_arm_id:
             return Response({'detail': 'class_arm is required for this student.'}, status=400)

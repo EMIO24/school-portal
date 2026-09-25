@@ -1,54 +1,9 @@
-/**
- * frontend/src/pages/teacher/ScoreEntry.jsx
- *
- * Spreadsheet-style score entry for a class × subject × term.
- *
- * Layout:
- *   S/N | Student Name | 1st Test /10 | 2nd Test /10 | Assignment /10
- *   | Project /5 | Practical /5 | CA Total /40 | Exam /60 | Total | Grade | Remark
- *
- * UX:
- *   - Tab moves focus to next editable cell (left→right, wraps to next row)
- *   - CA Total and Grade/Remark update client-side as user types
- *   - Row background tinted green/amber/red by result band
- *   - "Save Draft"    → POST bulk-update/ (is_published stays false)
- *   - Administrators review and publish saved drafts in Result Management.
- *   - Unsaved dot on page title while there are pending changes
- *   - Per-cell error display for max exceeded violations
- */
-
+/** Term-configured score sheet. Saved totals and grades are authoritative. */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import GradeCell, { GradeBadge, ComputedCell, rowClass } from '../../components/teacher/GradeCell';
 import api from '../../services/api';
+import {scoringError} from '../admin/ScoringConfiguration';
 import '../../styles/ScoreEntry.css';
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const CA_FIELDS = [
-  { key: 'first_test',  label: '1st Test',   max: 10 },
-  { key: 'second_test', label: '2nd Test',   max: 10 },
-  { key: 'assignment',  label: 'Assignment', max: 10 },
-  { key: 'project',     label: 'Project',    max:  5 },
-  { key: 'practical',   label: 'Practical',  max:  5 },
-];
-const MAX_EXAM = 60;
-
-// All editable columns in Tab order
-const EDITABLE_KEYS = [...CA_FIELDS.map(f => f.key), 'exam_score'];
-
-// ─── Grading helper (client-side, mirrors backend logic) ─────────────────────
-
-function resolveGrade(total, bands) {
-  if (!bands?.length) return { grade: '', remark: '' };
-  const band = bands.find(b => total >= b.min_score && total <= b.max_score);
-  return band ? { grade: band.grade, remark: band.remark } : { grade: 'F9', remark: 'Fail' };
-}
-
-function computeCA(row) {
-  return CA_FIELDS.reduce((sum, f) => sum + (parseFloat(row[f.key]) || 0), 0);
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ScoreEntry() {
   // Selectors
@@ -62,8 +17,9 @@ export default function ScoreEntry() {
   const [selClass,    setSelClass]    = useState('');
   const [selSubject,  setSelSubject]  = useState('');
 
-  // Grade bands for client-side preview
-  const [gradeBands,  setGradeBands]  = useState([]);
+  // Components loaded from the selected term.
+  const [components, setComponents] = useState([]);
+  const EDITABLE_KEYS = useMemo(() => components.map(c=>c.key),[components]);
 
   // Row data keyed by studentId
   const [rows,       setRows]       = useState({});   // { studentId: rowObj }
@@ -75,6 +31,7 @@ export default function ScoreEntry() {
   const [saving,     setSaving]     = useState(false);
   const [alert,      setAlert]      = useState(null); // { type, msg }
 
+  const loadVersion = useRef(0);
   const cellRefs = useRef({});   // { `${studentId}_${field}` : ref }
 
   // ── Boot ────────────────────────────────────────────────────────────────────
@@ -84,14 +41,12 @@ export default function ScoreEntry() {
       api.get('/api/sessions/'),
       api.get('/api/class-arms/'),
       api.get('/api/subjects/'),
-      api.get('/api/gradebook/entries/grade-scale/'),
-    ]).then(([t, s, c, sub, gs]) => {
+    ]).then(([t, s, c, sub]) => {
       const termList = t.data.results ?? t.data;
       setTerms(termList);
       setSessions(s.data.results ?? s.data);
       setClassArms(c.data.results ?? c.data);
       setSubjects(sub.data.results ?? sub.data);
-      setGradeBands(gs.data.bands ?? []);
 
       const active = termList.find(x => x.is_current);
       if (active) setSelTerm(String(active.id));
@@ -100,7 +55,8 @@ export default function ScoreEntry() {
 
   // ── Load scores when all selectors are set ──────────────────────────────────
   const loadScores = useCallback(async () => {
-    if (!selTerm || !selClass || !selSubject) return;
+    const version = ++loadVersion.current;
+    if (!selTerm || !selClass || !selSubject) {setStudents([]);setRows({});setDirty(false);return;}
     setLoading(true);
     setDirty(false);
     setErrors({});
@@ -108,7 +64,9 @@ export default function ScoreEntry() {
       const { data } = await api.get(
         '/api/gradebook/entries/sheet/?class_arm=' + selClass + '&subject=' + selSubject + '&term=' + selTerm
       );
+      if(version !== loadVersion.current)return;
       const entries = data.entries;
+      setComponents(data.configuration.components);
       const allStudents = data.students.map(stu => ({...stu, id:stu.user}));
       setSelSession(String(data.session));
       setStudents(allStudents);
@@ -117,29 +75,15 @@ export default function ScoreEntry() {
       const rowMap = {};
       allStudents.forEach(stu => {
         const existing = entries.find(e => e.student === stu.id);
-        rowMap[stu.id] = existing
-          ? {
-              first_test:  existing.first_test,
-              second_test: existing.second_test,
-              assignment:  existing.assignment,
-              project:     existing.project,
-              practical:   existing.practical,
-              exam_score:  existing.exam_score,
-              is_published: existing.is_published,
-              entry_id:    existing.id,
-            }
-          : {
-              first_test: '', second_test: '', assignment: '',
-              project: '', practical: '', exam_score: '',
-              is_published: false, entry_id: null,
-            };
+        rowMap[stu.id] = {...existing,...Object.fromEntries(data.configuration.components.map(c=>[c.key,existing?.policy ? (existing.component_scores[c.key] ?? '') : (existing?.[c.key] ?? '')])),review_state:existing?.review_state || 'draft',is_published:existing?.is_published || false};
       });
       setRows(rowMap);
     } catch {
+      if(version !== loadVersion.current)return;
       setStudents([]); setRows({});
       setAlert({type:'error',msg:'Could not load this score sheet. Check your class, subject and term assignment.'});
     } finally {
-      setLoading(false);
+      if(version === loadVersion.current)setLoading(false);
     }
   }, [selTerm, selClass, selSubject]);
 
@@ -147,7 +91,7 @@ export default function ScoreEntry() {
 
   // ── Cell change ─────────────────────────────────────────────────────────────
   const handleChange = useCallback((studentId, field, value) => {
-    setRows(prev => ({ ...prev, [studentId]: { ...prev[studentId], [field]: value } }));
+    setRows(prev => ({ ...prev, [studentId]: { ...prev[studentId], [field]: value, grade:"", remark:"Save to calculate grade" } }));
     setDirty(true);
     // Clear per-cell error on change
     setErrors(prev => {
@@ -174,7 +118,7 @@ export default function ScoreEntry() {
 
     const nextKey = `${students[nextRow].id}_${EDITABLE_KEYS[nextCol]}`;
     cellRefs.current[nextKey]?.focus();
-  }, [students]);
+  }, [students, EDITABLE_KEYS]);
 
   // ── Save draft ──────────────────────────────────────────────────────────────
   const save = async () => {
@@ -185,15 +129,7 @@ export default function ScoreEntry() {
     setSaving(true);
     setAlert(null);
 
-    const scores = students.filter(stu => !rows[stu.id]?.is_published).map(stu => ({
-      student_id:  stu.id,
-      first_test:  rows[stu.id]?.first_test  || 0,
-      second_test: rows[stu.id]?.second_test || 0,
-      assignment:  rows[stu.id]?.assignment  || 0,
-      project:     rows[stu.id]?.project     || 0,
-      practical:   rows[stu.id]?.practical   || 0,
-      exam_score:  rows[stu.id]?.exam_score  || 0,
-    }));
+    const scores = students.filter(stu => !rows[stu.id]?.is_published && rows[stu.id]?.review_state === 'draft').map(stu => ({student_id:stu.id,component_scores:Object.fromEntries(components.map(c=>[c.key,rows[stu.id]?.[c.key] === '' ? null : rows[stu.id]?.[c.key]]))}));
 
     try {
       const { data } = await api.post('/api/gradebook/entries/bulk-update/', {
@@ -213,7 +149,7 @@ export default function ScoreEntry() {
         await loadScores();
       }
     } catch (err) {
-      setAlert({ type: 'error', msg: err?.response?.data?.detail ?? 'Save failed.' });
+      setAlert({ type: 'error', msg: scoringError(err) });
     } finally {
       setSaving(false);
     }
@@ -224,14 +160,11 @@ export default function ScoreEntry() {
     const out = {};
     for (const stu of students) {
       const row  = rows[stu.id] || {};
-      const ca   = computeCA(row);
-      const exam = parseFloat(row.exam_score) || 0;
-      const tot  = ca + exam;
-      const { grade, remark } = resolveGrade(tot, gradeBands);
-      out[stu.id] = { ca, total: tot, grade, remark };
+      const total = components.reduce((sum,c)=>sum+Math.round(Number(row[c.key] || 0)*100),0)/100;
+      out[stu.id] = {total,grade:row.grade,remark:row.remark};
     }
     return out;
-  }, [rows, students, gradeBands]);
+  }, [rows, students, components]);
 
   // ── Stats ────────────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -239,9 +172,9 @@ export default function ScoreEntry() {
     const avg    = graded.length
       ? graded.reduce((sum, s) => sum + computed[s.id].total, 0) / graded.length
       : 0;
-    const pass   = graded.filter(s => computed[s.id].grade !== 'F9').length;
+    const pass = students.filter(s=>rows[s.id]?.is_published).length;
     return { total: students.length, graded: graded.length, avg: avg.toFixed(1), pass };
-  }, [students, computed]);
+  }, [students, computed, rows]);
 
   const canRender = selTerm && selSession && selClass && selSubject;
 
@@ -253,7 +186,7 @@ export default function ScoreEntry() {
         <h1 className="gb-header__title">
           Score Entry
           {dirty && <span className="gb-unsaved-dot" title="Unsaved changes" />}
-          <span className="gb-header__sub">CA (40%) + Exam (60%) · WAEC A1–F9 grading</span>
+          <span className="gb-header__sub">Term assessment structure. Grades calculated when saved.</span>
         </h1>
       </div>
 
@@ -267,7 +200,7 @@ export default function ScoreEntry() {
         ].map(({ label, val, set, opts, labelKey }) => (
           <div key={label} className="gb-field-group">
             <label>{label}</label>
-            <select aria-label={label} className="gb-select" value={val} onChange={e => set(e.target.value)}>
+            <select aria-label={label} disabled={saving} className="gb-select" value={val} onChange={e => set(e.target.value)}>
               <option value="">— {label} —</option>
               {opts.map(o => <option key={o.id} value={o.id}>{o[labelKey]}</option>)}
             </select>
@@ -284,7 +217,7 @@ export default function ScoreEntry() {
             >
               {saving ? 'Saving…' : '💾 Save Draft'}
             </button>
-            <span>School administrators review and publish saved drafts.</span>
+            <button className="gb-btn gb-btn--draft" disabled={saving || dirty || !students.length || students.some(s=>rows[s.id]?.review_state !== 'draft' || rows[s.id]?.is_published)} onClick={async()=>{setSaving(true);try{await api.post('/api/gradebook/entries/submit/',{class_arm:Number(selClass),subject:Number(selSubject),term:Number(selTerm)});await loadScores();setAlert({type:'success',msg:'Submitted for administrator review. Scores are locked.'});}catch(e){setAlert({type:'error',msg:scoringError(e)});}finally{setSaving(false);}}}>Submit for review</button>
           </div>
         </div>
       </div>
@@ -303,7 +236,7 @@ export default function ScoreEntry() {
             { num: stats.total,   label: 'Students' },
             { num: stats.graded,  label: 'Entered'  },
             { num: stats.avg,     label: 'Class Avg' },
-            { num: stats.pass,    label: 'Pass'      },
+            { num: stats.pass,    label: 'Published'      },
           ].map(s => (
             <div key={s.label} className="gb-stat-chip">
               <span className="gb-stat-chip__num">{s.num}</span>
@@ -334,17 +267,15 @@ export default function ScoreEntry() {
               <tr>
                 <th className="col-sn" rowSpan={2}>#</th>
                 <th className="col-name" rowSpan={2}>Student Name</th>
-                {CA_FIELDS.map(f => (
-                  <th key={f.key} title={`Max ${f.max}`}>{f.label}<br /><small>/{f.max}</small></th>
+                {components.map(f => (
+                  <th key={f.key} title={`Max ${f.maximum}`}>{f.name}<br /><small>/{f.maximum}</small></th>
                 ))}
-                <th rowSpan={2} style={{ background: 'rgba(0,0,0,.15)' }}>CA<br />/40</th>
-                <th rowSpan={2}>Exam<br />/60</th>
                 <th rowSpan={2} style={{ background: 'rgba(0,0,0,.15)' }}>Total</th>
                 <th rowSpan={2}>Grade</th>
-                <th rowSpan={2}>Remark</th>
+                <th rowSpan={2}>Remark / Status</th>
               </tr>
               <tr className="gb-sub-header">
-                {CA_FIELDS.map(f => <th key={f.key}>Continuous Assessment</th>)}
+                {components.map(f => <th key={f.key}>Continuous Assessment</th>)}
               </tr>
             </thead>
             <tbody>
@@ -360,34 +291,19 @@ export default function ScoreEntry() {
                     <td className="col-name">{stu.full_name}</td>
 
                     {/* CA editable cells */}
-                    {CA_FIELDS.map(f => (
+                    {components.map(f => (
                       <GradeCell
                         key={f.key}
                         value={row[f.key]}
-                        max={f.max}
+                        disabled={row.is_published || row.review_state !== 'draft'}
+                        max={f.maximum}
                         hasError={Boolean(rowErrors[f.key])}
-                        fieldName={f.label}
+                        fieldName={f.name}
                         onChange={v => handleChange(stu.id, f.key, v)}
                         onTab={e => handleTab(e, stu.id, f.key)}
                         inputRef={el => { cellRefs.current[`${stu.id}_${f.key}`] = el; }}
                       />
                     ))}
-
-                    {/* CA Total (computed) */}
-                    <td className="col-computed">
-                      <ComputedCell value={comp.ca} />
-                    </td>
-
-                    {/* Exam */}
-                    <GradeCell
-                      value={row.exam_score}
-                      max={MAX_EXAM}
-                      hasError={Boolean(rowErrors.exam_score)}
-                      fieldName="Exam"
-                      onChange={v => handleChange(stu.id, 'exam_score', v)}
-                      onTab={e => handleTab(e, stu.id, 'exam_score')}
-                      inputRef={el => { cellRefs.current[`${stu.id}_exam_score`] = el; }}
-                    />
 
                     {/* Total (computed) */}
                     <td className="col-computed">
@@ -401,7 +317,7 @@ export default function ScoreEntry() {
 
                     {/* Remark */}
                     <td style={{ fontSize: '.8rem', color: 'var(--gb-ink-mid)' }}>
-                      {comp.remark || '—'}
+                      {comp.remark || '—'}<br />{row.is_published ? 'Published / locked' : row.review_state}
                     </td>
                   </tr>
                 );

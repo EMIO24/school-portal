@@ -380,11 +380,7 @@
   <thead>
     <tr>
       <th class="col-subject">Subject</th>
-      <th>1st Test<br>/10</th>
-      <th>2nd Test<br>/10</th>
-      <th>Assignment<br>/10</th>
-      <th>CA Total<br>/40</th>
-      <th>Exam<br>/60</th>
+      <th>Assessment scores</th>
       <th>Total<br>/100</th>
       <th>Grade</th>
       <th>Remark</th>
@@ -394,11 +390,7 @@
     {% for row in score_rows %}
     <tr>
       <td class="col-subject">{{ row.subject }}</td>
-      <td>{{ row.first_test }}</td>
-      <td>{{ row.second_test }}</td>
-      <td>{{ row.assignment }}</td>
-      <td><strong>{{ row.ca_total }}</strong></td>
-      <td>{{ row.exam_score }}</td>
+      <td>{% for component in row.components %}<div>{{ component.name }}: {{ component.score }} / {{ component.maximum }}</div>{% endfor %}</td>
       <td><strong>{{ row.total_score }}</strong></td>
       <td><span class="grade-badge grade-{{ row.grade }}">{{ row.grade }}</span></td>
       <td>{{ row.remark }}</td>

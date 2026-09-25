@@ -52,7 +52,7 @@ class ScoreEntryReadSerializer(serializers.ModelSerializer):
             'first_test', 'second_test', 'assignment', 'project', 'practical',
             'ca_total', 'exam_score', 'total_score',
             'grade', 'remark',
-            'is_published',
+            'is_published', 'review_state', 'component_scores', 'policy',
             'updated_at',
         ]
 
@@ -80,13 +80,14 @@ MAX_EXAM     = 60
 
 
 class ScoreEntryWriteSerializer(serializers.ModelSerializer):
+    component_scores = serializers.DictField(required=False)
 
     class Meta:
         model  = ScoreEntry
         fields = [
             'student', 'subject', 'class_arm', 'term', 'session',
             'first_test', 'second_test', 'assignment', 'project', 'practical',
-            'exam_score',
+            'exam_score', 'component_scores',
         ]
 
     def _school(self):
@@ -106,36 +107,17 @@ class ScoreEntryWriteSerializer(serializers.ModelSerializer):
         if student.role != 'student' or getattr(getattr(student, 'student_profile', None), 'current_class_id', None) != arm.pk:
             raise serializers.ValidationError({'student':'Student must belong to the selected class.'})
         require_assignment(self.context['request'], arm.pk, term.pk, merged['subject'].pk)
-        if self.instance and self.instance.is_published:
+        if self.instance and (self.instance.is_published or self.instance.review_state != 'draft'):
             raise serializers.ValidationError('Published grades are locked. Reopen through an audited correction first.')
-        errors = {}
-
-        # Validate each CA component against its individual maximum
-        for field, max_val in CA_MAXIMA.items():
-            val = attrs.get(field, getattr(self.instance, field, Decimal('0'))) or Decimal('0')
-            if val > max_val:
-                errors[field] = f'Cannot exceed {max_val} marks.'
-            if val < 0:
-                errors[field] = 'Score cannot be negative.'
-
-        # Validate CA total
-        ca_sum = sum(
-            attrs.get(f, getattr(self.instance, f, Decimal('0'))) or Decimal('0')
-            for f in CA_MAXIMA
-        )
-        if ca_sum > MAX_CA_TOTAL:
-            errors['ca_total'] = f'CA total ({ca_sum}) exceeds maximum of {MAX_CA_TOTAL}.'
-
-        # Validate exam score
-        exam = attrs.get('exam_score', getattr(self.instance, 'exam_score', Decimal('0'))) or Decimal('0')
-        if exam > MAX_EXAM:
-            errors['exam_score'] = f'Exam score cannot exceed {MAX_EXAM}.'
-        if exam < 0:
-            errors['exam_score'] = 'Exam score cannot be negative.'
-
-        if errors:
-            raise serializers.ValidationError(errors)
-
+        if self.instance and any(getattr(self.instance,k+'_id') != merged[k].pk for k in ('student','subject','class_arm','term','session')):
+            raise serializers.ValidationError('An existing score cannot be moved to another academic context.')
+        from .scoring import policy_for, checked_scores
+        policy = self.instance.policy if self.instance and self.instance.policy_id else policy_for(school,term,create=True)
+        values = attrs.get('component_scores')
+        if values is None:
+            values = {c['key']:attrs.get(c['key'],self.instance.component_scores.get(c['key']) if self.instance and self.instance.policy_id else getattr(self.instance,c['key'],None)) for c in policy.components}
+        attrs['component_scores'] = checked_scores(policy,values)
+        attrs['policy'] = policy
         return attrs
 
     def create(self, validated_data):
@@ -155,19 +137,20 @@ class ScoreEntryWriteSerializer(serializers.ModelSerializer):
 
 class BulkScoreItemSerializer(serializers.Serializer):
     """One row in the bulk payload."""
+    component_scores = serializers.DictField(required=False)
     student_id   = serializers.IntegerField()
     first_test   = serializers.DecimalField(max_digits=5, decimal_places=2,
-                                            required=False, default=Decimal('0'))
+                                            required=False)
     second_test  = serializers.DecimalField(max_digits=5, decimal_places=2,
-                                            required=False, default=Decimal('0'))
+                                            required=False)
     assignment   = serializers.DecimalField(max_digits=5, decimal_places=2,
-                                            required=False, default=Decimal('0'))
+                                            required=False)
     project      = serializers.DecimalField(max_digits=5, decimal_places=2,
-                                            required=False, default=Decimal('0'))
+                                            required=False)
     practical    = serializers.DecimalField(max_digits=5, decimal_places=2,
-                                            required=False, default=Decimal('0'))
+                                            required=False)
     exam_score   = serializers.DecimalField(max_digits=5, decimal_places=2,
-                                            required=False, default=Decimal('0'))
+                                            required=False)
 
 
 class BulkScoreUpdateSerializer(serializers.Serializer):
@@ -180,6 +163,8 @@ class BulkScoreUpdateSerializer(serializers.Serializer):
     def validate_scores(self, value):
         if not value:
             raise serializers.ValidationError('scores list cannot be empty.')
+        if len({row['student_id'] for row in value}) != len(value):
+            raise serializers.ValidationError('Each student must appear once.')
         return value
 
 
@@ -193,7 +178,18 @@ AFFECTIVE_FIELDS = [
     'sport_games', 'handling_of_tools',
 ]
 
-class AffectiveDomainSerializer(TenantRelationsMixin, serializers.ModelSerializer):
+class ResultDomainSerializer(TenantRelationsMixin, serializers.ModelSerializer):
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        from .lifecycle import require_unpublished
+        school = self.context['request'].tenant
+        require_unpublished(school, attrs.get('student', getattr(self.instance,'student',None)), attrs.get('term',getattr(self.instance,'term',None)))
+        if self.instance:
+            require_unpublished(school, self.instance.student, self.instance.term)
+        return attrs
+
+
+class AffectiveDomainSerializer(ResultDomainSerializer):
     student_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -215,7 +211,7 @@ class AffectiveDomainSerializer(TenantRelationsMixin, serializers.ModelSerialize
 
 PSYCHOMOTOR_FIELDS = ['handwriting', 'drawing', 'verbal_fluency', 'musical_skills']
 
-class PsychomotorDomainSerializer(TenantRelationsMixin, serializers.ModelSerializer):
+class PsychomotorDomainSerializer(ResultDomainSerializer):
     student_name = serializers.SerializerMethodField()
 
     class Meta:

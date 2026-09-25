@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from accounts.permissions import IsSchoolAdmin
 from academics.models import AcademicSession, Term
 from enrollment.models import ClassLevel, ClassArm, StaffProfile, Subject, SubjectAssignment
-from gradebook.models import GradeScale
+from gradebook.scoring import policy_for, ScoringInput
 from gradebook.serializers import CA_MAXIMA, MAX_EXAM
 from .models import School, PlatformEvent
 from .platform import PlatformSchoolLogo
@@ -40,6 +40,8 @@ class SchoolSetup(APIView):
             levels = {level.pk for level in subject.class_levels.all()}
             expected.update((arm['id'], subject.pk) for arm in arms if not levels or arm['class_level_id'] in levels)
         missing = len(expected - assigned)
+        policy = policy_for(school, term) if term else None
+        valid_scoring = bool(policy and ScoringInput(data={'components':policy.components,'bands':policy.bands}).is_valid())
         steps = [
             ('identity', 'School identity', bool(school.name and school.address and (school.phone or school.email)), '/admin/setup#identity'),
             ('session', 'Current academic session', bool(session), '/admin/calendar'),
@@ -48,13 +50,14 @@ class SchoolSetup(APIView):
             ('subjects', 'Subjects', bool(subjects), '/admin/subjects'),
             ('teachers', 'Active teachers', StaffProfile.objects.filter(school=school, user__role='teacher', user__is_active=True, employment_status='active').exists(), '/admin/staff'),
             ('assignments', 'Teacher assignments', bool(term and expected) and not missing, '/admin/subject-assignments'),
-            ('grading', 'Existing grade scale', GradeScale.objects.filter(school=school).exists(), '/admin/setup#assessment'),
+            ('assessment', 'Assessment structure', valid_scoring, '/admin/setup#assessment'),
+            ('grading', 'Grading ranges', valid_scoring, '/admin/setup#assessment'),
         ]
         return Response({'identity': SchoolIdentitySerializer(school).data, 'class_level_choices':ClassLevel.LEVEL_CHOICES,
             'steps': [{'key':key, 'label':label, 'complete':done, 'url':url} for key,label,done,url in steps],
             'missing_assignments': missing, 'session':session.name if session else None,
             'term':term.get_name_display() if term else None,
-            'assessment': {**CA_MAXIMA, 'exam_score':MAX_EXAM}})
+            'assessment': {c['key']:c['maximum'] for c in policy.components} if policy else {**CA_MAXIMA, 'exam_score':MAX_EXAM}})
 
     def patch(self, request):
         form = SchoolIdentitySerializer(request.tenant, data=request.data, partial=True)

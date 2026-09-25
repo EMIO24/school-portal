@@ -252,3 +252,54 @@ not a launch-readiness certificate. Existing result templates/calculations are r
 tests. Styled invoice/receipt PDFs and responsive billing screens still require
 deployment-compatible verification; local PDF tests use the supported fallback.
 No Docker retries, production changes, merge or deployment were performed.
+
+## Batch 4B: Assessment, grading and result lifecycle
+
+The existing ScoreEntry gradebook now uses one school-owned configuration per
+academic term (`TermScoring`), shared across that term's classes and subjects.
+Components have stable keys, labels, positive Decimal maxima totaling 100, and an
+assessment/examination classification for compatibility summaries. Grade ranges
+cover 0–100 at the existing two-decimal precision without gaps or overlaps.
+`/api/gradebook/configuration/?term=<id>` permits school-admin configuration;
+the existing school setup page provides the editor and validated readiness checks.
+No plan entitlement or Premium restriction changed: this is Basic functionality.
+
+Configuration becomes immutable when scores exist; schools configure future terms
+to change rules. Scores reference the protected configuration and store component
+values, total, grade and remark. Missing marks remain missing, distinct from zero.
+Calculation and grade lookup are centralized in `gradebook/scoring.py`; result
+APIs, parent summaries, student results and PDF templates consume saved grades.
+The teacher sheet and result outputs now display configured assessment components.
+Legacy columns remain compatible. Additive migration `gradebook.0003` leaves
+existing grades, totals and publication flags intact, with no invented historical
+configuration or recalculation. Legacy writes can initialize validated defaults;
+GET requests never create or recalculate academic records.
+
+Class/subject/term transitions are draft → submitted → approved → published.
+Teachers submit only assigned contexts; school administrators approve and publish
+from Result Management. Transitions validate roster completeness and all marks,
+lock school/score rows and commit the entire operation with its audit event.
+Submitted/approved/published scores cannot be casually edited or deleted.
+The existing reasoned, audited administrator reopen action restores draft status.
+Published remarks and domain ratings also require reopening before correction.
+Parent/student slip endpoints reject unpublished results and retain relationship
+and tenant checks. Teacher score reads now require the exact subject/term assignment.
+
+Verified three assessment structures (10/10/10/70, 20/20/60, 40/60), configured
+grade boundaries, lifecycle, atomic rollback, publication privacy and stored-grade
+history: a published 72/A stays A after a future term raises the A threshold to 75.
+Targeted backend tests: 17 passed; broader academic/readiness suite: 69 passed,
+0 failed. Frontend configuration/score-entry/setup tests: 10 passed. Django system
+check and migration consistency check passed. The production frontend build passed
+with CI warnings treated as errors after correcting one editor lint warning;
+the six affected editor/score-entry tests passed again after the final UI changes.
+
+Remaining Basic P1: general student/staff account-name editing. P2: selector
+pagination, further import validation UX and hands-on responsive verification.
+This batch does not certify the full Basic release or add result-template designs.
+**PRE-PROMOTION POSTGRESQL TEST REQUIRED** remains for both skipped billing/payment
+concurrency tests. Academic transaction tests here use SQLite; PostgreSQL lock
+behavior still needs deployment-compatible verification. Styled invoice/receipt
+PDFs, updated academic PDFs and responsive browser layouts remain manual promotion
+checks; native WeasyPrint libraries are unavailable locally. No dependencies,
+production-data changes, merge or deployment were introduced.

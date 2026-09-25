@@ -223,11 +223,7 @@ export default function MyResult({ studentId: requestedStudentId }) {
               <thead>
                 <tr>
                   <th className="left">Subject</th>
-                  <th>1st Test</th>
-                  <th>2nd Test</th>
-                  <th>Assignment</th>
-                  <th>CA /40</th>
-                  <th>Exam /60</th>
+                  <th>Assessment scores</th>
                   <th>Total</th>
                   <th>Grade</th>
                   <th>Remark</th>
@@ -237,11 +233,7 @@ export default function MyResult({ studentId: requestedStudentId }) {
                 {data.score_rows.map(row => (
                   <tr key={row.subject}>
                     <td className="left">{row.subject}</td>
-                    <td>{row.first_test}</td>
-                    <td>{row.second_test}</td>
-                    <td>{row.assignment}</td>
-                    <td><strong>{row.ca_total}</strong></td>
-                    <td>{row.exam_score}</td>
+                    <td>{row.components.map(c=><div key={c.key}>{c.name}: {c.score} / {c.maximum}</div>)}</td>
                     <td><strong>{row.total_score}</strong></td>
                     <td>
                       <span className={`grade-pill ${row.grade}`}>{row.grade}</span>

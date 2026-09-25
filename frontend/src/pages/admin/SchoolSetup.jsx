@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {Link} from 'react-router-dom';
 import api from '../../services/api';
 import './SchoolSetup.css';
+import ScoringConfiguration from './ScoringConfiguration';
 
 function message(error) {
   const data = error.response?.data;
@@ -50,7 +51,7 @@ export default function SchoolSetup() {
         <form onSubmit={e => {e.preventDefault();save(() => api.post('/api/class-arms/',{class_level:Number(level),name:armName}),'Class arm added.');}}><fieldset disabled={busy || !levels.length}><label>Class level<select required value={level} onChange={e => setLevel(e.target.value)}><option value="">Choose a level</option>{levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label><label>Arm name<input required value={armName} onChange={e => setArmName(e.target.value)}/></label><button>Add class arm</button></fieldset></form></div>
         {arms.length ? <ul>{arms.map(a => <li key={a.id}>{a.full_name}</li>)}</ul> : <p>No class arms yet. Add one before enrolling students.</p>}
       </section>
-      <section id="assessment"><h2>Current assessment structure</h2><p>The existing gradebook uses these maximum marks. Custom assessment structures and grading edits are not available in this setup screen yet.</p><dl>{Object.entries(setup.assessment).map(([key,value]) => <div key={key}><dt>{key.replaceAll('_',' ')}</dt><dd>{value}</dd></div>)}</dl></section>
+      <ScoringConfiguration onSaved={load}/>
       <section><h2>Next: daily operations</h2><div className="setup-links"><Link to="/admin/students/new">Add students</Link><Link to="/admin/students/import">Import students</Link><Link to="/admin/attendance">Review attendance</Link><Link to="/admin/results">Review results</Link><Link to="/admin/fee-setup">Set up school fees</Link></div></section>
     </>}
   </main>;

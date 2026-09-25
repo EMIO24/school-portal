@@ -4,13 +4,14 @@ backend/gradebook/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import ScoreEntryViewSet, AffectiveDomainViewSet, PsychomotorDomainViewSet
+from .configuration import ScoringConfiguration
 
 router = DefaultRouter()
 router.register(r'entries',     ScoreEntryViewSet,      basename='score-entry')
 router.register(r'affective',   AffectiveDomainViewSet, basename='affective')
 router.register(r'psychomotor', PsychomotorDomainViewSet, basename='psychomotor')
 
-urlpatterns = [path('', include(router.urls))]
+urlpatterns = [path('configuration/', ScoringConfiguration.as_view()), path('', include(router.urls))]
 
 # ─── Endpoint reference ───────────────────────────────────────────────────────
 # GET    /api/gradebook/entries/?class_arm=&subject=&term=

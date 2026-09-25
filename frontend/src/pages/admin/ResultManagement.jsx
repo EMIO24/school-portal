@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
+import ResultReview from './ResultReview';
 import { downloadFile } from '../../services/download';
 import '../../styles/Results.css';
 
@@ -245,6 +246,8 @@ export default function ResultManagement() {
           </div>
         </div>
       </div>
+
+      <ResultReview classArm={selClass} term={selTerm}/>
 
       {/* Alert */}
       {alert && (

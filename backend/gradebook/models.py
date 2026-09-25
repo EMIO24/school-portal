@@ -106,6 +106,21 @@ def _decimal(val):
     return Decimal(str(val)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
+class TermScoring(models.Model):
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    term = models.OneToOneField('academics.Term', on_delete=models.PROTECT, related_name='scoring')
+    components = models.JSONField(default=list)
+    bands = models.JSONField(default=list)
+
+    def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        if self.term.session.school_id != self.school_id:
+            raise ValidationError('Term must belong to this school.')
+        if self.pk and ScoreEntry.objects.filter(policy_id=self.pk).exists():
+            raise ValidationError('This configuration is in use. Configure a future term instead.')
+        super().save(*args, **kwargs)
+
+
 class ScoreEntry(models.Model):
     """
     One row per student × subject × term × session.
@@ -173,6 +188,9 @@ class ScoreEntry(models.Model):
     remark       = models.CharField(max_length=20, blank=True, default='')
 
     is_published = models.BooleanField(default=False)
+    policy = models.ForeignKey(TermScoring, null=True, blank=True, on_delete=models.PROTECT)
+    component_scores = models.JSONField(default=dict, blank=True)
+    review_state = models.CharField(max_length=12, default='draft', choices=[('draft','Draft'), ('submitted','Submitted'), ('approved','Approved')])
 
     created_at   = models.DateTimeField(auto_now_add=True)
     updated_at   = models.DateTimeField(auto_now=True)
@@ -190,6 +208,8 @@ class ScoreEntry(models.Model):
 
     @property
     def computed_ca(self):
+        if self.policy_id:
+            return sum((Decimal(str(self.component_scores.get(c['key']) or 0)) for c in self.policy.components if c.get('kind') != 'exam'), Decimal('0'))
         return (
             (self.first_test  or Decimal('0'))
             + (self.second_test or Decimal('0'))
@@ -200,21 +220,34 @@ class ScoreEntry(models.Model):
 
     @property
     def computed_total(self):
+        if self.policy_id:
+            from .scoring import calculate
+            return calculate(self.policy, self.component_scores)[0]
         return self.computed_ca + (self.exam_score or Decimal('0'))
 
     def resolve_grade(self):
         """Look up grade + remark from the school's GradeScale."""
-        total = self.computed_total
-        band  = (
-            GradeScale.objects
-            .filter(school=self.school, min_score__lte=total, max_score__gte=total)
-            .first()
-        )
-        if band:
-            return band.grade, band.remark
-        return 'F9', 'Fail'
+        from .scoring import grade_for, defaults, calculate
+        if self.policy_id:
+            return calculate(self.policy, self.component_scores)[1:]
+        return grade_for(self.computed_total, defaults(self.school)['bands'])
 
     def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        previous = type(self).objects.filter(pk=self.pk).first() if self.pk else None
+        if previous and (previous.is_published or previous.review_state != 'draft'):
+            raise ValidationError('These scores are locked. An administrator must reopen them first.')
+        if kwargs.get('update_fields') is not None:
+            kwargs['update_fields'] = set(kwargs['update_fields']) | {'ca_total','exam_score','total_score','grade','remark'}
+        if self.policy_id:
+            from .scoring import calculate
+            if self.policy.school_id != self.school_id or self.policy.term_id != self.term_id:
+                raise ValidationError('Scoring configuration must match the school and term.')
+            self.total_score, self.grade, self.remark = calculate(self.policy, self.component_scores)
+            self.exam_score = sum((Decimal(str(self.component_scores.get(c['key']) or 0)) for c in self.policy.components if c.get('kind') == 'exam'), Decimal('0'))
+            self.ca_total = self.total_score - self.exam_score
+            super().save(*args, **kwargs)
+            return
         # Recompute denormalised fields before every save
         self.ca_total    = _decimal(self.computed_ca)
         self.total_score = _decimal(self.computed_total)

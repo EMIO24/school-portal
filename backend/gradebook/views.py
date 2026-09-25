@@ -60,7 +60,7 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         from rest_framework.exceptions import ValidationError
-        if instance.is_published:
+        if instance.is_published or instance.review_state != 'draft':
             raise ValidationError('Published grades are locked. Reopen through an audited correction first.')
         instance.delete()
 
@@ -70,7 +70,7 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
             .filter(school=self.school)
             .select_related(
                 'student', 'student__student_profile',
-                'subject', 'class_arm', 'term', 'session',
+                'subject', 'class_arm', 'term', 'session', 'policy',
             )
         )
         p = self.request.query_params
@@ -79,7 +79,11 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
         if p.get('term'):      qs = qs.filter(term_id=p['term'])
         if p.get('session'):   qs = qs.filter(session_id=p['session'])
         if self.request.user.role == "teacher":
-            qs = qs.filter(class_arm_id__in=assigned_classes(self.request))
+            from django.db.models import Exists, OuterRef
+            from enrollment.models import SubjectAssignment
+            qs = qs.filter(Exists(SubjectAssignment.objects.filter(school=self.school,
+                teacher__user=self.request.user, teacher__employment_status='active',
+                class_arm_id=OuterRef('class_arm_id'),subject_id=OuterRef('subject_id'),term_id=OuterRef('term_id'))))
         return qs
 
     # ── GET grade-scale ───────────────────────────────────────────────────────
@@ -100,7 +104,31 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
         students = StudentProfile.objects.filter(school=self.school, current_class=arm, status='active').select_related('user','current_class__class_level')
         entries = self.get_queryset().filter(class_arm=arm, subject_id=ids['subject'], term=term)
         return Response({'students':StudentListSerializer(students, many=True).data,
-                         'entries':ScoreEntryReadSerializer(entries, many=True).data, 'session':term.session_id})
+                         'entries':ScoreEntryReadSerializer(entries, many=True).data, 'session':term.session_id,
+                         'configuration': self.scoring_data(term)})
+
+    def scoring_data(self, term):
+        from .scoring import policy_for, defaults
+        policy = policy_for(self.school, term)
+        return {'components':policy.components,'bands':policy.bands} if policy else defaults(self.school)
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        from .lifecycle import lock_school
+        lock_school(self.school)
+        return super().create(request, *args, **kwargs)
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        from .lifecycle import lock_school
+        lock_school(self.school)
+        return super().update(request, *args, **kwargs)
+
+    @transaction.atomic
+    def destroy(self, request, *args, **kwargs):
+        from .lifecycle import lock_school
+        lock_school(self.school)
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, url_path='grade-scale', methods=['get'])
     def grade_scale(self, request):
@@ -133,6 +161,8 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
         term_id      = d['term']
         session_id   = d['session']
 
+        from .lifecycle import lock_school
+        lock_school(school)
         validated = []
         for item in d['scores']:
             instance = ScoreEntry.objects.select_for_update().filter(school=school, student_id=item['student_id'], subject_id=subject_id, term_id=term_id, session_id=session_id, class_arm_id=class_arm_id).first()
@@ -146,7 +176,7 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
 
         rows = ScoreEntry.objects.filter(id__in=updated_ids).select_related(
             'student', 'student__student_profile',
-            'subject', 'class_arm', 'term', 'session',
+            'subject', 'class_arm', 'term', 'session', 'policy',
         )
         return Response({
             'updated': ScoreEntryReadSerializer(rows, many=True).data,
@@ -161,21 +191,18 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
         Flip is_published=True for every entry in the class×subject×term.
         Requires class_arm, subject, term as query params.
         """
-        p = request.query_params
-        if not (p.get('class_arm') and p.get('subject') and p.get('term')):
-            return Response(
-                {'detail': 'class_arm, subject and term params required.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        count = ScoreEntry.objects.filter(
-            school=self.school,
-            class_arm_id=p['class_arm'],
-            subject_id=p['subject'],
-            term_id=p['term'],
-            is_published=False,
-        ).update(is_published=True)
+        from .lifecycle import transition
+        return Response(transition(request, 'publish'))
 
-        return Response({'published': count})
+    @action(detail=False, methods=['post'])
+    def submit(self, request):
+        from .lifecycle import transition
+        return Response(transition(request, 'submit'))
+
+    @action(detail=False, methods=['post'])
+    def approve(self, request):
+        from .lifecycle import transition
+        return Response(transition(request, 'approve'))
 
     @action(detail=False, methods=['post'], url_path='reopen')
     @transaction.atomic
@@ -186,10 +213,12 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
         reason, ids = str(request.data.get('reason','')).strip(), request.data.get('entry_ids')
         if len(reason) < 10: raise ValidationError('Explain the correction (at least 10 characters).')
         if not isinstance(ids,list) or not ids or len(ids)>1000: raise ValidationError('Select the entries to reopen.')
+        from .lifecycle import lock_school
+        lock_school(self.school)
         rows = list(ScoreEntry.objects.select_for_update().filter(school=self.school, pk__in=ids))
         if len(rows)!=len(set(ids)): raise ValidationError('Select entries from this school.')
         PlatformEvent.objects.create(actor=request.user, actor_email=request.user.email, action='school.results_reopened', target=str(self.school.pk), details={'school_id':self.school.pk,'reason':reason[:2000],'entries':[{'id':row.pk,'total':str(row.total_score),'grade':row.grade} for row in rows]})
-        ScoreEntry.objects.filter(pk__in=[row.pk for row in rows]).update(is_published=False)
+        ScoreEntry.objects.filter(pk__in=[row.pk for row in rows]).update(is_published=False, review_state='draft')
         return Response({'reopened':len(rows)})
 
 
@@ -198,7 +227,21 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
 # Affective Domain
 # ─────────────────────────────────────────────────────────────────────────────
 
-class AffectiveDomainViewSet(TenantMixin, viewsets.ModelViewSet):
+class ResultDomainViewSet(TenantMixin, viewsets.ModelViewSet):
+    @transaction.atomic
+    def dispatch(self, request, *args, **kwargs):
+        if request.method not in ('GET','HEAD','OPTIONS') and getattr(request,'tenant',None):
+            from .lifecycle import lock_school
+            lock_school(request.tenant)
+        return super().dispatch(request, *args, **kwargs)
+
+    def perform_destroy(self, instance):
+        from .lifecycle import require_unpublished
+        require_unpublished(self.school, instance.student, instance.term)
+        instance.delete()
+
+
+class AffectiveDomainViewSet(ResultDomainViewSet):
     permission_classes = [SchoolModulePermission]
     serializer_class   = AffectiveDomainSerializer
 
@@ -247,7 +290,7 @@ class AffectiveDomainViewSet(TenantMixin, viewsets.ModelViewSet):
 # Psychomotor Domain
 # ─────────────────────────────────────────────────────────────────────────────
 
-class PsychomotorDomainViewSet(TenantMixin, viewsets.ModelViewSet):
+class PsychomotorDomainViewSet(ResultDomainViewSet):
     permission_classes = [SchoolModulePermission]
     serializer_class   = PsychomotorDomainSerializer
 

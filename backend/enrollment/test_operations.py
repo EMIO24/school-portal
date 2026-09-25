@@ -237,6 +237,8 @@ class BasicOperationsTests(TestCase):
         publish_url = f"/api/gradebook/entries/publish/?class_arm={arm['id']}&subject={subject['id']}&term={term['id']}"
         self.assertEqual(self.client.post(publish_url).status_code,403)
         self.client.force_authenticate(admin)
+        post(publish_url.replace('/publish/','/submit/'),{},200)
+        post(publish_url.replace('/publish/','/approve/'),{},200)
         post(publish_url,{},200)
         self.assertTrue(ScoreEntry.objects.get(school=school).is_published)
         category = post('/api/fees/categories/',{'name':'Tuition'})
