@@ -645,3 +645,47 @@ No production school/customer record, payment or academic record was created or 
 Rollback was not required, and no P0/P1 issue remains from Checkpoint B.
 
 **CHECKPOINT B — CONTROLLED BACKEND DEPLOYMENT: PASSED.**
+
+### Production Checkpoint C: canonical frontend deployment — 2026-09-26
+
+Checkpoint B remained healthy before deployment: Railway `/health/` returned HTTPS
+HTTP 200 and the migration heads remained `tenants.0005`, `fees.0011` and
+`gradebook.0003`. The canonical Vercel account/team was `emio24` / `EMIO's projects`,
+project `school-portal`, repository root directory `frontend`, output directory
+`build`, and production alias `school-portal-gamma-two.vercel.app`. The previous
+canonical deployment was `dpl_Ghu5es4JaCJ9yLKcw5Yz748pJsfi`; the separate Vercel
+project named `frontend` was not used.
+
+The candidate `frontend/vercel.json` rewrites `/api/*` to the canonical Railway
+backend. The production `REACT_APP_API_URL` also points there; Railway's CORS, CSRF and
+frontend origin settings include the canonical Vercel origin. A clean `npm ci` and
+optimized production build passed with no compile error. The locally built JavaScript
+was 315.52 kB gzip. Legacy npm deprecation and audit notices did not block the build.
+
+Repository HEAD `5024d72` was deployed through the root-linked canonical project;
+its frontend runtime content is identical to validated candidate `5d001c0`.
+Vercel deployment `dpl_Vzy7JCHTEsLXPKPUuZJnL9XF5dCD` reached Ready and acquired
+the canonical production alias. The production build passed. HTTPS requests for `/`,
+`/features`, `/pricing`, `/demo`, `/contact` and `/login` returned HTTP 200 with the
+Paideia HTML. The previous placeholder backend target is absent from the deployed
+JavaScript, while the canonical Railway target is present.
+
+The production Vercel `/api/school-lookup/` path returned Django JSON, and
+`/api/platform/me/` returned Django's expected JSON 401 without credentials. This
+proves the live Vercel API rewrite reaches Railway while preserving authorization.
+The remote bundle contained no Paystack secret or private-key pattern. The frontend
+and API targets use HTTPS. Headless Chrome rendered live-fetched production assets for
+the landing page, school access form and platform login at 1440x900, 768x1024 and
+390x844; headings and controls appeared, with no horizontal overflow or JavaScript
+page errors. Direct browser network navigation timed out in the local test environment,
+so production bytes were fetched over HTTPS and supplied to the browser for the layout
+check; the live origin and API proxy were separately checked over HTTPS. `/login` on
+the platform domain showed the expected school-not-found state because no school
+tenant exists; `/access` and `/platform/login` remained usable.
+
+After deployment Railway `/health/` still returned HTTP 200, the production school
+count remained zero, and bounded backend logs contained no relevant 500, CORS, CSRF,
+host or proxy error. No business data was created or changed. Frontend rollback was not
+required and no P0/P1 issue remained from Checkpoint C.
+
+**CHECKPOINT C — CANONICAL FRONTEND DEPLOYMENT: PASSED.**
