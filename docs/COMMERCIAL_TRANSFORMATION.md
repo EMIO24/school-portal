@@ -560,7 +560,16 @@ captured at `2026-09-26T12:13:38Z` without reading customer identifiers.
 Railway's production Postgres volume was confirmed ready. PITR is disabled and no
 existing volume backups were listed. Both the current Postgres backup command and the
 documented volume-backup API rejected creation as unauthorized; a platform snapshot
-was therefore not created. This is a P1 release blocker under Checkpoint A.
+was therefore not created. This was a P1 release blocker under the original
+Checkpoint A policy.
+
+A closure attempt at `2026-09-26T12:33:11Z` confirmed that the active Railway session
+is authenticated, belongs to the correct workspace and project, has workspace `ADMIN`
+role, is not restricted by pending 2FA and uses the paid Hobby plan. The production
+Postgres service and ready 5 GB volume were identified unambiguously, but Railway again
+returned `Not Authorized` for the documented snapshot mutation and the verified backup
+list remained empty. This rules out a stale login, wrong account, wrong project and
+Free-plan limitation; Railway must grant or explain the remaining platform permission.
 
 An independent PostgreSQL custom-format dump was created at
 `2026-09-26T12:14:16Z` in a private backup directory outside the repository. The dump
@@ -583,8 +592,22 @@ restore, application deployment, configuration change or application/business-da
 mutation occurred in production. The temporary restore cluster was stopped; its data
 directory remains in the private backup area pending operator cleanup.
 
+The operator accepts the verified custom-format logical backup and successful isolated
+restore as sufficient recovery evidence for the initial Basic production release.
+This release-specific exception does not make the Railway snapshot successful and does
+not waive backup requirements for future releases. The existing dump remains available,
+its recorded SHA-256 still matches, it is outside Git, production remains on `a35c67e`
+with zero schools, and the candidate migrations remain unapplied.
+
+**OPERATOR RISK ACCEPTANCE: APPROVED FOR INITIAL BASIC PRODUCTION RELEASE.** Before
+meaningful school/customer data accumulates, resolve Railway snapshot authorization and
+establish recurring backups, secure retention, restore drills, and explicit recovery
+point/time expectations. Future database-changing releases require a fresh recoverable
+backup appropriate to the data risk; automated/platform backup must not be indefinitely
+waived once real school data exists.
+
 **Logical backup, integrity, isolated restore and Django-read verification: PASSED.**
-**Platform backup: FAILED — Railway backup creation authorization required.**
-**CHECKPOINT A — BACKUP & RESTORE: FAILED.**
-**PRODUCTION RECOVERY PROCEDURE: NOT VERIFIED.**
-Do not deploy until an authorized Railway volume snapshot is created and recorded.
+**RAILWAY PLATFORM SNAPSHOT: UNAVAILABLE — ACCEPTED OPERATIONAL FOLLOW-UP.**
+**P2 OPERATIONAL FOLLOW-UP — RAILWAY PLATFORM SNAPSHOT UNAVAILABLE.**
+**CHECKPOINT A — BACKUP & RESTORE: PASSED WITH DOCUMENTED PLATFORM-SNAPSHOT EXCEPTION.**
+**PRODUCTION RECOVERY PROCEDURE: VERIFIED VIA LOGICAL BACKUP AND ISOLATED RESTORE.**
