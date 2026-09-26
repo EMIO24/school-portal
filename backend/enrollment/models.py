@@ -292,6 +292,16 @@ class StudentProfile(models.Model):
         return f"{self.admission_number} — {self.full_name}"
 
 
+class MigrationStudentReference(models.Model):
+    """School's stable source reference for a migrated student, never a login ID."""
+    school = models.ForeignKey("tenants.School", on_delete=models.CASCADE)
+    reference = models.CharField(max_length=80)
+    student = models.OneToOneField(StudentProfile, on_delete=models.CASCADE, related_name="migration_reference")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["school", "reference"], name="unique_migration_student_ref")]
+
+
 # ── StaffProfile ───────────────────────────────────────────────────────────
 
 class StaffProfile(models.Model):

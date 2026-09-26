@@ -142,7 +142,7 @@ test('manual payment retry reuses one idempotency key', async () => {
   const record = await screen.findByRole('button', { name: 'Record' });
   fireEvent.click(record);
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-  const retry = await screen.findByRole('button', { name: 'Record' });
+  const retry = await screen.findByRole('button', { name: 'Retry same payment' });
   await waitFor(() => expect(retry).toBeEnabled());
   fireEvent.click(retry);
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));

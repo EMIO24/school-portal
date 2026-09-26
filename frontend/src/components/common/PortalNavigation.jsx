@@ -8,8 +8,8 @@ import './PortalNavigation.css';
 export const ROLE_LINKS = {
   school_admin: [
     ['dashboard', 'Dashboard'], ['setup', 'School setup'], ['calendar', 'Calendar'], ['students', 'Students'],
-    ['students/new', 'Add student'], ['students/import', 'Import students'],
-    ['staff', 'Staff'], ['staff/new', 'Add staff'], ['staff/import', 'Import staff'],
+    ['students/new', 'Add student'], ['migration', 'Data migration'],
+    ['staff', 'Staff'], ['staff/new', 'Add staff'],
     ['subjects', 'Subjects'], ['subject-assignments', 'Subject assignments'],
     ['attendance', 'Attendance'], ['timetable', 'Timetable'], ['results', 'Results'],
     ['scratch-cards', 'Scratch cards'], ['question-bank', 'Question bank'],

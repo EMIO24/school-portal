@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsSchoolAdmin
 from academics.models import AcademicSession, Term
-from enrollment.models import ClassLevel, ClassArm, StaffProfile, Subject, SubjectAssignment
+from enrollment.models import ClassLevel, ClassArm, StaffProfile, StudentProfile, Subject, SubjectAssignment
 from gradebook.scoring import policy_for, ScoringInput
 from gradebook.serializers import CA_MAXIMA, MAX_EXAM
 from .models import School, PlatformEvent
@@ -48,6 +48,7 @@ class SchoolSetup(APIView):
             ('term', 'Current term', bool(term), '/admin/calendar'),
             ('classes', 'Classes and arms', bool(arms), '/admin/setup#classes'),
             ('subjects', 'Subjects', bool(subjects), '/admin/subjects'),
+            ('students', 'Active students', StudentProfile.objects.filter(school=school, status='active').exists(), '/admin/migration'),
             ('teachers', 'Active teachers', StaffProfile.objects.filter(school=school, user__role='teacher', user__is_active=True, employment_status='active').exists(), '/admin/staff'),
             ('assignments', 'Teacher assignments', bool(term and expected) and not missing, '/admin/subject-assignments'),
             ('assessment', 'Assessment structure', valid_scoring, '/admin/setup#assessment'),

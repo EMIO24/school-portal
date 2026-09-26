@@ -53,7 +53,7 @@ export default function SchoolSetup() {
         {arms.length ? <ul>{arms.map(a => <li key={a.id}>{a.full_name}</li>)}</ul> : <p>No class arms yet. Add one before enrolling students.</p>}
       </section>
       <ScoringConfiguration onSaved={load}/>
-      <section><h2>Next: daily operations</h2><div className="setup-links"><Link to="/admin/students/new">Add students</Link><Link to="/admin/students/import">Import students</Link><Link to="/admin/attendance">Review attendance</Link><Link to="/admin/results">Review results</Link><Link to="/admin/fee-setup">Set up school fees</Link></div></section>
+      <section><h2>Next: daily operations</h2><div className="setup-links"><Link to="/admin/students/new">Add students</Link><Link to="/admin/migration">Migrate existing records</Link><Link to="/admin/attendance">Review attendance</Link><Link to="/admin/results">Review results</Link><Link to="/admin/fee-setup">Set up school fees</Link></div></section>
     </>}
   </main>;
 }

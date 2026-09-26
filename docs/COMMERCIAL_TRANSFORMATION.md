@@ -764,7 +764,8 @@ disabled. The frontend runtime matches the validated candidate.
 
 **BASIC PRODUCTION BASELINE COMMIT: 053a62ab6c738b5e501253df6c60d8c7b46015e3.**
 This baseline was pushed to `origin/commercial-transformation` before Batch 6 edits;
-Batch 6 work remains local and has not been deployed. The repository's release
+the Batch 6 commit `3ea355c47f147a35a94bd1d1b21c2a6f2a6ca35d` was pushed
+before Batch 7 and has not been deployed. The repository's release
 deployment branch is `production-readiness-check`; permanent release-branch
 protection remains an operator/governance decision (P2).
 
@@ -780,3 +781,45 @@ protection remains an operator/governance decision (P2).
 Local SQLite tests provide functional and bounded-query evidence only. They do not
 establish PostgreSQL or production latency. No migration, dependency, new worker or
 new production backup schedule was added in this batch.
+
+### Batch 7 migration and onboarding — 2026-09-26
+
+Batch 6 was preserved at `origin/commercial-transformation` before Batch 7 work.
+Production continues on the validated Basic baseline. The existing student and
+staff import endpoints remain available; the new school-admin Migration Centre
+guides current-state CSV migration in this order: classes/arms, subjects, students,
+teachers, parents, parent-child links and current-term teacher assignments.
+
+The centre offers UTF-8 CSV templates and controlled, reviewable header mappings.
+Only supported fields can map; system fields, roles and password columns are
+rejected. Validation reads the entire file and current school records without
+writing operational data. It reports CREATE, REUSE and REJECT per row, with field
+reasons and ignored-column warnings. Import reads and validates the file again,
+locks the school, commits valid rows in per-row savepoints, and records aggregate
+counts in the existing platform audit stream. Identical retries reuse existing
+records without overwriting them or adding an all-reuse audit event.
+
+Migrated students have a school-scoped source reference (new additive migration
+`enrollment.0006`) separate from their generated Paideia admission number. Parent
+links use that source reference or an existing Paideia admission number. Teachers
+and parents use school-checked email and phone identity; assignments use teacher
+email, class level/arm, subject code and the current term. Parent contact fields
+on students never grant parent portal access. Teacher accounts use existing
+generated staff IDs and forced first password change; parent accounts use the
+existing phone-login workflow. Imports cannot assign platform roles.
+
+The readiness endpoint now includes active students alongside its existing
+school, academic and assignment checks; the centre refreshes it after import.
+Opening balances remain deferred: FeeSchedule represents current fee amounts and
+FeePayment represents actual payments and receipts. Neither safely represents
+an audited brought-forward debt without a new finance domain decision.
+
+Files are request-scoped, limited to 2 MB/2,000 rows, never saved as customer
+uploads by application code, and not logged. Rejected rows can be downloaded
+locally for correction with formula-safe CSV cells. Tests exercise school-admin
+permissions, cross-school references, protected columns, dry run, partial errors,
+repeat imports, relationships and account state. A 400-student, 40-teacher,
+40-parent, 20-arm, 15-subject, 20-assignment simulation completed validation,
+import and student retry in 15.86 seconds on local SQLite. That timing says
+nothing about PostgreSQL or production throughput. Historical records, automated
+column transformation and opening balances remain deferred.
