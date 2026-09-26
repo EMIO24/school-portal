@@ -10,6 +10,8 @@ import MyResult from '../../pages/student/MyResult';
 import ExamRoom from '../../pages/student/ExamRoom';
 import ExamReview from '../../pages/student/ExamReview';
 import Notifications from '../../pages/admin/Notifications';
+import FeeCollection from '../../pages/admin/FeeCollection';
+import { downloadReport } from '../../services/pdf';
 import api, { authAPI, tokenStore } from '../../services/api';
 import axios from 'axios';
 
@@ -18,6 +20,7 @@ jest.mock('../../services/api', () => ({
   authAPI: { changePassword: jest.fn() }, tokenStore: { setTokens: jest.fn() },
 }));
 jest.mock('axios', () => ({ __esModule: true, default: { post: jest.fn() } }));
+jest.mock('../../services/pdf', () => ({ downloadReport: jest.fn() }));
 const originalFetch = global.fetch;
 beforeEach(() => {
   jest.clearAllMocks();
@@ -122,6 +125,53 @@ test('Fees only offers payment for selected unpaid schedules and handles gateway
   await waitFor(() => expect(window.alert).toHaveBeenCalledWith('Payment initiation failed. Please try again.'));
   expect(api.post).toHaveBeenCalledWith('/api/fees/pay/initiate/', { student_id: 3, fee_schedule_ids: [2] });
   expect(pay).toBeEnabled();
+});
+
+test('manual payment retry reuses one idempotency key', async () => {
+  api.get.mockImplementation(async url => {
+    if (url.includes('/terms/')) return { data: [{ id: 1, name: 'First', is_current: true }] };
+    if (url.includes('/class-arms/')) return { data: [] };
+    if (url.includes('/outstanding/')) return { data: [{ student_id: 3, student_name: 'Ada Student', class: 'JSS1A', total_fees: 1000, paid: 0, outstanding: 1000 }] };
+    if (url.includes('/fees/student/')) return { data: [{ schedule: { id: 2, fee_category_name: 'Tuition' }, outstanding: 1000 }] };
+    return { data: [] };
+  });
+  api.post.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ data: { id: 9 } });
+  jest.spyOn(window, 'alert').mockImplementation(() => {});
+  renderPage(<FeeCollection />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Record Payment' }));
+  const record = await screen.findByRole('button', { name: 'Record' });
+  fireEvent.click(record);
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  const retry = await screen.findByRole('button', { name: 'Record' });
+  await waitFor(() => expect(retry).toBeEnabled());
+  fireEvent.click(retry);
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+  const first = api.post.mock.calls[0][1];
+  const second = api.post.mock.calls[1][1];
+  expect(first.idempotency_key.length).toBeGreaterThanOrEqual(8);
+  expect(second.idempotency_key).toBe(first.idempotency_key);
+});
+
+test('fee collection paginates debtors while retaining school-wide totals', async () => {
+  api.get.mockImplementation(async url => {
+    if (url.includes('/terms/')) return { data: [{ id: 1, name: 'First', is_current: true }] };
+    if (url.includes('/class-arms/')) return { data: [] };
+    if (url.includes('/outstanding/')) return { data: {
+      count: 500, next: url.includes('page=2') ? null : 'next', previous: url.includes('page=2') ? 'previous' : null,
+      summary: { total_expected: 500000, total_collected: 200000, total_outstanding: 300000 },
+      results: [{ student_id: 3, student_name: 'Ada Student', class: 'JSS1A', total_fees: 1000, paid: 400, outstanding: 600 }],
+    } };
+    return { data: [] };
+  });
+  renderPage(<FeeCollection />);
+  expect(await screen.findByText('₦500,000')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/fees/outstanding/?term=1&page=2'));
+  expect(screen.getByText('Page 2')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Download Debtors PDF' }));
+  await waitFor(() => expect(downloadReport).toHaveBeenCalledWith(
+    'Outstanding school fees', expect.any(Array), 'debtors.pdf'
+  ));
 });
 
 test('MyResult explains when a selected term has no published result', async () => {

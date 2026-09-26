@@ -358,21 +358,36 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
         from django.contrib.auth import get_user_model
         User = get_user_model()
 
-        # Get all students in this school
-        students = User.objects.filter(school=self.school, role='student').select_related(
-            'student_profile__current_class'
+        attendance = Q(attendance_records__attendance_session__school=self.school,
+                       attendance_records__attendance_session__term_id=term_id)
+        students = User.objects.filter(
+            school=self.school, role='student', student_profile__status='active'
+        ).select_related(
+            'student_profile__current_class__class_level', 'student_profile__current_class__school'
+        ).annotate(
+            attendance_total=Count('attendance_records', filter=attendance),
+            attendance_present=Count('attendance_records', filter=attendance & Q(attendance_records__status='present')),
+            attendance_absent=Count('attendance_records', filter=attendance & Q(attendance_records__status='absent')),
+            attendance_late=Count('attendance_records', filter=attendance & Q(attendance_records__status='late')),
+            attendance_excused=Count('attendance_records', filter=attendance & Q(attendance_records__status='excused')),
         )
 
         flagged = []
         for student in students:
-            summary = AttendanceRecord.objects.summary(student.id, term_id)
-            if summary['total'] > 0 and summary['percentage'] < threshold:
+            denominator = max(student.attendance_total - student.attendance_excused, 0)
+            percentage = round((student.attendance_present + student.attendance_late) / denominator * 100, 1) if denominator else 0.0
+            if student.attendance_total > 0 and percentage < threshold:
                 flagged.append({
                     'student_id':   student.id,
                     'student_name': student.get_full_name() or student.username,
                     'admission_no': getattr(getattr(student, 'student_profile', None), 'admission_number', ''),
                     'class_arm':    str(getattr(getattr(student, 'student_profile', None), 'current_class', '')),
-                    **summary,
+                    'total': student.attendance_total,
+                    'present': student.attendance_present,
+                    'absent': student.attendance_absent,
+                    'late': student.attendance_late,
+                    'excused': student.attendance_excused,
+                    'percentage': percentage,
                 })
 
         # Sort by percentage ascending (worst first)

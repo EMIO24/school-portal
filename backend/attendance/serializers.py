@@ -125,6 +125,7 @@ class AttendanceSessionCreateSerializer(TenantRelationsMixin, serializers.ModelS
             school=school,
             role='student',
             student_profile__current_class=session.class_arm,
+            student_profile__status='active',
         )
 
         AttendanceRecord.objects.bulk_create([

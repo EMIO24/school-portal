@@ -3,6 +3,11 @@ import { downloadReport } from "../../services/pdf";
 import api from "../../services/api";
 import "./FeeCollection.css";
 
+function paymentRetryKey() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `manual-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function statusOf(paid, total) {
   if (!total || Number(total) === 0) return "na";
   const ratio = Number(paid) / Number(total);
@@ -27,14 +32,19 @@ export default function FeeCollection() {
   const [selectedTerm, setSelectedTerm] = useState("");
   const [selectedArm, setSelectedArm]   = useState("");
   const [outstanding, setOutstanding]   = useState([]);
+  const [summary, setSummary]           = useState(null);
+  const [page, setPage]                 = useState(1);
+  const [pageInfo, setPageInfo]         = useState({ next: null, previous: null });
   const [loading, setLoading]           = useState(false);
   const [modal, setModal]               = useState(null);
   const [schedules, setSchedules]       = useState([]);
   const [payForm, setPayForm]           = useState({
     fee_schedule_id: "", amount_paid: "", method: "cash",
     payment_date: new Date().toISOString().slice(0, 10),
+    idempotency_key: paymentRetryKey(),
   });
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     api.get("/api/terms/").then(({ data: d }) => {
@@ -52,12 +62,17 @@ export default function FeeCollection() {
 
   const loadOutstanding = useCallback(() => {
     setLoading(true);
-    let url = `/api/fees/outstanding/?term=${selectedTerm}`;
+    let url = `/api/fees/outstanding/?term=${selectedTerm}&page=${page}`;
     if (selectedArm) url += `&class_arm=${selectedArm}`;
     api.get(url)
-      .then(({ data: d }) => { setOutstanding(Array.isArray(d) ? d : d.results || []); setLoading(false); })
+      .then(({ data: d }) => {
+        setOutstanding(Array.isArray(d) ? d : d.results || []);
+        setSummary(Array.isArray(d) ? null : d.summary || null);
+        setPageInfo(Array.isArray(d) ? { next: null, previous: null } : { next: d.next, previous: d.previous });
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
-  }, [selectedTerm, selectedArm]);
+  }, [selectedTerm, selectedArm, page]);
 
   useEffect(() => {
     if (selectedTerm) loadOutstanding();
@@ -72,7 +87,7 @@ export default function FeeCollection() {
       const list = Array.isArray(data) ? data : [];
       setSchedules(list);
       if (list.length > 0) {
-        setPayForm(f => ({ ...f, fee_schedule_id: list[0].schedule.id, amount_paid: list[0].outstanding }));
+        setPayForm(f => ({ ...f, fee_schedule_id: list[0].schedule.id, amount_paid: list[0].outstanding, idempotency_key: paymentRetryKey() }));
       }
     } catch {
       alert("Could not load fee schedules for this student.");
@@ -95,9 +110,28 @@ export default function FeeCollection() {
     }
   }
 
-  const totalExpected    = outstanding.reduce((s, r) => s + Number(r.total_fees), 0);
-  const totalCollected   = outstanding.reduce((s, r) => s + Number(r.paid), 0);
-  const totalOutstanding = outstanding.reduce((s, r) => s + Number(r.outstanding), 0);
+  async function downloadDebtors() {
+    setExporting(true);
+    try {
+      const rows = [];
+      for (let pageNumber = 1; pageNumber <= 200; pageNumber += 1) {
+        let url = `/api/fees/outstanding/?term=${selectedTerm}&page=${pageNumber}`;
+        if (selectedArm) url += `&class_arm=${selectedArm}`;
+        const {data} = await api.get(url);
+        rows.push(...(Array.isArray(data) ? data : data.results || []));
+        if (Array.isArray(data) || !data.next) break;
+      }
+      exportPDF(rows);
+    } catch {
+      alert("Could not prepare the debtor report. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const totalExpected    = Number(summary?.total_expected ?? outstanding.reduce((s, r) => s + Number(r.total_fees), 0));
+  const totalCollected   = Number(summary?.total_collected ?? outstanding.reduce((s, r) => s + Number(r.paid), 0));
+  const totalOutstanding = Number(summary?.total_outstanding ?? outstanding.reduce((s, r) => s + Number(r.outstanding), 0));
 
   return (
     <main className="page-shell">
@@ -112,15 +146,17 @@ export default function FeeCollection() {
 
       {/* Filters */}
       <div className="filter-row">
-        <select className="fee-select" value={selectedTerm} onChange={e => setSelectedTerm(e.target.value)}>
+        <select className="fee-select" value={selectedTerm} onChange={e => { setSelectedTerm(e.target.value); setPage(1); }}>
           <option value="">— Term —</option>
           {terms.map(t => <option key={t.id} value={t.id}>{t.name} {t.is_current ? "(current)" : ""}</option>)}
         </select>
-        <select className="fee-select" value={selectedArm} onChange={e => setSelectedArm(e.target.value)}>
+        <select className="fee-select" value={selectedArm} onChange={e => { setSelectedArm(e.target.value); setPage(1); }}>
           <option value="">All Classes</option>
           {classArms.map(c => <option key={c.id} value={c.id}>{c.full_name || c.name}</option>)}
         </select>
-        <button className="btn-secondary btn-sm" onClick={() => exportPDF(outstanding)}>Download Debtors PDF</button>
+        <button className="btn-secondary btn-sm" disabled={exporting || !selectedTerm} onClick={downloadDebtors}>
+          {exporting ? "Preparing…" : "Download Debtors PDF"}
+        </button>
       </div>
 
       <div className="card table-wrap">
@@ -162,6 +198,11 @@ export default function FeeCollection() {
           </tbody>
         </table>
       </div>
+      <nav aria-label="Debtor pages" className="filter-row">
+        <button disabled={!pageInfo.previous || loading} onClick={() => setPage(value => value - 1)}>Previous</button>
+        <span>Page {page}</span>
+        <button disabled={!pageInfo.next || loading} onClick={() => setPage(value => value + 1)}>Next</button>
+      </nav>
 
       {modal && (
         <div className="modal-overlay" onClick={() => setModal(null)}>

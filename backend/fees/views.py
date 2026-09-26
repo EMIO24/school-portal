@@ -13,12 +13,14 @@ GET      /api/fees/outstanding/?term=&class_arm=
 """
 
 import uuid
+import hashlib
+import re
 from decimal import Decimal
 from requests.exceptions import RequestException
 
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Count, Sum
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.utils.dateparse import parse_date
@@ -26,6 +28,7 @@ from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
 
 from accounts.permissions import IsSchoolAdmin, IsAuthenticatedTenantUser
 from .access import payment_student, check_student_access
@@ -284,6 +287,23 @@ class ManualPaymentView(APIView):
                 raise ValueError()
         except Exception:
             return Response({'error': 'Enter a positive amount with at most two decimal places.'}, status=400)
+        idempotency_key = str(d.get('idempotency_key', '')).strip()
+        if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,100}', idempotency_key):
+            return Response({'error': 'Payment retry key is invalid. Reload the form and try again.'}, status=400)
+        receipt_number = ''
+        if idempotency_key:
+            digest = hashlib.sha256(f'{school.pk}:{idempotency_key}'.encode()).hexdigest()[:20].upper()
+            receipt_number = f'REC-IDEM-{digest}'
+            existing = FeePayment.objects.filter(school=school, receipt_number=receipt_number).first()
+            if existing:
+                same_payment = (
+                    existing.student_id == student.pk and existing.fee_schedule_id == schedule.pk
+                    and existing.amount_paid == amount and existing.payment_date == payment_date
+                    and existing.method == d.get('method', 'cash')
+                )
+                if not same_payment:
+                    return Response({'error': 'This payment retry key was already used for different details.'}, status=409)
+                return Response(FeePaymentSerializer(existing).data, status=200)
         paid = FeePayment.objects.filter(student=student, fee_schedule=schedule).aggregate(total=Sum('amount_paid'))['total'] or Decimal(0)
         if not student.current_class or schedule.class_level_id != student.current_class.class_level_id or amount > schedule.amount - paid:
             return Response({'error': 'Payment must match this student and cannot exceed the outstanding balance.'}, status=400)
@@ -295,6 +315,7 @@ class ManualPaymentView(APIView):
             payment_date=payment_date,
             method=d.get('method', 'cash'),
             recorded_by=request.user,
+            receipt_number=receipt_number,
         )
         payment.save()
         return Response(FeePaymentSerializer(payment).data, status=201)
@@ -355,13 +376,13 @@ class OutstandingFeesView(APIView):
         )
         if class_arm_id:
             student_qs = student_qs.filter(current_class_id=class_arm_id)
-        student_list = list(student_qs)
+        level_counts = {
+            row['current_class__class_level_id']: row['count']
+            for row in student_qs.exclude(current_class__isnull=True)
+            .values('current_class__class_level_id').annotate(count=Count('id'))
+        }
 
-        # Collect distinct class_level ids to batch-fetch all matching schedules
-        level_ids = list({
-            s.current_class.class_level_id
-            for s in student_list if s.current_class
-        })
+        level_ids = list(level_counts)
 
         sched_qs = FeeSchedule.objects.filter(school=school, class_level_id__in=level_ids)
         if term_id:
@@ -374,6 +395,18 @@ class OutstandingFeesView(APIView):
         }
 
         # Paid amount per student — one query
+        total_expected = sum(
+            level_totals.get(level_id, Decimal('0')) * count
+            for level_id, count in level_counts.items()
+        )
+        total_collected = FeePayment.objects.filter(
+            student__in=student_qs, fee_schedule__in=sched_qs,
+        ).aggregate(t=Sum('amount_paid'))['t'] or Decimal('0')
+
+        paginator = PageNumberPagination()
+        paginator.page_size = 50
+        student_list = paginator.paginate_queryset(student_qs, request, view=self)
+
         student_ids = [s.id for s in student_list if s.current_class]
         paid_map = {
             row['student_id']: row['t'] or Decimal('0')
@@ -399,4 +432,10 @@ class OutstandingFeesView(APIView):
                 'outstanding':  max(total - paid, Decimal('0')),
             })
 
-        return Response(result)
+        response = paginator.get_paginated_response(result)
+        response.data['summary'] = {
+            'total_expected': total_expected,
+            'total_collected': total_collected,
+            'total_outstanding': max(total_expected - total_collected, Decimal('0')),
+        }
+        return response

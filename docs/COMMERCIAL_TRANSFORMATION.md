@@ -351,3 +351,39 @@ entire Basic product. Next recommended batch: Commercial Simulation; not started
 tests and deployment-compatible transaction behavior. Styled invoice/receipt and
 academic PDFs require native WeasyPrint verification; responsive billing and Basic
 browser/device workflows remain promotion gates. No merge, push or deployment.
+
+## Batch 5: Commercial Simulation
+
+`python manage.py seed_commercial_simulation --confirm-development` creates a
+deterministic engineering dataset and a separate boundary tenant. It refuses
+production settings, requires explicit acknowledgement and never replaces an
+existing simulation school. The primary school contains 505 students (500 active),
+40 staff (25 teachers), 380 parents, 525 links, 18 class arms, 15 subjects, 91
+current/historical assignments, 90 registers with 2,500 attendance records, 18 fee
+schedules, 300 payments, 140 current/historical score entries and lifecycle-varied
+results. The issued Basic invoice snapshots 500 active students at NGN 720 after
+the established 10% discount, totaling NGN 360,000.
+
+Integrated tests cover teacher attendance and result submission through publication,
+historical locks, parent and student access, administrator fees, payment retry,
+immutable billing and representative direct-ID attacks against the boundary tenant.
+Confirmed P1 fixes exclude withdrawn students from new registers, replace the
+low-attendance per-student query loop, make manual-payment retries idempotent, and
+paginate debtors at 50 rows while preserving school-wide totals and full paged PDF
+export. No pricing, entitlement, dependency or schema changes were made.
+
+Local SQLite measurements at 500 active students: students 3 queries/20 rows,
+staff 5/20, assignments 3/20, attendance 2/5, gradebook 7/28, results 2/28,
+debtors 7/50, low attendance 2/230, parent children 4/2 and parent dashboard
+12 queries. Observed response times were approximately 5-95 ms in the final broad
+run; these are regression measurements, not PostgreSQL latency or capacity claims.
+The broader affected suite passed 178 tests with two PostgreSQL-only skips. Django
+and migration checks passed. Frontend payment/pagination regressions and the
+production build passed after the final correction.
+
+Remaining P2: richer server-side import dry runs, broader simulation distributions
+and hands-on slow-network/mobile usability refinements. **PRE-PROMOTION POSTGRESQL
+TEST REQUIRED** remains for both concurrency tests and deployment-compatible
+transaction behavior. Native WeasyPrint invoice/receipt and academic PDF inspection,
+real browser/device workflows and deployment-compatible validation remain promotion
+gates. Recommended next batch: release-gate validation; not started.
