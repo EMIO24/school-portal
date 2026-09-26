@@ -611,3 +611,37 @@ waived once real school data exists.
 **P2 OPERATIONAL FOLLOW-UP — RAILWAY PLATFORM SNAPSHOT UNAVAILABLE.**
 **CHECKPOINT A — BACKUP & RESTORE: PASSED WITH DOCUMENTED PLATFORM-SNAPSHOT EXCEPTION.**
 **PRODUCTION RECOVERY PROCEDURE: VERIFIED VIA LOGICAL BACKUP AND ISOLATED RESTORE.**
+
+### Production Checkpoint B: controlled backend deployment — 2026-09-26
+
+Checkpoint A was confirmed before release. Railway project `soothing-insight`, its
+`production` environment, canonical `backend-web` service and PostgreSQL 18.6 service
+were identified before any change. Production was healthy on `a35c67e`, had zero
+schools and migration heads `tenants.0004`, `fees.0008` and `gradebook.0002`.
+Production settings were active with `DEBUG=False`, PostgreSQL configured, reset on
+deploy disabled, required secret categories present and Paystack in test mode.
+
+Branch HEAD `9b34dfc` was deployed; its runtime backend/frontend tree is identical to
+validated candidate `5d001c0` because the later commits contain recovery documentation
+only. The read-only Django plan contained exactly the expected non-destructive
+`tenants.0005`, `fees.0009`, `fees.0010`, `fees.0011` and `gradebook.0003` operations,
+with no migration drift. Railway deployment
+`4e3aff2a-a1e3-4f7e-9b05-8585558720ec` completed successfully.
+
+The existing entrypoint passed deployment/system checks and applied all five migrations
+successfully before Gunicorn 26.2.0 started. Post-release migration heads are
+`tenants.0005`, `fees.0011` and `gradebook.0003`; Django reports no planned migration
+operations. System metadata contains exactly one enabled Basic offer at NGN 800, one
+Premium offer at NGN 1,500 and one Enterprise offer at NGN 2,500, with no duplicates.
+
+Two HTTPS `/health/` requests separated by eight seconds returned HTTP 200 with HSTS,
+content-type protection and no redirect. The platform profile endpoint returned 401
+without credentials, while tenant routes without tenant context remained unavailable.
+Bounded deployment logs contained no migration error, startup crash, database error,
+repeated 500, missing dependency/settings error or worker requirement blocking Basic.
+
+Authorized schema and system-metadata mutation occurred through the approved migrations.
+No production school/customer record, payment or academic record was created or changed.
+Rollback was not required, and no P0/P1 issue remains from Checkpoint B.
+
+**CHECKPOINT B — CONTROLLED BACKEND DEPLOYMENT: PASSED.**
