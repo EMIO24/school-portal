@@ -479,3 +479,72 @@ attempted. No production record, configuration, billing state or provider was ch
 **Deployment-compatible/authenticated deployment gate: PARTIALLY CLOSED.** The Basic
 commercial foundation remains release-open solely for that authenticated deployed
 workflow. The deferred P2 PDF calendar glyph remains unchanged. Batch 6 was not started.
+
+### Controlled Basic production release preparation — 2026-09-26
+
+The validated application candidate is `e85564b` on `commercial-transformation`.
+Railway production currently runs `production-readiness-check` at `a35c67e`; the
+canonical Vercel production project `school-portal` runs `3d0bfd`. Both are ancestors
+of the candidate. The Railway release range is 10 commits; the canonical frontend is
+40 commits behind because a newer duplicate Vercel project was deployed separately.
+
+The release contains the validated billing/invoice and payment reconciliation work,
+Basic account and parent operations, academic setup, configurable assessment/grading,
+score review/publication protections, attendance/fee hardening, responsive workflows,
+commercial simulation and release evidence. No unrelated runtime dependency or
+deployment-file change appears in the Railway-to-candidate diff.
+
+Production's applied migration baseline was read inside the running Railway service:
+`fees.0008`, `gradebook.0002` and `tenants.0004`. The five release migrations are:
+
+- `tenants.0005`: subscription-plan choice metadata; non-destructive.
+- `fees.0009`: plan choice metadata plus idempotent Enterprise offer seed.
+- `fees.0010`: new immutable term-invoice table, indexes and constraints.
+- `fees.0011`: nullable invoice-verification fields and guarded payment constraints.
+- `gradebook.0003`: new scoring-policy table plus score component/review columns.
+
+Forward operations do not drop tables/columns or rewrite historical business values.
+Existing payment rows satisfy the new constraints because invoice links default null.
+Risk is moderate rather than zero: table alterations and constraint creation take
+brief locks, and an application-only rollback after `gradebook.0003` is unsafe for old
+score writes. A full backend rollback must therefore restore the verified pre-release
+database snapshot; reverse migrations must not be used casually.
+
+Production uses environment-supplied PostgreSQL, production Django settings and
+Railway-private Redis. Required secret categories are present, explicit hosts/origins
+are configured, migrations are enabled, database reset is disabled and Paystack is in
+test mode. The persistent Postgres volume is present; customer-data population was not
+inspected. Existing backup/schedule status must be verified in Railway before release.
+
+The canonical production origin is `school-portal-gamma-two.vercel.app`, matching
+Railway CORS/CSRF configuration. Its currently deployed API rewrite still uses a
+placeholder backend hostname, a P1 production defect. The candidate's
+`frontend/vercel.json` correctly targets `backend-web-production-cf61.up.railway.app`.
+Production must be deployed through the root-linked `school-portal` Vercel project;
+the duplicate project named `frontend` is not the canonical release target.
+
+Before deployment, create and lock a timestamped Railway Postgres volume backup named
+for the candidate, record the migration baseline, and take an encrypted off-repository
+custom-format `pg_dump`. Verify the dump with `pg_restore --list` and a restore into a
+separate database before treating it as rollback-ready. Record the backup timestamp,
+checksum, restore result and operator-approved retention; never store it in Git.
+
+Authorized release sequence: verify the backup; fast-forward
+`production-readiness-check` to the final candidate; monitor Railway build, deployment
+checks and five migrations; require HTTP 200 from `/health/`; deploy from repository
+root to the linked canonical `school-portal` Vercel project; verify the production API
+rewrite; then create a clearly synthetic Basic school and unique administrator through
+the existing platform-owner onboarding workflow. Use no real people or transactions.
+Run login, refresh, dashboard, students, staff, academics/results and fees as read-only
+smoke checks, inspect protected request status/CORS/HTTPS/runtime behavior, and observe
+Railway/Vercel logs for at least 15 minutes.
+
+Rollback triggers are migration/startup failure, unhealthy backend, broken canonical
+frontend integration, authentication/CORS failure, tenant-context error or unexpected
+500s. Frontend-only failure restores Vercel deployment `dpl_Ghu5es4JaCJ9yLKcw5Yz748pJsfi`.
+Backend or migration failure restores the locked database backup and Railway commit
+`a35c67e` as one coordinated rollback. No production deployment, backup, migration,
+configuration change or synthetic tenant creation was performed during preparation.
+
+**PRODUCTION RELEASE PREPARATION COMPLETE — OPERATOR AUTHORIZATION REQUIRED.**
+The authenticated deployment gate and Basic release milestone remain open.
