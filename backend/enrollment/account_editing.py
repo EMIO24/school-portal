@@ -17,10 +17,11 @@ def edit_account(request, user, changes):
             raise serializers.ValidationError({'new_email': 'This email cannot be used. Check the account details.'})
     if changes.get('is_active') is False and user.pk == request.user.pk:
         raise serializers.ValidationError('Ask another administrator to deactivate your account.')
-    for key, value in changes.items():
-        setattr(user, key, value)
+    changes = {key: value for key, value in changes.items() if getattr(user, key) != value}
     if not changes:
         return
+    for key, value in changes.items():
+        setattr(user, key, value)
     try:
         with transaction.atomic():
             user.save(update_fields=list(changes))

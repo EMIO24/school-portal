@@ -1,0 +1,28 @@
+import React from 'react';
+import {fireEvent,screen,waitFor} from '@testing-library/react';
+import {renderPage} from '../../testSupport/renderPage';
+import FeeCollection from '../../pages/admin/FeeCollection';
+import api from '../../services/api';
+
+jest.mock('../../services/api',()=>({__esModule:true,default:{get:jest.fn(),post:jest.fn()}}));
+
+test('uncertain manual-payment response retries identical details and key',async()=>{
+  api.get.mockImplementation(async url=>{
+    if(url==='/api/terms/')return {data:[{id:1,name:'First term',is_current:true}]};
+    if(url==='/api/class-arms/')return {data:[]};
+    if(url.startsWith('/api/fees/outstanding/'))return {data:{results:[{student_id:7,student_name:'Test Student',class:'JSS1A',total_fees:1000,paid:0,outstanding:1000}],next:null,previous:null}};
+    if(url.startsWith('/api/fees/student/'))return {data:[{schedule:{id:4,fee_category_name:'Tuition'},outstanding:1000}]};
+    throw new Error('Unexpected GET '+url);
+  });
+  api.post.mockRejectedValueOnce(new Error('connection lost')).mockResolvedValueOnce({data:{id:12}});
+  renderPage(<FeeCollection/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Record Payment'}));
+  fireEvent.click(await screen.findByRole('button',{name:'Record'}));
+  expect(await screen.findByText(/Could not confirm whether this payment was recorded/)).toBeVisible();
+  expect(screen.getByRole('button',{name:'Retry same payment'})).toBeEnabled();
+  const first=api.post.mock.calls[0][1];
+  fireEvent.click(screen.getByRole('button',{name:'Retry same payment'}));
+  await waitFor(()=>expect(api.post).toHaveBeenCalledTimes(2));
+  expect(api.post.mock.calls[1][1]).toEqual(first);
+  await waitFor(()=>expect(screen.queryByRole('button',{name:'Retry same payment'})).not.toBeInTheDocument());
+});

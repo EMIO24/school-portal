@@ -33,6 +33,7 @@ export default function ScoreEntry() {
   const [alert,      setAlert]      = useState(null); // { type, msg }
 
   const loadVersion = useRef(0);
+  const actionInFlight = useRef(false);
   const cellRefs = useRef({});   // { `${studentId}_${field}` : ref }
 
   // ── Boot ────────────────────────────────────────────────────────────────────
@@ -57,15 +58,14 @@ export default function ScoreEntry() {
   // ── Load scores when all selectors are set ──────────────────────────────────
   const loadScores = useCallback(async () => {
     const version = ++loadVersion.current;
-    if (!selTerm || !selClass || !selSubject) {setStudents([]);setRows({});setDirty(false);return;}
+    if (!selTerm || !selClass || !selSubject) {setStudents([]);setRows({});setDirty(false);return false;}
     setLoading(true);
-    setDirty(false);
     setErrors({});
     try {
       const { data } = await api.get(
         '/api/gradebook/entries/sheet/?class_arm=' + selClass + '&subject=' + selSubject + '&term=' + selTerm
       );
-      if(version !== loadVersion.current)return;
+      if(version !== loadVersion.current)return false;
       const entries = data.entries;
       setComponents(data.configuration.components);
       const allStudents = data.students.map(stu => ({...stu, id:stu.user}));
@@ -79,10 +79,12 @@ export default function ScoreEntry() {
         rowMap[stu.id] = {...existing,...Object.fromEntries(data.configuration.components.map(c=>[c.key,existing?.policy ? (existing.component_scores[c.key] ?? '') : (existing?.[c.key] ?? '')])),review_state:existing?.review_state || 'draft',is_published:existing?.is_published || false};
       });
       setRows(rowMap);
+      setDirty(false);
+      return true;
     } catch {
-      if(version !== loadVersion.current)return;
-      setStudents([]); setRows({});
-      setAlert({type:'error',msg:'Could not load this score sheet. Check your class, subject and term assignment.'});
+      if(version !== loadVersion.current)return false;
+      setAlert({type:'error',msg:'Could not load this score sheet. Check the connection or assignment, then retry.',retryLoad:true});
+      return false;
     } finally {
       if(version === loadVersion.current)setLoading(false);
     }
@@ -90,10 +92,28 @@ export default function ScoreEntry() {
 
   useEffect(() => { loadScores(); }, [loadScores]);
 
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = event => { event.preventDefault(); event.returnValue = ''; };
+    const warnLink = event => {
+      const link = event.target.closest?.('a[href]');
+      if (link && !window.confirm('You have unsaved scores. Leave this page and discard them?')) event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    document.addEventListener('click', warnLink, true);
+    return () => { window.removeEventListener('beforeunload', warn); document.removeEventListener('click', warnLink, true); };
+  }, [dirty]);
+
+  const changeScope = (set, value) => {
+    if (dirty && !window.confirm('You have unsaved scores. Change the score sheet and discard them?')) return;
+    setDirty(false);setStudents([]);setRows({});setAlert(null);set(value);
+  };
+
   // ── Cell change ─────────────────────────────────────────────────────────────
   const handleChange = useCallback((studentId, field, value) => {
     setRows(prev => ({ ...prev, [studentId]: { ...prev[studentId], [field]: value, grade:"", remark:"Save to calculate grade" } }));
     setDirty(true);
+    setAlert(null);
     // Clear per-cell error on change
     setErrors(prev => {
       if (!prev[studentId]?.[field]) return prev;
@@ -123,10 +143,12 @@ export default function ScoreEntry() {
 
   // ── Save draft ──────────────────────────────────────────────────────────────
   const save = async () => {
+    if (actionInFlight.current) return;
     if (!selSession) {
       setAlert({ type: 'error', msg: 'Please select an academic session before saving.' });
       return;
     }
+    actionInFlight.current = true;
     setSaving(true);
     setAlert(null);
 
@@ -145,15 +167,32 @@ export default function ScoreEntry() {
         setErrors(data.errors);
         setAlert({ type: 'error', msg: 'Some rows have validation errors. Please correct them.' });
       } else {
+        const refreshed = await loadScores();
         setDirty(false);
-        setAlert({ type: 'success', msg: 'Draft saved. Your school administrator can review and publish these scores.' });
-        await loadScores();
+        setAlert(refreshed
+          ? { type: 'success', msg: 'Draft saved. Your school administrator can review and publish these scores.' }
+          : { type: 'error', msg: 'Draft saved on the server, but the sheet could not refresh. Retry loading to confirm the latest values.', retryLoad: true });
       }
     } catch (err) {
-      setAlert({ type: 'error', msg: scoringError(err) });
+      setAlert({ type: 'error', msg: err?.response ? scoringError(err) : 'Could not confirm the save. Your scores remain here. Retry the same draft when connected.' });
     } finally {
+      actionInFlight.current = false;
       setSaving(false);
     }
+  };
+
+  const submit = async () => {
+    if (actionInFlight.current || dirty) return;
+    actionInFlight.current = true;setSaving(true);setAlert(null);
+    try {
+      await api.post('/api/gradebook/entries/submit/',{class_arm:Number(selClass),subject:Number(selSubject),term:Number(selTerm)});
+      const refreshed = await loadScores();
+      setAlert(refreshed
+        ? {type:'success',msg:'Submitted for administrator review. Scores are locked.'}
+        : {type:'error',msg:'Submission succeeded, but the sheet could not refresh. Retry loading to confirm its status.',retryLoad:true});
+    } catch (err) {
+      setAlert({type:'error',msg:err?.response ? scoringError(err) : 'Could not confirm submission. Retry; submitting the same sheet again is safe.'});
+    } finally {actionInFlight.current=false;setSaving(false);}
   };
 
   // ── Derived per-row computed values ─────────────────────────────────────────
@@ -201,7 +240,7 @@ export default function ScoreEntry() {
         ].map(({ label, val, set, opts, labelKey }) => (
           <div key={label} className="gb-field-group">
             <label>{label}</label>
-            <select aria-label={label} disabled={saving} className="gb-select" value={val} onChange={e => set(e.target.value)}>
+            <select aria-label={label} disabled={saving} className="gb-select" value={val} onChange={e => changeScope(set,e.target.value)}>
               <option value="">— {label} —</option>
               {opts.map(o => <option key={o.id} value={o.id}>{o[labelKey]}</option>)}
             </select>
@@ -218,15 +257,18 @@ export default function ScoreEntry() {
             >
               {saving ? 'Saving…' : '💾 Save Draft'}
             </button>
-            <button className="gb-btn gb-btn--draft" disabled={saving || dirty || !students.length || students.some(s=>rows[s.id]?.review_state !== 'draft' || rows[s.id]?.is_published)} onClick={async()=>{setSaving(true);try{await api.post('/api/gradebook/entries/submit/',{class_arm:Number(selClass),subject:Number(selSubject),term:Number(selTerm)});await loadScores();setAlert({type:'success',msg:'Submitted for administrator review. Scores are locked.'});}catch(e){setAlert({type:'error',msg:scoringError(e)});}finally{setSaving(false);}}}>Submit for review</button>
+            <button className="gb-btn gb-btn--draft" disabled={saving || dirty || !students.length || students.some(s=>rows[s.id]?.review_state !== 'draft' || rows[s.id]?.is_published)} onClick={submit}>Submit for review</button>
           </div>
         </div>
       </div>
 
       {/* Alert */}
+      {saving && <p role="status">Saving…</p>}
+      {dirty && !saving && <p role="status">Unsaved changes. Save your draft before leaving.</p>}
       {alert && (
         <div className={`gb-alert gb-alert--${alert.type}`}>
           {alert.type === 'error' ? '❌' : '✓'} {alert.msg}
+          {alert.retryLoad && <button type="button" onClick={loadScores}>Retry loading</button>}
         </div>
       )}
 
@@ -296,7 +338,7 @@ export default function ScoreEntry() {
                       <GradeCell
                         key={f.key}
                         value={row[f.key]}
-                        disabled={row.is_published || row.review_state !== 'draft'}
+                        disabled={saving || row.is_published || row.review_state !== 'draft'}
                         max={f.maximum}
                         hasError={Boolean(rowErrors[f.key])}
                         fieldName={f.name}

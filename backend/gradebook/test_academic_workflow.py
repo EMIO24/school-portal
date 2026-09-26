@@ -144,6 +144,33 @@ class AcademicWorkflowTests(TestCase):
         from tenants.models import PlatformEvent
         self.assertTrue(PlatformEvent.objects.filter(action='school.results_reopened',actor=self.admin).exists())
 
+    def test_retry_transitions_keep_one_audit_event(self):
+        from tenants.models import PlatformEvent
+        self.configure();self.save_scores()
+        self.client.force_authenticate(self.teacher)
+        self.action('submit');self.action('submit')
+        self.client.force_authenticate(self.admin)
+        self.action('approve');self.action('approve')
+        self.action('publish');self.action('publish')
+        for name in ('submit','approve','publish'):
+            self.assertEqual(PlatformEvent.objects.filter(action='school.results_'+name).count(),1)
+        self.assertTrue(ScoreEntry.objects.get().is_published)
+
+    def test_reopen_retry_keeps_one_audit_event_and_requires_admin_reason(self):
+        from tenants.models import PlatformEvent
+        self.configure();self.save_scores();self.publish()
+        entry=ScoreEntry.objects.get()
+        url='/api/gradebook/entries/reopen/'
+        data={'entry_ids':[entry.pk],'reason':'Correct the recorded exam score'}
+        self.assertEqual(self.client.post(url,{'entry_ids':[entry.pk],'reason':'short'},format='json').status_code,400)
+        self.client.force_authenticate(self.teacher)
+        self.assertEqual(self.client.post(url,data,format='json').status_code,403)
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.post(url,data,format='json').status_code,200)
+        self.assertEqual(self.client.post(url,data,format='json').status_code,200)
+        self.assertEqual(PlatformEvent.objects.filter(action='school.results_reopened').count(),1)
+        entry.refresh_from_db();self.assertEqual(entry.review_state,'draft');self.assertFalse(entry.is_published)
+
     def test_transition_rolls_back_if_audit_write_fails(self):
         self.configure();self.save_scores()
         with patch('gradebook.lifecycle.PlatformEvent.objects.create',side_effect=RuntimeError('audit unavailable')):

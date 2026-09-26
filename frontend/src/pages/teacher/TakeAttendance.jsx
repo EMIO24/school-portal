@@ -16,7 +16,7 @@ import {referenceOptions} from '../../services/referenceOptions';
  * detects the 400 conflict and offers to reload the existing session.
  */
 
-import React, { useState, useEffect, useReducer } from 'react';
+import React, { useState, useEffect, useReducer, useRef } from 'react';
 import api from '../../services/api';
 import '../../styles/Attendance.css';
 
@@ -80,6 +80,7 @@ export default function TakeAttendance() {
   const [finalizing, setFinalizing] = useState(false);
   const [error,      setError]      = useState(null);
   const [success,    setSuccess]    = useState(null);
+  const actionInFlight = useRef(false);
 
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -165,39 +166,63 @@ export default function TakeAttendance() {
 
   // ── Submit ──────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
+    if (actionInFlight.current || !session) return;
+    actionInFlight.current = true;
     setSubmitting(true);
     setError(null);
+    setSuccess(null);
+    const payload = {
+      records: Object.entries(records).map(([studentId, rec]) => ({
+        student_id: Number(studentId), status: rec.status, remark: rec.remark,
+      })),
+    };
     try {
-      const payload = {
-        records: Object.entries(records).map(([studentId, rec]) => ({
-          student_id: Number(studentId),
-          status:     rec.status,
-          remark:     rec.remark,
-        })),
-      };
       const { data } = await api.patch(`/api/attendance/sessions/${session.id}/submit/`, payload);
       loadSession(data);
       setSuccess('Attendance saved successfully.');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError(err?.response?.data?.detail ?? 'Failed to submit attendance.');
+      if (err?.response && err.response.status < 500) setError(err.response.data?.detail ?? 'Could not save attendance. Review the entries and retry.');
+      else {
+        try {
+          const {data} = await api.get(`/api/attendance/sessions/${session.id}/`);
+          const matches = payload.records.every(item => data.records.some(row =>
+            row.student === item.student_id && row.status === item.status &&
+            (row.remark || '') === (item.remark || '')
+          ));
+          if (matches) {loadSession(data);setSuccess('Attendance saved; the register confirms your entries.');}
+          else setError('Could not confirm the save. Your marks remain here; review the register before retrying.');
+        } catch {setError('Could not confirm the save. Your marks remain here; reconnect and retry.');}
+      }
     } finally {
+      actionInFlight.current = false;
       setSubmitting(false);
     }
   };
 
   // ── Finalize ─────────────────────────────────────────────────────────────────
   const handleFinalize = async () => {
+    if (actionInFlight.current || !session) return;
     if (!window.confirm('Lock this register? It cannot be edited by teachers after this.')) return;
+    actionInFlight.current = true;
     setFinalizing(true);
     setError(null);
+    setSuccess(null);
     try {
       await api.patch(`/api/attendance/sessions/${session.id}/finalize/`);
       setSession(prev => ({ ...prev, is_finalized: true }));
       setSuccess('Register locked successfully.');
     } catch (err) {
-      setError(err?.response?.data?.detail ?? 'Could not finalize session.');
+      if (err?.response && err.response.status < 500) setError(err.response.data?.detail ?? 'Could not lock this register.');
+      else {
+        try {
+          const {data} = await api.get(`/api/attendance/sessions/${session.id}/`);
+          if (data.is_finalized) {loadSession(data);setSuccess('Register lock confirmed.');}
+          else setError('Could not confirm the lock. Check the register before retrying.');
+        } catch {setError('Could not confirm the lock. Reconnect and check the register before retrying.');}
+      }
     } finally {
+      actionInFlight.current = false;
       setFinalizing(false);
     }
   };
@@ -294,6 +319,7 @@ export default function TakeAttendance() {
                   : (
                     <button
                       className="att-btn att-btn--ghost"
+                      disabled={submitting || finalizing}
                       onClick={() => setSession(null)}
                     >← Back</button>
                   )}
@@ -322,7 +348,8 @@ export default function TakeAttendance() {
               <span>{students.length} students total</span>
               <button
                 className="att-btn att-btn--ghost"
-                onClick={() => dispatch({ type: 'MARK_ALL_PRESENT' })}
+                disabled={submitting || finalizing}
+                onClick={() => {setSuccess(null);dispatch({ type: 'MARK_ALL_PRESENT' });}}
               >
                 ✓ Mark all present
               </button>
@@ -349,12 +376,12 @@ export default function TakeAttendance() {
                             key={s.key}
                             className={`att-status-btn is-${STATUS_KEY[s.key]}${rec.status === s.key ? ' active' : ''}`}
                             title={s.title}
-                            disabled={isFinalized}
-                            onClick={() => dispatch({
+                            disabled={isFinalized || submitting || finalizing}
+                            onClick={() => {setSuccess(null);dispatch({
                               type: 'SET_STATUS',
                               studentId: student.student,
                               status: s.key,
-                            })}
+                            });}}
                           >{s.label}</button>
                         ))}
                       </div>
@@ -367,11 +394,12 @@ export default function TakeAttendance() {
                           className="att-remark-input"
                           placeholder="Remark (optional)…"
                           value={rec.remark}
-                          onChange={e => dispatch({
+                          disabled={submitting || finalizing}
+                          onChange={e => {setSuccess(null);dispatch({
                             type: 'SET_REMARK',
                             studentId: student.student,
                             remark: e.target.value,
-                          })}
+                          });}}
                         />
                       </div>
                     )}
@@ -387,7 +415,7 @@ export default function TakeAttendance() {
               <button
                 className="att-btn att-btn--primary"
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || finalizing}
               >
                 {submitting ? 'Saving…' : '💾 Save Attendance'}
               </button>

@@ -171,6 +171,8 @@ class BasicOperationsTests(TestCase):
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(self.client.post(url, payload, format='json').status_code, 200)
         self.assertEqual(ParentStudentLink.objects.count(), 1)
+        from tenants.models import PlatformEvent
+        self.assertEqual(PlatformEvent.objects.filter(action='school.parent_linked',target=str(self.profile.pk)).count(),1)
         parent = CustomUser.objects.get(email=payload['email'])
         self.client.force_authenticate(parent)
         children = self.client.get('/api/parent/children/')

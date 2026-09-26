@@ -84,8 +84,9 @@ class StudentParents(APIView):
                 last_name=data['last_name'], role='parent', school=school, phone_number=data['phone'], must_change_password=False)
         link, created = ParentStudentLink.objects.get_or_create(parent=parent, student=student,
             defaults={'school':school, 'relationship':data['relationship']})
-        PlatformEvent.objects.create(actor=request.user, actor_email=request.user.email, action='school.parent_linked',
-            target=str(student.pk), details={'school_id':school.pk, 'parent_id':parent.pk, 'link_id':link.pk})
+        if created:
+            PlatformEvent.objects.create(actor=request.user, actor_email=request.user.email, action='school.parent_linked',
+                target=str(student.pk), details={'school_id':school.pk, 'parent_id':parent.pk, 'link_id':link.pk})
         return Response({'id':link.pk}, status=201 if created else 200)
 
     @transaction.atomic

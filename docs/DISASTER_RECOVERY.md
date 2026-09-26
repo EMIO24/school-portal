@@ -9,6 +9,39 @@ This runbook is for authorized deployment operators. A real Railway PostgreSQL b
 - Repository evidence does not establish Railway backup frequency or retention. **Confirm Railway backup/retention configuration before commercial launch.**
 - Store backups outside Git in encrypted, access-controlled storage. Keep encryption keys separately and apply the retention policy agreed by the platform owner.
 
+## Current capability and operating decision
+
+Checkpoint A verified one production PostgreSQL logical dump, its checksum, an
+isolated restore, and representative Django reads. That proves the restore path,
+not a recurring backup schedule. Railway platform snapshot creation was unavailable
+to the current operator, and no automated production backup has been verified.
+Railway [documents daily, weekly and monthly volume backup schedules](https://docs.railway.com/volumes/backups),
+but an operator with project backup permissions must confirm and enable the schedule
+in the PostgreSQL service's Backups tab. A Railway volume backup restores within
+the same project and environment; retain a separate off-platform logical copy.
+
+Before real customer data accumulates, the platform owner must choose a controlled
+encrypted off-platform destination, approve a retention policy, and assign a person
+to check every backup run. A practical **proposed**, not yet implemented, policy is
+daily copies for seven days, weekly copies for four weeks, and monthly copies for
+three months; legal and commercial retention requirements may change it. Until an
+approved schedule or external runner exists, an operator must run section A
+manually at the agreed cadence and record a missed run as an incident. A scheduled
+logical runner is possible only with a private secret store, encrypted external
+storage, failure alerts, and an approved recurring cost. None is provisioned here.
+
+| Responsibility | Current owner |
+| --- | --- |
+| Approve storage, retention and a production restore | Platform owner |
+| Run backup, verify checksum/archive and transfer off-platform | Authorized recovery operator |
+| Check backup failures, age and storage access each day | Authorized recovery operator |
+| Restore into an isolated database and validate Django reads | Recovery operator, reviewed by platform owner |
+| Decide whether production writes stop or recovery begins | Platform owner |
+
+The platform owner and recovery operator may be the same person at this stage, but
+the incident record must name who performed each step. The owner should arrange a
+second reviewer for a production restore where practical.
+
 ## A. Create and verify a database backup
 
 Prerequisites: authorized Railway access, PostgreSQL client tools compatible with the server (`pg_dump` and `pg_restore`), sufficient encrypted local space, and the deployed application environment. Supply `DATABASE_URL` only through Railway's environment or a private shell environment; never place it in a command, document, terminal transcript, or Git file.
@@ -55,6 +88,13 @@ A production restore is an incident operation and is never executed by this runb
 10. Restore access gradually, monitor errors, and record completion and any data-loss window.
 
 Never use `RESET_DB_ON_DEPLOY`; it flushes data and is unrelated to recovery.
+
+For every incident, record: detection time and symptom; affected services and last
+safe write time; who restricted writes; backup timestamp, source and SHA-256; archive
+listing result; isolated restore database and validation results; chosen application
+commit and migration plan; owner approval and reviewer; production restore start/end;
+health, authentication, tenant, academic and payment-read checks; estimated data-loss
+window; and follow-up owner. Never include credentials or personal records.
 
 ## D. Incident playbooks
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { downloadReport } from "../../services/pdf";
 import api from "../../services/api";
 import "./FeeCollection.css";
@@ -44,6 +44,9 @@ export default function FeeCollection() {
     idempotency_key: paymentRetryKey(),
   });
   const [saving, setSaving] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
+  const [uncertainPayment, setUncertainPayment] = useState(null);
+  const paymentInFlight = useRef(false);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
@@ -81,6 +84,8 @@ export default function FeeCollection() {
 
   async function openPayModal(student) {
     setModal(student);
+    setPaymentError("");
+    setUncertainPayment(null);
     setSchedules([]);
     try {
       const { data } = await api.get(`/api/fees/student/${student.student_id}/?term=${selectedTerm}`);
@@ -96,16 +101,25 @@ export default function FeeCollection() {
   }
 
   async function recordPayment() {
+    if (paymentInFlight.current) return;
+    paymentInFlight.current = true;
     setSaving(true);
+    setPaymentError("");
+    const payload = uncertainPayment || { student_id: modal.student_id, ...payForm };
     try {
-      await api.post("/api/fees/pay/manual/", {
-        student_id: modal.student_id, ...payForm,
-      });
+      await api.post("/api/fees/pay/manual/", payload);
       setModal(null);
+      setUncertainPayment(null);
       loadOutstanding();
-    } catch {
-      alert("Failed to record payment. Please check the details and try again.");
+    } catch (error) {
+      if (!error?.response || error.response.status >= 500) {
+        setUncertainPayment(payload);
+        setPaymentError("Could not confirm whether this payment was recorded. Keep these details and retry the same payment; do not enter it again as a new payment.");
+      } else {
+        setPaymentError(error.response.data?.error || error.response.data?.detail || "Could not record this payment. Review the details and try again.");
+      }
     } finally {
+      paymentInFlight.current = false;
       setSaving(false);
     }
   }
@@ -205,12 +219,12 @@ export default function FeeCollection() {
       </nav>
 
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay" onClick={() => {if (!saving) setModal(null);}}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <h2>Record Payment — {modal.student_name}</h2>
 
             <label>Fee Item</label>
-            <select value={payForm.fee_schedule_id} onChange={e => {
+            <select disabled={saving || !!uncertainPayment} value={payForm.fee_schedule_id} onChange={e => {
               const s = schedules.find(x => String(x.schedule.id) === e.target.value);
               setPayForm(f => ({ ...f, fee_schedule_id: Number(e.target.value), amount_paid: s?.outstanding || "" }));
             }}>
@@ -222,20 +236,22 @@ export default function FeeCollection() {
             </select>
 
             <label>Amount Paid (₦)</label>
-            <input type="number" value={payForm.amount_paid} onChange={e => setPayForm(f => ({ ...f, amount_paid: e.target.value }))} />
+            <input disabled={saving || !!uncertainPayment} type="number" value={payForm.amount_paid} onChange={e => setPayForm(f => ({ ...f, amount_paid: e.target.value }))} />
 
             <label>Method</label>
-            <select value={payForm.method} onChange={e => setPayForm(f => ({ ...f, method: e.target.value }))}>
+            <select disabled={saving || !!uncertainPayment} value={payForm.method} onChange={e => setPayForm(f => ({ ...f, method: e.target.value }))}>
               <option value="cash">Cash</option>
               <option value="bank_transfer">Bank Transfer</option>
             </select>
 
             <label>Payment Date</label>
-            <input type="date" value={payForm.payment_date} onChange={e => setPayForm(f => ({ ...f, payment_date: e.target.value }))} />
+            <input disabled={saving || !!uncertainPayment} type="date" value={payForm.payment_date} onChange={e => setPayForm(f => ({ ...f, payment_date: e.target.value }))} />
+
+            {paymentError && <p role="alert">{paymentError}</p>}
 
             <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-              <button className="btn-primary" onClick={recordPayment} disabled={saving}>{saving ? "Saving…" : "Record"}</button>
+              <button className="btn-secondary" disabled={saving} onClick={() => setModal(null)}>Cancel</button>
+              <button className="btn-primary" onClick={recordPayment} disabled={saving}>{saving ? "Saving…" : uncertainPayment ? "Retry same payment" : "Record"}</button>
             </div>
           </div>
         </div>

@@ -217,6 +217,10 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
         lock_school(self.school)
         rows = list(ScoreEntry.objects.select_for_update().filter(school=self.school, pk__in=ids))
         if len(rows)!=len(set(ids)): raise ValidationError('Select entries from this school.')
+        if all(not row.is_published and row.review_state == 'draft' for row in rows):
+            return Response({'reopened': len(rows)})
+        if any(not row.is_published and row.review_state == 'draft' for row in rows):
+            raise ValidationError('Select entries in the same review state before reopening.')
         PlatformEvent.objects.create(actor=request.user, actor_email=request.user.email, action='school.results_reopened', target=str(self.school.pk), details={'school_id':self.school.pk,'reason':reason[:2000],'entries':[{'id':row.pk,'total':str(row.total_score),'grade':row.grade} for row in rows]})
         ScoreEntry.objects.filter(pk__in=[row.pk for row in rows]).update(is_published=False, review_state='draft')
         return Response({'reopened':len(rows)})

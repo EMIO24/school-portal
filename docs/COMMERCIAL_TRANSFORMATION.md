@@ -759,3 +759,24 @@ disabled. The frontend runtime matches the validated candidate.
 
 **CHECKPOINT D2 — OPERATOR-ASSISTED AUTHENTICATED PRODUCTION SMOKE: PASSED.**
 **BASIC PRODUCTION BASELINE: ESTABLISHED.**
+
+### Batch 6 reliability and recovery map — 2026-09-26
+
+**BASIC PRODUCTION BASELINE COMMIT: 053a62ab6c738b5e501253df6c60d8c7b46015e3.**
+This baseline was pushed to `origin/commercial-transformation` before Batch 6 edits;
+Batch 6 work remains local and has not been deployed. The repository's release
+deployment branch is `production-readiness-check`; permanent release-branch
+protection remains an operator/governance decision (P2).
+
+| Workflow | Baseline finding | Batch 6 treatment |
+| --- | --- | --- |
+| Score draft and submit | Backend draft persistence and assignment checks existed; failed save could leave the UI uncertain and navigation could discard edits. | Preserve edits, show save state, guard unsaved navigation, and make repeated lifecycle transitions return the current state without duplicate audit. |
+| Result approval, publication and reopening | State checks existed, but a retry after a lost response could create a contradictory error or duplicate reopen audit. | Reconcile uncertain responses against the sheet and make already completed transitions idempotent after authorization. |
+| Attendance | Session submit upserts were idempotent; a lost response gave no authoritative answer. | Read back the register after an uncertain save or lock; keep local marks when confirmation fails. |
+| Manual payment | Server idempotency key already prevented duplicate credit; the UI could generate a new intent after an uncertain response. | Preserve the exact payment payload and key for retry. |
+| Account/access and parent links | Authorization and tenant scope existed; identical retries could emit duplicate audit events. | Skip unchanged account edits and duplicate parent-link events. |
+| Backup/restore | One logical dump, checksum, isolated restore and Django reads were proven; recurring/platform backups are unverified. | Clarify owner, proposed retention, manual fallback and incident steps in the recovery runbook. |
+
+Local SQLite tests provide functional and bounded-query evidence only. They do not
+establish PostgreSQL or production latency. No migration, dependency, new worker or
+new production backup schedule was added in this batch.

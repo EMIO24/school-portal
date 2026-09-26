@@ -34,6 +34,11 @@ def transition(request, action):
     if not rows or not expected.issubset({row.student_id for row in rows}):
         raise ValidationError('Every active student needs a score row before this result can proceed.')
     required = {'submit':'draft','approve':'submitted','publish':'approved'}[action]
+    completed = {'submit':'submitted','approve':'approved','publish':'published'}[action]
+    if action == 'publish' and all(row.is_published for row in rows):
+        return {completed: len(rows)}
+    if action != 'publish' and all(not row.is_published and row.review_state == completed for row in rows):
+        return {completed: len(rows)}
     for row in rows:
         if row.is_published or row.review_state != required:
             raise ValidationError(f'All selected rows must be {required} before {action}.')
@@ -46,4 +51,4 @@ def transition(request, action):
     else: qs.update(review_state={'submit':'submitted','approve':'approved'}[action])
     PlatformEvent.objects.create(actor=request.user,actor_email=request.user.email,action='school.results_'+action,
         target=str(term.pk),details={'school_id':school.pk,**ids,'entries':[row.pk for row in rows]})
-    return {{'submit':'submitted','approve':'approved','publish':'published'}[action]:len(rows)}
+    return {completed:len(rows)}
