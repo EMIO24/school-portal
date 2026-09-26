@@ -447,3 +447,35 @@ No P0 or P1 defect was found and no application code, schema, dependency, pricin
 entitlement changed. Remaining P2 evidence gaps are the throttled manual-payment UI,
 authenticated deployed browser smoke testing, and the cosmetic result PDF glyph.
 Release gates still require validation before Batch 6.
+
+### Final Basic release-gate closure attempt — 2026-09-26
+
+The manual-payment check used the isolated integration database, its authorized school
+administrator, an active test student and an existing fee schedule with an outstanding
+balance. Headless Chrome exercised the actual Fee Collection page and Django endpoint
+with 350 ms latency, 90,000 bytes/s download and 45,000 bytes/s upload.
+
+The normal action and populated form were visible before submission. A rapid double
+click generated one request while the button displayed a disabled `Saving…` state.
+That intended NGN 100 payment produced one authoritative payment, one balance change
+and one receipt. A second NGN 120 request was committed by the backend while its
+response was deliberately withheld from the browser. The UI displayed its existing
+failure/retry guidance; retrying from the same form reused the same idempotency key,
+returned the existing payment and produced no second financial effect. The total
+balance reduction was NGN 220 for the two deliberately distinct payments, the receipt
+endpoint returned HTTP 200, and no browser runtime error occurred. All temporary
+payments were removed from the isolated fixture after verification.
+
+**Slow-network usability gate: CLOSED.** No P0/P1 payment defect was found.
+
+Vercel CLI identified the current `commercial-transformation` preview as Ready and the
+configured production deployment and aliases as Ready. The production public site
+loaded over HTTPS; the branch preview is protected by Vercel authentication. No
+repository or process environment supplied an already authorized deployed school test
+account, so application login and protected frontend-to-Railway calls were not
+attempted. No production record, configuration, billing state or provider was changed.
+
+**AUTHENTICATED DEPLOYED SMOKE TEST BLOCKED — AUTHORIZED TEST CREDENTIALS REQUIRED.**
+**Deployment-compatible/authenticated deployment gate: PARTIALLY CLOSED.** The Basic
+commercial foundation remains release-open solely for that authenticated deployed
+workflow. The deferred P2 PDF calendar glyph remains unchanged. Batch 6 was not started.
