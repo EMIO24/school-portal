@@ -548,3 +548,43 @@ configuration change or synthetic tenant creation was performed during preparati
 
 **PRODUCTION RELEASE PREPARATION COMPLETE — OPERATOR AUTHORIZATION REQUIRED.**
 The authenticated deployment gate and Basic release milestone remain open.
+
+### Production Checkpoint A: backup and restore drill — 2026-09-26
+
+The preserved candidate is `5d001c0` on the remote `commercial-transformation`
+branch. Railway production remained on application `a35c67e`, using
+`config.settings.production` and PostgreSQL 18.6. The backup-time migration heads
+were `tenants.0004`, `fees.0008` and `gradebook.0002`. Aggregate source counts were
+captured at `2026-09-26T12:13:38Z` without reading customer identifiers.
+
+Railway's production Postgres volume was confirmed ready. PITR is disabled and no
+existing volume backups were listed. Both the current Postgres backup command and the
+documented volume-backup API rejected creation as unauthorized; a platform snapshot
+was therefore not created. This is a P1 release blocker under Checkpoint A.
+
+An independent PostgreSQL custom-format dump was created at
+`2026-09-26T12:14:16Z` in a private backup directory outside the repository. The dump
+is 308,068 bytes, its SHA-256 is
+`f793fe1a1c520bd53a8d1f2050a2e86f693792ed99d5cd71c029400e9a7dd1e7`, and
+`pg_restore --list` passed with 719 catalog entries and all representative tables.
+The dump and checksum sidecar remain outside Git.
+
+The dump restored without warnings into a newly initialized PostgreSQL 18.6 cluster
+bound only to localhost and a clearly named temporary database. Expected tenant,
+account, enrollment, fees, gradebook and attendance tables existed. Restored aggregate
+counts exactly matched the backup-time counts: zero schools, zero students, zero staff,
+zero payments, zero score entries and zero attendance records, plus one platform user.
+All restored foreign keys were validated. Django connected to the restored database,
+inspected migration state and repeated the matching ORM aggregate reads.
+
+The restored and final production migration checks both left `tenants.0005`,
+`fees.0009`, `fees.0010`, `fees.0011` and `gradebook.0003` unapplied. No migration,
+restore, application deployment, configuration change or application/business-data
+mutation occurred in production. The temporary restore cluster was stopped; its data
+directory remains in the private backup area pending operator cleanup.
+
+**Logical backup, integrity, isolated restore and Django-read verification: PASSED.**
+**Platform backup: FAILED — Railway backup creation authorization required.**
+**CHECKPOINT A — BACKUP & RESTORE: FAILED.**
+**PRODUCTION RECOVERY PROCEDURE: NOT VERIFIED.**
+Do not deploy until an authorized Railway volume snapshot is created and recorded.
