@@ -689,3 +689,73 @@ host or proxy error. No business data was created or changed. Frontend rollback 
 required and no P0/P1 issue remained from Checkpoint C.
 
 **CHECKPOINT C — CANONICAL FRONTEND DEPLOYMENT: PASSED.**
+
+### Production Checkpoint D2: operator-assisted authenticated smoke — 2026-09-26
+
+The earlier Checkpoint D stopped because this agent environment's headless browsers
+could not navigate the canonical Vercel site. D2 used a human operator's normal
+browser for the real production journey and Railway for bounded backend checks.
+Checkpoints A, B and C remained passed. Before creation, Railway `/health/` and the
+canonical Vercel origin returned HTTP 200; PostgreSQL was 18.6, migration heads were
+`tenants.0005`, `fees.0011` and `gradebook.0003`, Paystack mode was `test`, and
+school, student and payment counts were zero.
+
+One internal, non-customer `Paideia Production Test School` tenant (slug
+`paideia-production-test`) and one school administrator were created through the
+public registration endpoint. The existing owner school-management update and
+approval views were then invoked from the Railway application environment under
+the existing owner identity. The school was marked in platform notes as synthetic,
+approved on Basic, and given no subscription end date. Public registration does
+not set a first-password-change requirement for this account path. The temporary
+credential was stored using Windows user-bound encryption outside the repository;
+no credential or token is recorded here.
+
+Before operator login, the canonical `/api/school-lookup/` resolved the synthetic
+school, `/api/school/me/` returned its identity with the correct tenant header,
+and nonexistent or missing tenant context returned 404. Unauthenticated `/api/auth/me/`
+returned 401. The operator reported PASS for production load, school resolution,
+one invalid-password rejection, valid login, correct tenant identity, dashboard,
+students, staff, academics, attendance, fees, results/gradebook, refresh/session
+persistence, mobile navigation, throttled navigation and logout. The operator saw
+no error message or unrelated school data and created no operational records.
+
+Bounded Railway logs covering the operator window showed login responses of 401
+and 200, authenticated identity and protected-route 200 responses, and no 5xx,
+traceback, CORS, CSRF or host-error marker. A separate transient school-admin JWT,
+created inside Railway and never output, reached the canonical Vercel API rewrite:
+`/api/auth/me/` and `/api/students/` returned 200 with the correct school identity;
+`/api/platform/me/` returned 403; an invalid tenant returned 404. An internal
+authorization check also gave the school administrator 200 for identity, students
+and staff, 403 for platform-owner access, and 404 for invalid or missing tenant
+context. One production tenant cannot prove cross-real-tenant isolation; existing
+pre-production isolation tests remain supporting evidence.
+
+Final aggregate checks found one synthetic school and one school administrator,
+zero active students, staff profiles, parents/links, academic structures,
+attendance, scores, results, fee schedules/payments, payment orders/exceptions and
+term invoices. No payment or revenue was created; Paystack remained in test mode.
+The platform school summary counts every active school without a synthetic
+exclusion. Therefore the existing owner suspension action disabled the synthetic
+tenant after the smoke: total schools = 1, active schools = 0, and public lookup
+no longer resolves it. It is retained for future controlled smoke tests and must
+not be interpreted as a customer or paying school. The total-school summary still
+includes this disabled internal row; commercial reporting must exclude it.
+
+The backend remained healthy after suspension. No P0/P1 finding remains. P2
+operational follow-ups are: Railway platform/automated backup capability remains
+unresolved and must be addressed before meaningful pilot/customer data accumulates;
+production/release branch protection remains to be configured; and commercial
+school-count reporting should explicitly exclude the disabled synthetic row.
+
+Basic production baseline at 2026-09-26 22:06 UTC: source repository HEAD before
+this documentation commit `5d67ee6ac8867925b2da78e2c1dc019d3fa35717`;
+validated runtime candidate `5d001c0206706448752d6db2ed63f4abde793c59`;
+Railway deployment `4e3aff2a-a1e3-4f7e-9b05-8585558720ec` running SHA
+`9b34dfca8321963777f9c546f2fb2f0179cb64ee`; canonical Vercel deployment
+`dpl_Vzy7JCHTEsLXPKPUuZJnL9XF5dCD` Ready, with Checkpoint C source evidence
+`5024d72416253505f5350a7f09ee5d1cd4561ec7`; PostgreSQL 18.6; migration
+heads `tenants.0005`, `fees.0011`, `gradebook.0003`; synthetic tenant retained but
+disabled. The frontend runtime matches the validated candidate.
+
+**CHECKPOINT D2 — OPERATOR-ASSISTED AUTHENTICATED PRODUCTION SMOKE: PASSED.**
+**BASIC PRODUCTION BASELINE: ESTABLISHED.**
