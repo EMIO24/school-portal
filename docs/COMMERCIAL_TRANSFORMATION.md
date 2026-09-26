@@ -382,8 +382,26 @@ and migration checks passed. Frontend payment/pagination regressions and the
 production build passed after the final correction.
 
 Remaining P2: richer server-side import dry runs, broader simulation distributions
-and hands-on slow-network/mobile usability refinements. **PRE-PROMOTION POSTGRESQL
-TEST REQUIRED** remains for both concurrency tests and deployment-compatible
-transaction behavior. Native WeasyPrint invoice/receipt and academic PDF inspection,
-real browser/device workflows and deployment-compatible validation remain promotion
-gates. Recommended next batch: release-gate validation; not started.
+and hands-on slow-network/mobile usability refinements.
+
+### PostgreSQL promotion-gate validation — 2026-09-26
+
+The two previously skipped concurrency tests ran against PostgreSQL 15.15 in an
+isolated, disposable `postgres:15-alpine` Docker container on local port 55432.
+Django used the development settings with a process-local database override, created
+`test_school_portal_gate`, applied all migrations and destroyed the test database.
+
+- `fees.test_invoices.InvoiceConcurrencyTests.test_simultaneous_generation_returns_one_invoice`
+- `fees.test_invoice_payments.InvoiceSettlementConcurrencyTests.test_verification_and_webhook_settlement_race_has_one_effect`
+
+Result: 2 tests run, 2 passed, 0 failed, 0 skipped. Concurrent invoice generation
+returned one invoice and one issue audit event. The verification/webhook race applied
+one payment association and one subscription extension, with no duplicate settlement.
+No production code, repository configuration, production database or deployment was
+changed; the disposable container was stopped after Django removed its test database.
+The **PRE-PROMOTION POSTGRESQL TEST REQUIRED** gate is closed. Earlier markers above
+remain as the chronological record of prior batches.
+
+Native WeasyPrint invoice/receipt and academic PDF inspection, real browser/device
+workflows, slow-network/mobile usability and deployment-compatible validation remain
+promotion gates. Recommended next batch: release-gate validation; not started.
