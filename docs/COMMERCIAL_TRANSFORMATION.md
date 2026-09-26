@@ -405,3 +405,45 @@ remain as the chronological record of prior batches.
 Native WeasyPrint invoice/receipt and academic PDF inspection, real browser/device
 workflows, slow-network/mobile usability and deployment-compatible validation remain
 promotion gates. Recommended next batch: release-gate validation; not started.
+
+### Remaining release-gate validation — 2026-09-26
+
+Validation used commit `6312a54`, an isolated integration SQLite database, a
+disposable PostgreSQL 15 clone, the backend deployment Docker image and installed
+headless Chrome. No production data, credentials or provider transactions were used.
+
+The deployment image built successfully with its native Cairo/Pango libraries. Native
+WeasyPrint produced a 14,599-byte subscription invoice, 14,658-byte payment receipt
+and 19,150-byte academic result, each with a valid PDF header and response metadata.
+Chrome visual inspection confirmed legible branding, identifiers, dates, amounts,
+assessment rows, totals, grade, remarks and signatures without clipping or unintended
+page breaks. The result calendar glyph is missing from the deployment font set; the
+adjacent next-term date remains readable, so this is P2. The native invoice/receipt
+and representative academic-result PDF gates are closed.
+
+Real Chrome journeys covered administrator directories and academic/fee pages;
+teacher attendance plus score draft, reload, submission; administrator approval and
+publication; multi-child parent switching with each child's results and fees; and
+student dashboard, results, attendance and fees. Direct student requests for an
+unrelated student and the boundary tenant both returned 403. Student results and the
+representative administrator, teacher and parent screens had no document overflow at
+1440x900, 768x1024 or 390x844. The responsive gate is closed for these representative
+workflows. Development service-worker MIME warnings did not affect navigation.
+
+Administrator, teacher, parent and student journeys also passed with 350 ms latency,
+90,000 bytes/s download and 45,000 bytes/s upload. Loading and navigation remained
+recoverable. The fixture had no eligible `Record Payment` action, so the manual-payment
+double-submit/retry UI was not exercised under throttling; the slow-network gate is
+therefore only partially closed.
+
+Deployment-compatible checks passed: backend image build and native PDF regression
+(1 test, 1 passed), Django `check --deploy`, the repository `deployment_check` command,
+migration drift check, optimized frontend build (315.56 kB gzip main JavaScript), and
+the documented Railway `/health/` endpoint (HTTP 200, `{"status": "ok"}`). Authenticated
+smoke testing on the deployed Railway/Vercel services was not performed without
+authorized production test credentials, so this gate remains partially closed.
+
+No P0 or P1 defect was found and no application code, schema, dependency, pricing or
+entitlement changed. Remaining P2 evidence gaps are the throttled manual-payment UI,
+authenticated deployed browser smoke testing, and the cosmetic result PDF glyph.
+Release gates still require validation before Batch 6.
