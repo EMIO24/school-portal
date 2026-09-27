@@ -4,11 +4,12 @@ import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import ConnectivityBanner from './ConnectivityBanner';
+import { knownDesign, designStructure, baseLayout } from '../../services/designPresets';
 import './PortalNavigation.css';
 
 export const ROLE_LINKS = {
   school_admin: [
-    ['dashboard', 'Dashboard'], ['setup', 'School setup'], ['calendar', 'Calendar'], ['students', 'Students'],
+    ['dashboard', 'Dashboard'], ['setup', 'School setup'], ['appearance', 'School appearance'], ['calendar', 'Calendar'], ['students', 'Students'],
     ['students/new', 'Add student'], ['migration', 'Data migration'],
     ['staff', 'Staff'], ['staff/new', 'Add staff'],
     ['subjects', 'Subjects'], ['subject-assignments', 'Subject assignments'],
@@ -55,12 +56,13 @@ export default function PortalNavigation({ children }) {
   }, [open]);
   if (!isAuthenticated || !user || /\/(login|change-password)$/.test(location.pathname) || location.pathname.startsWith('/payments/return') || location.pathname === '/school-preview') return <>{children}</>;
   const platform = user.role === 'superadmin';
-  const layout = platform ? 'platform' : school?.theme?.layout || 'scholar';
+  const layout = platform ? 'platform' : knownDesign(school?.theme?.layout) ? school.theme.layout : 'classic';
+  const structure = designStructure(layout);
   const links = (ROLE_LINKS[user.role] || []).filter(([to]) => platform || hasFeature(school, featureForRoute(to)));
   const active = links.find(([to]) => location.pathname === to);
   const name = platform ? 'Platform administration' : school?.name || 'School portal';
   const displayName = user.fullName || user.full_name || user.firstName || user.email;
-  return <div className={'workspace layout-' + layout}>
+  return <div className={'workspace layout-' + layout + (platform ? '' : ' layout-' + baseLayout(layout) + ' structure-' + structure)}>
     <a className="workspace-skip" href="#workspace-content">Skip to content</a>
     {open && <button className="workspace-backdrop" aria-label="Close navigation" onClick={()=>setOpen(false)}/>}
     <aside className={'workspace-sidebar' + (open ? ' is-open' : '')}>

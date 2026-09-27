@@ -13,6 +13,7 @@ import { useLocation } from "react-router-dom";
 
 import { API_BASE_URL as API_URL, TENANT_HEADERS } from "../services/config";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { knownDesign } from '../services/designPresets';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ const DEFAULT_THEME = {
   subdomain: "",
   motto: "",
   theme: {
+    layout: 'classic',
     primary_color: "#1B3A6B",
     secondary_color: "#2E5DA8",
     accent_color: "#E07B00",
@@ -67,7 +69,7 @@ export function applyThemeToDom(schoolData) {
   for (const [name,value] of Object.entries({primary, secondary, accent, 'on-primary':contrast(primary), 'on-accent':contrast(accent),
     'primary-light':'color-mix(in srgb, '+primary+' 10%, white)', 'primary-dark':'color-mix(in srgb, '+primary+' 80%, black)',
     'bg':'#F4F6FA', 'surface':'#FFFFFF', 'text':'#172B3A', 'text-muted':'#627381', 'border':'#DEE5EA'})) root.style.setProperty('--'+name,value);
-  root.dataset.portalLayout = ['scholar','campus','studio','executive','heritage'].includes(t.layout) ? t.layout : 'scholar';
+  root.dataset.portalLayout = knownDesign(t.layout) ? t.layout : 'classic';
 
   root.style.setProperty("--school-name", `"${schoolData?.name || ""}"`);
   root.style.setProperty("--school-logo", schoolData?.logo ? `url("${schoolData.logo}")` : "none");

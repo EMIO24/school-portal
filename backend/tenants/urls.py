@@ -10,11 +10,12 @@ Registered in config/urls.py as:
 from django.urls import path
 
 from .views import SchoolDetailView, SchoolLookupView, SchoolMeView, SchoolOnboardingView
-from .setup import SchoolSetup, SchoolSetupLogo
+from .setup import SchoolSetup, SchoolSetupLogo, SchoolAppearance
 
 urlpatterns = [
     path('school/setup/', SchoolSetup.as_view()),
     path('school/setup/logo/', SchoolSetupLogo.as_view()),
+    path('school/appearance/', SchoolAppearance.as_view()),
     # SuperAdmin: list all schools / create a school
     path("schools/", SchoolOnboardingView.as_view(), name="school-list-create"),
 

@@ -8,8 +8,10 @@ from academics.models import AcademicSession, Term
 from enrollment.models import ClassLevel, ClassArm, StaffProfile, StudentProfile, Subject, SubjectAssignment
 from gradebook.scoring import policy_for, ScoringInput
 from gradebook.serializers import CA_MAXIMA, MAX_EXAM
-from .models import School, PlatformEvent
+from .models import School, SchoolActivity, PlatformEvent
 from .platform import PlatformSchoolLogo
+from .branding import validate_theme
+from django.db import transaction
 
 
 class SchoolIdentitySerializer(serializers.ModelSerializer):
@@ -77,3 +79,30 @@ class SchoolSetupLogo(PlatformSchoolLogo):
 
     def delete(self, request):
         return super().delete(request, request.tenant.pk)
+
+
+class SchoolAppearance(APIView):
+    permission_classes = [IsSchoolAdmin]
+
+    def get(self, request):
+        school = request.tenant
+        return Response({'name': school.name, 'motto': school.motto, 'logo': school.logo,
+                         'subdomain': school.subdomain, 'theme': school.get_theme()})
+
+    @transaction.atomic
+    def patch(self, request):
+        if not isinstance(request.data, dict) or set(request.data) != {'theme_config'}:
+            raise serializers.ValidationError({'detail': 'Only theme_config can be changed here.'})
+        theme = validate_theme(request.data['theme_config'])
+        school = School.objects.select_for_update().get(pk=request.tenant.pk)
+        updated = {**school.theme_config, **theme}
+        if updated != school.theme_config:
+            old_layout = school.get_theme()['layout']
+            school.theme_config = updated
+            school.save(update_fields=['theme_config'])
+            PlatformEvent.objects.create(actor=request.user, actor_email=request.user.email,
+                action='school.appearance_updated', target=str(school.pk),
+                details={'fields': sorted(theme), 'before_layout': old_layout, 'after_layout': school.get_theme()['layout']})
+            SchoolActivity.objects.create(school=school, actor=request.user,
+                                          action='School appearance updated')
+        return Response({'theme': school.get_theme()})

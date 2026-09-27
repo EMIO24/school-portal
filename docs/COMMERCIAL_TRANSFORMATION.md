@@ -874,3 +874,63 @@ delayed child switching, reconnect messaging and Batch 6 write behavior.
 Production build
 gzip sizes: JS 320.03 kB, CSS 43.91 kB; these are local build artifacts, not
 transferred-byte or production timing measurements.
+
+### Batch 9 portal designs — 2026-09-27
+
+Batch 8 commit `0b942553ce0980bf8ae8467d92ff948cd67ea029` was pushed to
+`origin/commercial-transformation` before this batch. The validated Basic
+production baseline remains unchanged. No migration, dependency, worker,
+production data, or deployment change is required.
+
+One React component tree uses the existing school `theme_config` JSON. The
+`layout` field names a validated design preset; the registry supplies suggested
+palette, type and structural family. Semantic CSS tokens control shared
+navigation, cards, density and radius. School colours override the suggested
+palette when edited, while contrast-derived foregrounds and semantic status
+colours remain separate. The five existing shell structures are reused; new
+presets change composition and spacing within them. No school-specific code is
+forked. Login uses the same preset ID; results, receipts and PDFs remain
+separate document designs.
+
+| Design | Structure | Distinct treatment |
+| --- | --- | --- |
+| Paideia Classic | Sidebar | Formal type, divided cards |
+| Modern Academy | Masthead | Airy cards and wide spacing |
+| Executive | Right rail | Management-first, two-column actions |
+| Minimal | Narrow rail | Flat surfaces, reduced ornament |
+| Scholar | Sidebar | Academic hierarchy, result-oriented cards |
+| Horizon | Masthead | Soft cards and welcoming spacing |
+| Prestige | Framed top navigation | Centre-aligned identity, elegant type |
+| Compact Pro | Narrow rail | Dense tables and smaller cards |
+| Campus | Masthead | Broad operational sections |
+| Nova | Narrow rail | Split rail and bold action hierarchy |
+
+Schools with no saved layout receive Paideia Classic. Saved `studio` and
+`heritage` IDs remain valid and render through their previous structures;
+unknown IDs fall back to Classic in the frontend. Owners retain the platform
+appearance editor and plan controls. School administrators have a tenant-scoped
+appearance editor at `/admin/appearance`, with a local preview before Save.
+Its API only accepts validated theme fields for `request.tenant`; it cannot
+change plans or another school. Meaningful saves record actor, school, changed
+field names and old/new preset; repeat saves create no duplicate event.
+School name, motto and logo remain managed through School setup and the
+existing validated logo upload. Public branding is limited to the existing
+public serializer. No raw CSS or JavaScript is accepted.
+
+The shared Batch 8 mobile drawer, connectivity notice and read-failure handling
+remain shared across designs. Document templates and full offline operation
+remain separate product capabilities.
+
+The isolated tenants suite passed 53/53, including the new tenant, validation,
+legacy and idempotent-audit checks. Targeted React suites passed 19/19.
+The broader React suite passed 294/299 tests; five existing failures are in
+`BackendContracts`, `StudentDocuments` and `RouteCoverage`, none of whose
+implementation files changed in this batch. A local Chrome mock-API matrix
+passed 40/40 checks across all ten presets for desktop dashboard and student
+directory, mobile dashboard and mobile login. Five deeper phone/tablet checks
+passed for attendance, gradebook, fees, parent and student dashboards across
+representative structural families. These are local smoke results, not
+production measurements. Django check and migration consistency passed.
+Production build gzip sizes are JS 321.63 kB (+1.60 kB) and CSS 44.94 kB
+(+1.03 kB) against Batch 8. Fine-grained document/report styling and any
+broader frontend baseline-test repairs remain deferred.

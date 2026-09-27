@@ -1,7 +1,10 @@
 import re
 from rest_framework import serializers
 
-LAYOUTS = ['scholar', 'campus', 'studio', 'executive', 'heritage']
+LAYOUTS = ['classic', 'modern-academy', 'executive', 'minimal', 'scholar',
+           'horizon', 'prestige', 'compact-pro', 'campus', 'nova']
+# Existing schools may still have either of these earlier layouts saved.
+LEGACY_LAYOUTS = ['studio', 'heritage']
 FONTS = ["'Segoe UI', sans-serif", "Georgia, serif", "Arial, sans-serif", "Roboto, sans-serif"]
 
 def validate_theme(value):
@@ -13,8 +16,8 @@ def validate_theme(value):
     for key in ('primary_color', 'secondary_color', 'accent_color'):
         if key in value and (not isinstance(value[key], str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', value[key])):
             raise serializers.ValidationError({key: 'Use a six-digit hex colour, such as #173B56.'})
-    if 'layout' in value and value['layout'] not in LAYOUTS:
-        raise serializers.ValidationError({'layout': 'Choose one of the five portal layouts.'})
+    if 'layout' in value and value['layout'] not in LAYOUTS + LEGACY_LAYOUTS:
+        raise serializers.ValidationError({'layout': 'Choose a supported portal design.'})
     if 'font_family' in value and value['font_family'] not in FONTS:
         raise serializers.ValidationError({'font_family': 'Choose a supported font.'})
     return value

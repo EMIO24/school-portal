@@ -2,7 +2,8 @@ from django.test import TestCase
 from django.core.cache import cache
 from rest_framework.test import APIClient
 from accounts.models import CustomUser
-from .models import School, PlatformSecurity, PlatformEvent
+from .models import School, SchoolActivity, PlatformSecurity, PlatformEvent
+from .branding import LAYOUTS
 from .plans import PLAN_FEATURES, required_feature
 
 class PlansBrandingTests(TestCase):
@@ -33,14 +34,41 @@ class PlansBrandingTests(TestCase):
     def test_missing_tenant_cannot_bypass_feature_checks(self):
         client=APIClient();client.force_authenticate(self.admin)
         self.assertEqual(client.get('/api/cbt/topics/').status_code,404)
-    def test_owner_can_assign_all_five_layouts_even_when_school_suspended(self):
+    def test_owner_can_assign_all_ten_layouts_even_when_school_suspended(self):
         self.school.is_active=False;self.school.save()
         self.client.force_authenticate(self.owner)
-        for layout in ['scholar','campus','studio','executive','heritage']:
+        for layout in LAYOUTS:
             response=self.client.patch('/api/platform/schools/%s/'%self.school.pk, {'theme_config':{'layout':layout,'primary_color':'#123456','secondary_color':'#234567','accent_color':'#CCAA55','font_family':'Georgia, serif'},'subscription_plan':'premium'},format='json')
             self.assertEqual(response.status_code,200,response.data)
             self.school.refresh_from_db();self.assertEqual(self.school.get_theme()['layout'],layout)
-        self.assertEqual(PlatformEvent.objects.filter(action='school.updated').count(),5)
+        self.assertEqual(PlatformEvent.objects.filter(action='school.updated').count(),10)
+    def test_school_admin_can_save_own_design_without_changing_plan(self):
+        response=self.client.patch('/api/school/appearance/',{'theme_config':{'layout':'nova','primary_color':'#123456'}},format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        self.school.refresh_from_db()
+        self.assertEqual(self.school.get_theme()['layout'],'nova')
+        self.assertEqual(self.school.subscription_plan,'basic')
+        self.assertEqual(PlatformEvent.objects.filter(action='school.appearance_updated').count(),1)
+        self.assertEqual(SchoolActivity.objects.filter(school=self.school,action='School appearance updated').count(),1)
+        self.client.patch('/api/school/appearance/',{'theme_config':{'layout':'nova','primary_color':'#123456'}},format='json')
+        self.assertEqual(PlatformEvent.objects.filter(action='school.appearance_updated').count(),1)
+    def test_school_appearance_rejects_untrusted_fields_and_other_roles(self):
+        for payload in [{'theme_config':{'layout':'unknown'}},{'theme_config':{'primary_color':'red;url(test)'}},
+                        {'theme_config':{'layout':'campus'},'subscription_plan':'enterprise'}]:
+            self.assertEqual(self.client.patch('/api/school/appearance/',payload,format='json').status_code,400)
+        self.assertEqual(self.client.patch('/api/school/appearance/',[{'theme_config':{}}],format='json').status_code,400)
+        self.assertEqual(self.school.subscription_plan,'basic')
+        for role in ['teacher','parent','student']:
+            user=CustomUser.objects.create_user(role+'@design.test','Password!123',school=self.school,role=role)
+            self.client.force_authenticate(user)
+            self.assertEqual(self.client.patch('/api/school/appearance/',{'theme_config':{'layout':'nova'}},format='json').status_code,403)
+            self.assertEqual(self.client.get('/api/school/appearance/').status_code,403)
+    def test_school_appearance_cannot_cross_tenant_and_legacy_remains_readable(self):
+        other=School.objects.create(name='Other',slug='other-design',subdomain='other-design',theme_config={'layout':'heritage'})
+        self.assertEqual(other.get_theme()['layout'],'heritage')
+        self.assertEqual(self.client.get('/api/school/appearance/',HTTP_X_SCHOOL_SLUG='other-design').status_code,403)
+        self.assertEqual(self.client.patch('/api/school/appearance/',{'theme_config':{'layout':'nova'}},format='json',HTTP_X_SCHOOL_SLUG='other-design').status_code,403)
+        other.refresh_from_db();self.assertEqual(other.get_theme()['layout'],'heritage')
     def test_nonowner_and_viewer_cannot_assign_branding(self):
         url='/api/platform/schools/%s/'%self.school.pk
         self.assertEqual(self.client.patch(url,{'theme_config':{'layout':'studio'}},format='json').status_code,403)

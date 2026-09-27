@@ -90,11 +90,11 @@ class School(models.Model):
     def get_theme(self) -> dict:
         """Return theme_config with sensible Nigerian-school defaults."""
         defaults = {
-            "layout": "scholar",
+            "layout": "classic",
             "primary_color": "#173B56",
             "secondary_color": "#256D85",
             "accent_color": "#D8A548",
-            "font_family": "Roboto, sans-serif",
+            "font_family": "Georgia, serif",
         }
         return {**defaults, **self.theme_config}
 
