@@ -43,6 +43,7 @@ urlpatterns = [
 
     # Phase 4
     path('api/notifications/', include('notifications.urls')),
+    path('api/communications/', include('notifications.communication_urls')),
     path('api/fees/',          include('fees.urls')),
 
     # Timetable

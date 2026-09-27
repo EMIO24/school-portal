@@ -1,0 +1,15 @@
+.communication-page{max-width:1180px;margin:auto;padding:24px;color:var(--text-primary,#172b3a);min-width:0}
+.communication-page header p{max-width:70ch;line-height:1.5}
+.communication-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+.communication-card{background:var(--surface,#fff);border:1px solid var(--border,#dbe2e8);border-radius:var(--radius,12px);padding:22px;min-width:0;overflow-wrap:anywhere}
+.communication-card h2{margin-top:0}.communication-card label{display:flex;flex-direction:column;gap:7px;margin:0 0 16px;font-weight:600}
+.communication-card input:not([type=checkbox]),.communication-card select,.communication-card textarea{width:100%;max-width:100%;box-sizing:border-box;padding:11px;border:1px solid #9aaab8;border-radius:6px;background:var(--surface,#fff);color:inherit;font:inherit}
+.communication-card button,.communication-page>button,.communication-error button{min-height:44px;padding:10px 15px;border:1px solid #617a8e;border-radius:6px;background:var(--primary,#163e59);color:white;font:inherit;cursor:pointer}
+.communication-card button:disabled{opacity:.55;cursor:wait}.communication-card :focus-visible,.communication-page :focus-visible{outline:3px solid #397bad;outline-offset:3px}
+.communication-preview{display:flex;flex-direction:column;gap:4px;margin:16px 0;padding:14px;border:1px solid #8eb1bd;border-radius:6px}
+.communication-preview p{margin:4px 0}.communication-error,.communication-success{padding:14px;border-radius:6px;background:#fce8e6;color:#692a24}.communication-success{background:#e7f4e9;color:#215137}
+.communication-options{max-height:170px;overflow:auto;border:1px solid #aab7c2;padding:8px;margin-bottom:8px}.communication-options label{display:flex;flex-direction:row;align-items:center;font-weight:400;margin:4px 0;min-height:35px}
+.communication-history{display:grid;gap:8px}.communication-history button{display:flex;flex-direction:column;align-items:start;text-align:left;gap:4px;background:transparent;color:inherit;border:1px solid #aab7c2;width:100%}
+.communication-detail{border-top:1px solid #aab7c2;margin-top:20px}.communication-detail p,.communication-inbox p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
+.communication-detail small{display:block;margin-bottom:14px}.communication-inbox{display:grid;gap:12px}.communication-inbox summary{cursor:pointer;min-height:44px}.communication-inbox summary span{display:block;margin-top:4px}
+@media(max-width:760px){.communication-page{padding:12px}.communication-grid{grid-template-columns:minmax(0,1fr)}.communication-card{padding:16px}}

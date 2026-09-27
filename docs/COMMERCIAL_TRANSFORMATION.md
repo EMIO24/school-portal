@@ -1287,3 +1287,84 @@ Deferred: historical timetable versioning, ahead/behind curriculum inference,
 advanced analytics and AI. Communication Centre remains Batch 13; the
 Student Finance Ledger remains Batch 14; scratch-card/PIN commercial
 hardening remains Batch 15.
+
+### Batch 13 Basic Communication Centre — development evidence, 2026-09-27
+
+Batch 12 `a8654497065f19dbc295c2877b24b4984bbdbde3` was pushed and
+verified at `origin/commercial-transformation` before Batch 13. Production
+was unchanged. The existing `notifications` app has templates, per-student
+email/SMS logs, an idempotent batch and a Celery outbox. Basic already
+includes the `notifications` entitlement. That legacy sender targets guardian
+contact text rather than linked parent accounts and needs a worker for live
+external delivery; it has no SMS credit ledger. Its capture mode records
+pending logs without external delivery. It remains available as the separate
+Email and SMS tool, with its existing behavior and entitlement unchanged.
+
+The new `/api/communications/` path reuses the notifications app and the
+Basic entitlement. School admins alone may preview, publish and inspect
+history. No distinct Principal role exists in the current RBAC; the
+Principal Command Centre still uses school-admin permission. Teachers may
+read their own notices but cannot broadcast. Parents and students read only
+their own recipient rows. An inactive account cannot use this path. The
+server ignores a client-supplied school ID and always scopes by request
+tenant. Foreign class, parent, staff and student IDs are rejected.
+
+Audience queries support all linked parents, class parents, selected linked
+parents, active staff, class teachers, selected staff, active students,
+class students and selected students. Parents come only from verified
+`ParentStudentLink` rows for active students. Guardian contact text grants no
+access. A multi-child parent has one recipient row per notice. Class-parent
+preview reports active students without a linked active parent; empty
+audiences cannot publish. Recipient search returns at most 50 account names
+without contact details; the notice limit is 2,000 unique accounts.
+Class teachers are drawn from current-term subject assignments and current
+class/assigned-class links, excluding historical subject assignments.
+
+Publishing stores a `Communication` and one `CommunicationRecipient` per
+unique account in a single PostgreSQL transaction. Title, body, sender name,
+audience label, intended count and recipient membership are historical
+snapshots; a changed class, removed parent link or deactivated sender does
+not rewrite them. Sent notices have no edit/delete API. Content is plain
+text rendered by React, without trusted HTML. A platform audit event records
+the sender, tenant, audience and count, never message content or contacts.
+Portal status `available_in_portal` means the notice is in an account inbox;
+`read` means that account opened it, not that the person understood it.
+History and inbox are paginated, with read counts and no recipient contact
+list. Publishing needs a tenant-scoped idempotency key and has a per-sender
+120/hour local-cache throttle. Reusing a key with the same payload returns
+the existing notice, even after audience membership changes; changing the
+payload returns 409. The browser retains its key after an uncertain response
+and asks the sender to check history before retrying. There is no retry
+worker or automatic trigger.
+
+The Centre offers portal delivery only. Existing email and SMS infrastructure
+cannot safely be joined to this linked-account audience in the bounded Basic
+batch: it uses per-student guardian text, a worker-backed outbox, and has no
+SMS credit accounting or per-recipient provider-confirmed delivery link.
+Therefore the Centre makes no email/SMS delivery claim or chargeable send;
+the existing external tool is linked and remains separate. Email provider
+acceptance and SMS provider acceptance in that tool are not proof of human
+delivery. A later controlled integration must resolve identities, credits,
+provider semantics and scale before exposing combined channels.
+
+The new admin composer previews counts, confirms publication and shows
+history/detail. Parent, teacher, student and admin notices share one inbox
+component, the existing navigation and design tokens. The browser stores no
+message draft or send queue. Basic works with Django and PostgreSQL alone.
+The frontend requires no new dependency. Advanced automation and delivery
+workers remain Batch 19/Premium; WhatsApp is deferred. Student Finance Ledger
+remains Batch 14 and scratch-card/result-access hardening remains Batch 15.
+
+Validation used isolated local PostgreSQL. Seven focused backend tests cover
+audience selection, deduplication, tenant/role attacks, snapshot integrity,
+idempotency, read state, pagination, plain-text storage and a 101-parent
+audience. In that fixture, preview used at most 12 SQL queries and publish
+at most 18, independent of recipient count; inbox/history each used at most
+eight queries in the smaller fixture. Targeted frontend tests cover preview,
+zero recipients, publish, uncertain response reuse and inbox reading. The
+affected frontend suite included an outdated Batch 12 App heading assertion;
+its expectation was aligned to the existing Principal Command Centre title.
+Local Chrome mock-API journeys covered admin publish/history and parent
+inbox/read at 360×800 Scholar, 390×844 Classic, 768×1024 Compact Pro,
+1440×900 Nova and Executive with no page-level horizontal overflow. These
+are local observations, not production performance or delivery measurements.

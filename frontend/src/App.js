@@ -60,6 +60,8 @@ import StudentFees      from "./pages/student/Fees";
 
 // ── Phase 4 admin pages ────────────────────────────────────────────────────
 import Notifications          from "./pages/admin/Notifications";
+import CommunicationCentre from "./pages/admin/CommunicationCentre";
+import NoticeInbox from "./pages/common/NoticeInbox";
 import NotificationTemplates  from "./pages/admin/NotificationTemplates";
 import FeeSetup               from "./pages/admin/FeeSetup";
 import FeeCollection          from "./pages/admin/FeeCollection";
@@ -154,6 +156,8 @@ function AppRoutes() {
 
             {/* Notifications */}
             <Route path="notifications"           element={<Notifications />} />
+            <Route path="communications" element={<CommunicationCentre />} />
+            <Route path="notices" element={<NoticeInbox />} />
             <Route path="notification-templates"  element={<NotificationTemplates />} />
 
             {/* Fees */}
@@ -180,6 +184,7 @@ function AppRoutes() {
             <Route path="timetable" element={<MyTimetable />} />
             <Route path="teaching" element={<TeachingOperations />} />
             <Route path="scheme" element={<TeacherScheme />} />
+            <Route path="notices" element={<NoticeInbox />} />
             {/*
               Upcoming teacher routes:
               <Route path="classes"      element={<MyClasses />} />
@@ -213,6 +218,7 @@ function AppRoutes() {
 
             {/* Performance */}
             <Route path="performance" element={<MyPerformance />} />
+            <Route path="notices" element={<NoticeInbox />} />
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="*" element={<Navigate to="dashboard" replace />} />
           </Routes>
@@ -226,6 +232,7 @@ function AppRoutes() {
             <Route path="dashboard" element={<ParentDashboard />} />
             <Route path="results/:studentId" element={<ChildDetails mode="results" />} />
             <Route path="fees/:studentId" element={<ChildDetails mode="fees" />} />
+            <Route path="notices" element={<NoticeInbox />} />
             {/*
               Upcoming parent routes:
               <Route path="children"   element={<MyChildren />} />

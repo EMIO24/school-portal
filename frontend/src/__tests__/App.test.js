@@ -35,7 +35,7 @@ test.each(['/', '/unknown'])('App displays the public homepage from %s', async p
 });
 
 test.each([
-  ['school_admin', 'Dashboard', '/admin/dashboard'],
+  ['school_admin', 'Principal Command Centre', '/admin/dashboard'],
   ['teacher', /^Welcome,/, '/teacher/dashboard'],
   ['student', /^Welcome,/, '/student/dashboard'],
 ])('App restores a %s session and opens its dashboard', async (role, title, path) => {

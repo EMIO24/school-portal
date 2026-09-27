@@ -35,7 +35,7 @@ def required_feature(path):
     if path.startswith(('/api/students/bulk-import/', '/api/staff/bulk-import/')):
         return 'bulk_import'
     for prefix, feature in [('attendance', 'attendance'), ('results', 'results'), ('gradebook', 'results'),
-            ('fees', 'fees'), ('timetable', 'timetable'), ('notifications', 'notifications'), ('cbt', 'cbt'),
+            ('fees', 'fees'), ('timetable', 'timetable'), ('notifications', 'notifications'), ('communications', 'notifications'), ('cbt', 'cbt'),
             ('analytics', 'analytics'), ('reports', 'analytics'), ('promotion', 'promotion'), ('scratch-cards', 'scratch_cards')]:
         if path.startswith('/api/' + prefix + '/'):
             return feature
