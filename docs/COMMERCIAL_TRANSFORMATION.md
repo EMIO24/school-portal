@@ -923,14 +923,33 @@ remain separate product capabilities.
 
 The isolated tenants suite passed 53/53, including the new tenant, validation,
 legacy and idempotent-audit checks. Targeted React suites passed 19/19.
-The broader React suite passed 294/299 tests; five existing failures are in
-`BackendContracts`, `StudentDocuments` and `RouteCoverage`, none of whose
-implementation files changed in this batch. A local Chrome mock-API matrix
+The first broader React run passed 294/299 tests; five failures appeared in
+`BackendContracts`, `StudentDocuments` and `RouteCoverage`. A local Chrome mock-API matrix
 passed 40/40 checks across all ten presets for desktop dashboard and student
 directory, mobile dashboard and mobile login. Five deeper phone/tablet checks
 passed for attendance, gradebook, fees, parent and student dashboards across
 representative structural families. These are local smoke results, not
 production measurements. Django check and migration consistency passed.
 Production build gzip sizes are JS 321.63 kB (+1.60 kB) and CSS 44.94 kB
-(+1.03 kB) against Batch 8. Fine-grained document/report styling and any
-broader frontend baseline-test repairs remain deferred.
+(+1.03 kB) against Batch 8. Fine-grained document/report styling remains
+separate from portal appearance.
+
+### Batch 9 frontend gate closure
+
+The same five named failures reproduced on the isolated Batch 8 worktree
+(`0b942553`) and Batch 9 (`7588d711`), each at 19/24 in the three focused
+test files. None was introduced or worsened by Batch 9. The staff test
+incorrectly rejected `new_email`, a supported backend serializer field. Two
+teacher tests expected the old student-list score source, fixed score columns
+and teacher publishing; the current school-configured `/sheet/` contract saves
+`component_scores` and teachers submit for administrator review. The student
+retry test expected the message predating Batch 8's network classifier.
+The route inventory counted four components rendered inside routed pages as
+missing routes; the corrected test verifies their routed parents and JSX use.
+
+Only those stale test expectations were corrected. The three focused files
+then passed 24/24. The full frontend suite passed 300/300 tests across 42
+suites. No Batch 9 product regression or P0/P1 finding was identified. The
+temporary baseline worktree was removed; Batch 9's previously passing build,
+backend, browser and security evidence remains applicable. Production was not
+changed.

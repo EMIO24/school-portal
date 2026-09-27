@@ -25,7 +25,7 @@ test('student list shows profile links, search and pagination', async () => {
 test('student load failures offer a working retry', async () => {
   api.get.mockRejectedValue(new Error('offline'));
   renderPage(<Students />);
-  expect(await screen.findByRole('alert')).toHaveTextContent('Could not load students');
+  expect(await screen.findByRole('alert')).toHaveTextContent("We couldn't reach Paideia. Check your connection and try again.");
   api.get.mockResolvedValue({ data: [] });
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(await screen.findByText(/No students match/)).toBeVisible();
