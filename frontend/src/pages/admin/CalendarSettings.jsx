@@ -510,7 +510,7 @@ export default function CalendarSettings() {
     try {
       if (id) await calAPI.updateHoliday(id, formData); else await calAPI.createHoliday(formData);
       await load(); setHolidayTarget(null); showToast(id ? "Holiday corrected." : "Holiday added.");
-    } catch (err) { showToast(err.response?.data?.end_date?.[0] || "Failed to save holiday.", "error"); }
+    } catch (err) { showToast(err.response?.data?.detail || err.response?.data?.start_date?.[0] || err.response?.data?.end_date?.[0] || err.response?.data?.non_field_errors?.[0] || (Array.isArray(err.response?.data) && err.response.data[0]) || "Failed to save holiday.", "error"); }
     finally { setBusy(false); }
   }
 
@@ -518,7 +518,7 @@ export default function CalendarSettings() {
     if (!window.confirm("Delete this holiday?")) return;
     setBusy(true);
     try { await calAPI.deleteHoliday(id); await load(); showToast("Holiday deleted."); }
-    catch { showToast("Failed to delete holiday.", "error"); }
+    catch (err) { showToast(err.response?.data?.detail || err.response?.data?.non_field_errors?.[0] || (Array.isArray(err.response?.data) && err.response.data[0]) || "Failed to delete holiday.", "error"); }
     finally { setBusy(false); }
   }
 

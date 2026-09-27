@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { classifyRequestFailure } from '../../services/requestState';
+import LessonCoverage from './LessonCoverage';
 import './TeachingOperations.css';
 
 const today = () => {
@@ -21,6 +22,7 @@ export default function TeachingOperations({ admin = false }) {
   const [notice, setNotice] = useState('');
   const [filters, setFilters] = useState({ class_arm: '', teacher: '', subject: '', outcome: '' });
   const [editing, setEditing] = useState(null);
+  const [coverageLesson, setCoverageLesson] = useState(null);
   const [form, setForm] = useState({ outcome: 'delivered', note: '', actual_teacher: '' });
   const [teachers, setTeachers] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -118,7 +120,7 @@ export default function TeachingOperations({ admin = false }) {
   return <main className="teaching-page">
     <header className="teaching-header">
       <div><h1>{admin ? 'Teaching records' : "Today's lessons"}</h1><p>Scheduled lessons and recorded outcomes for one school day.</p></div>
-      <Link to={admin ? '/admin/timetable' : '/teacher/timetable'}>View timetable</Link>
+      <div><Link to={admin ? '/admin/timetable' : '/teacher/timetable'}>View timetable</Link>{admin ? <Link to="/admin/curriculum">Manage curriculum</Link> : <Link to="/teacher/scheme">My scheme</Link>}</div>
     </header>
     <div className="teaching-controls">
       <label>Date <input aria-label="Lesson date" type="date" value={day} max={today()} onChange={e => setDay(e.target.value)} /></label>
@@ -140,7 +142,9 @@ export default function TeachingOperations({ admin = false }) {
         {row.outcome === 'substituted' && <p>Substitute: {row.actual_teacher_name}</p>}
         <div className="teaching-card-footer"><span className={'teaching-status ' + (row.outcome || 'unresolved')}>{label(row.outcome)}</span>
           {(admin || (day === today() && row.scheduled_teacher)) && <button type="button" onClick={() => open(row)}>{row.outcome ? 'Review / correct' : 'Record outcome'}</button>}
+          <button type="button" onClick={() => setCoverageLesson(coverageLesson === row.slot_id ? null : row.slot_id)}>{row.id && ['delivered', 'substituted'].includes(row.outcome) ? 'Curriculum coverage' : 'View scheme'}</button>
         </div>
+        {coverageLesson === row.slot_id && <LessonCoverage lessonId={row.id && ['delivered', 'substituted'].includes(row.outcome) ? row.id : null} slotId={row.slot_id} />}
       </article>)}</div>}
     {editing && <form className="teaching-editor" onSubmit={save}>
       <h2>{editing.class_name} · {editing.subject_name}</h2>

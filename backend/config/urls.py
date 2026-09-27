@@ -46,6 +46,7 @@ urlpatterns = [
 
     # Timetable
     path('api/timetable/',     include('timetable.urls')),
+    path('api/curriculum/',     include('curriculum.urls')),
 
     # Parent data (tenant-aware — must NOT be under /api/auth/)
     path('api/parent/',        include('accounts.parent_urls')),

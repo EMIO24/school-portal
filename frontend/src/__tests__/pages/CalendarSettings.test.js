@@ -36,3 +36,14 @@ test('edits and deletes an existing holiday and reloads after each change',async
   await waitFor(()=>expect(api.delete).toHaveBeenCalledWith('/api/holidays/9/'));
   expect(api.get).toHaveBeenCalledTimes(3);
 });
+
+test('shows term-boundary validation instead of a generic holiday failure',async()=>{
+  api.post.mockRejectedValue({response:{status:400,data:{start_date:['Holiday dates must stay within the selected term.']}}});
+  renderPage(<CalendarSettings/>);await screen.findByText('Christmas Break');
+  fireEvent.click(screen.getByRole('button',{name:'+ Holiday'}));
+  fireEvent.change(screen.getByLabelText('Holiday name'),{target:{value:'Bad date'}});
+  fireEvent.change(screen.getByLabelText('Start date'),{target:{value:'2026-08-01'}});
+  fireEvent.change(screen.getByLabelText('End date'),{target:{value:'2026-09-02'}});
+  fireEvent.click(screen.getByRole('button',{name:'Add holiday'}));
+  expect(await screen.findByText(/Holiday dates must stay within the selected term/)).toBeVisible();
+});

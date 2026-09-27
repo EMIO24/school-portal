@@ -44,6 +44,7 @@ test('every page file is routed or rendered inside a routed page', () => {
     './pages/admin/ScoringConfiguration': './pages/admin/SchoolSetup',
     './pages/payments/Invoices': './pages/payments/Payments',
     './pages/payments/PaymentExceptions': './pages/payments/Payments',
+    './pages/teacher/LessonCoverage': './pages/teacher/TeachingOperations',
   };
   for (const [child, parent] of Object.entries(nested)) {
     expect(routed).toContain(parent);

@@ -15,9 +15,12 @@ Custom actions:
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
+from django.utils import timezone
 
 from accounts.permissions import IsSchoolAdmin, IsAuthenticatedTenantUser
 from tenants.mixins import TenantMixin
+from tenants.security import audit
 
 from .models import AcademicSession, Holiday, Term
 from .serializers import (
@@ -169,11 +172,30 @@ class HolidayViewSet(TenantMixin, viewsets.ModelViewSet):
         if term and term.session.school != tenant:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Term does not belong to this school.")
-        serializer.save()
+        holiday = serializer.save()
+        audit(self.request, 'calendar.holiday_created', target=f'holiday:{holiday.pk}', details={
+            'school_id': tenant.pk, 'term_id': holiday.term_id})
 
     def perform_update(self, serializer):
-        # get_object() has already tenant-scoped the holiday through its term.
+        holiday = serializer.instance
+        before = {name: getattr(holiday, name) for name in ('term_id', 'name', 'start_date', 'end_date', 'holiday_type')}
+        after = {name: serializer.validated_data.get('term').pk if name == 'term_id' and 'term' in serializer.validated_data else
+                 serializer.validated_data.get(name, value) for name, value in before.items()}
+        changed = [name for name in before if before[name] != after[name]]
+        if not changed:
+            return
+        if holiday.start_date <= timezone.localdate():
+            raise ValidationError('A started holiday is historical and cannot be changed.')
         serializer.save()
+        audit(self.request, 'calendar.holiday_changed', target=f'holiday:{holiday.pk}', details={
+            'school_id': self._get_tenant().pk, 'term_id': holiday.term_id, 'changed_fields': changed})
+
+    def perform_destroy(self, instance):
+        if instance.start_date <= timezone.localdate():
+            raise ValidationError('A started holiday is historical and cannot be deleted.')
+        audit(self.request, 'calendar.holiday_deleted', target=f'holiday:{instance.pk}', details={
+            'school_id': self._get_tenant().pk, 'term_id': instance.term_id})
+        instance.delete()
 
 
 class CurrentCalendarView(TenantMixin, viewsets.ViewSet):

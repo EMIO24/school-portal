@@ -4,7 +4,7 @@ export function featureForRoute(path) {
   if (/\/(results|scores|domains)(?:\/|$)/.test(path)) return 'results';
   if (/\/(fees|fee-setup|fee-collection)(?:\/|$)/.test(path)) return 'fees';
   if (/\/attendance(?:\/|$)/.test(path)) return 'attendance';
-  if (/\/(timetable|teaching)(?:\/|$)/.test(path)) return 'timetable';
+  if (/\/(timetable|teaching|curriculum|scheme)(?:\/|$)/.test(path)) return 'timetable';
   if (/\/(notifications|notification-templates)(?:\/|$)/.test(path)) return 'notifications';
   if (/\/performance(?:\/|$)/.test(path)) return 'analytics';
   if (/\/promotion(?:\/|$)/.test(path)) return 'promotion';

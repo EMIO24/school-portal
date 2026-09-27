@@ -16,11 +16,17 @@ class HolidaySerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
     def validate(self, attrs):
-        if attrs.get("start_date") and attrs.get("end_date"):
-            if attrs["start_date"] > attrs["end_date"]:
-                raise serializers.ValidationError(
-                    {"end_date": "End date cannot be before start date."}
-                )
+        from rest_framework.exceptions import PermissionDenied
+        term = attrs.get('term', getattr(self.instance, 'term', None))
+        start = attrs.get('start_date', getattr(self.instance, 'start_date', None))
+        end = attrs.get('end_date', getattr(self.instance, 'end_date', None))
+        request = self.context.get('request')
+        if term and request and term.session.school_id != request.tenant.pk:
+            raise PermissionDenied('Term does not belong to this school.')
+        if start and end and start > end:
+            raise serializers.ValidationError({'end_date': 'End date cannot be before start date.'})
+        if term and start and end and (start < term.start_date or end > term.end_date):
+            raise serializers.ValidationError({'start_date': 'Holiday dates must stay within the selected term.'})
         return attrs
 
 

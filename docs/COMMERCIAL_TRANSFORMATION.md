@@ -1157,3 +1157,79 @@ unrecorded historical schedules, server pagination for unusually large daily
 admin lists, richer substitution scheduling and full offline operation.
 Curriculum Progress → Batch 11. Principal Operations → Batch 12. Neither is
 implemented by Batch 10.
+
+### Batch 11 curriculum management and holiday-aware progress — development evidence, 2026-09-27
+
+Batch 10 `eaca847` was pushed and verified at `origin/commercial-transformation`
+before Batch 11. Production remains on the prior Basic baseline. The new
+`curriculum` app adds one school-owned plan per term, class level and subject;
+all arms of a level reuse its plan. Weeks (1–52) hold ordered topics and
+individually identified, ordered objectives. Plans are term-bound, so changing
+the current term does not alter old schemes. No legacy curriculum or coverage
+is inferred or backfilled.
+
+**Evidence and progress.** A `TopicCoverage` row links one topic to one
+authoritative `LessonRecord`; the unique lesson/topic constraint permits both
+multiple topics in a lesson and the same topic across lessons. Coverage is
+allowed only for delivered or substituted outcomes and matching school, term,
+class level and subject. Missing coverage means not started; active partial
+evidence means partial; any active covered evidence means covered. The summary
+counts distinct unarchived topics by actual class arm, with per-week counts
+and dated lesson evidence. Archived topics with lesson history remain in the
+historical counts; untouched archived topics are excluded. Planned week never implies delivery or overdue
+status. Teachers can correct or deactivate coverage using revisions; identical
+retries add no row or audit event. Lesson and topic row locks serialize saves,
+and a covered lesson cannot be corrected to missed/cancelled until active
+coverage is removed. Plans cannot change a topic's content, order or
+objectives once any historical coverage exists; the topic may be archived,
+but its record and evidence remain. Objective-level delivery is deferred.
+
+**Calendar and access.** Existing Session → Term → Holiday CRUD and the
+administrator's Academic Calendar UI were reused. Holiday API validation now
+checks full ranges including partial edits, term boundaries and foreign terms.
+Started holidays cannot be edited/deleted; meaningful create/change/delete
+actions are audited. Batch 10 already excludes configured holiday dates from
+unresolved scheduled lessons; it creates no holiday or missed `LessonRecord`.
+The scheme displays configured breaks as calendar context, never as delivery
+or automatic completion. No ahead/behind label is inferred without a reliable
+teaching-day expectation. Admins manage schemes and see per-arm progress;
+teachers see only assigned schemes and can record coverage for lessons they
+actually delivered (including authorized substitution). Parents, students,
+platform owners, foreign tenants, subjects, terms and classes cannot mutate
+school curriculum through these routes.
+
+**Portal and reliability.** The admin Scheme of Work page creates and edits
+topics/objectives by week, links to Holiday setup and shows source-linked
+progress. My Scheme lists a teacher's active assignments; My Teaching shows
+read-only planned topics before delivery and quick partial/covered controls
+after delivery. All use shared design tokens and mobile cards. An uncertain
+coverage response reads the authoritative lesson record before claiming a
+save; no offline mutation queue, Redis, Celery or new dependency is added.
+
+**Adjacent P1 corrections found by affected validation.** PostgreSQL rejected
+gradebook result submission because `FOR UPDATE` also targeted a nullable
+joined policy; the lock now scopes to ScoreEntry. The existing public
+scratch-card checker could consume a valid PIN with no published score. It
+now checks result availability before consumption and assembles the result
+inside the same transaction. Scratch-card architecture, generation, pricing,
+navigation and UI remain intact. Batch 15 must still commercially validate
+result-access entitlement, empty states, revocation, batch lifecycle, mobile
+branding, rate limits, audits, term history and end-to-end school simulation.
+
+**Validation.** Targeted PostgreSQL curriculum/calendar tests: 19/19; one
+focused result-card test: 1/1; affected PostgreSQL backend suite: 50/50,
+including coverage races, outcome/coverage serialization, holiday exclusion,
+tenant attacks and the Basic result-submit journey. Curriculum plan read:
+13 SQL queries with one topic and with 21 topics on isolated local PostgreSQL.
+Targeted frontend curriculum tests: 6/6; affected frontend suites: 28/28.
+Local Chrome mock-API checks exercised teacher scheme at 360×800 (Scholar),
+lesson coverage save/readback at 390×844 (Classic), admin topic creation at
+768×1024 (Compact Pro), and admin read at 1440×900 (Nova), without whole-page
+overflow. A prior phone check confirmed read-back after an aborted write.
+These are local mock/browser observations, not production measurements.
+Django check, migration consistency and the production frontend build passed;
+the additive `curriculum.0001_initial` migration applied in PostgreSQL tests.
+
+**Deferred:** objective-level delivery, curriculum copying/import, richer
+calendar-to-week mapping, reliable ahead/behind indicators, broader offline
+editing and parent/student curriculum views. Principal Operations → Batch 12.

@@ -775,6 +775,7 @@ class PublicResultCheckView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
+    @transaction.atomic
     def post(self, request):
         generic_error = Response(
             {'detail': 'The supplied result-checking details are invalid or unavailable.'},
@@ -834,6 +835,10 @@ class PublicResultCheckView(APIView):
             ).first()
             if not term:
                 return generic_error
+
+        # A single-use card must not be consumed for an unavailable result.
+        if not ScoreEntry.objects.filter(school=card.school, student=student, term=term, is_published=True).exists():
+            return generic_error
 
         # Mark card used atomically to prevent double-use race condition
         updated = ScratchCard.objects.filter(pk=card.pk, is_used=False).update(

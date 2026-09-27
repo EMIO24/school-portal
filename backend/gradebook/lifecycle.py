@@ -29,7 +29,7 @@ def transition(request, action):
     get_object_or_404(Subject,pk=ids['subject'],school=school)
     term = get_object_or_404(Term,pk=ids['term'],session__school=school)
     require_assignment(request,arm.pk,term.pk,ids['subject'])
-    rows = list(ScoreEntry.objects.select_for_update().filter(school=school,**{k+'_id':v for k,v in ids.items()}).select_related('policy'))
+    rows = list(ScoreEntry.objects.select_related('policy').select_for_update(of=('self',)).filter(school=school,**{k+'_id':v for k,v in ids.items()}))
     expected = set(StudentProfile.objects.filter(school=school,current_class=arm,status='active').values_list('user_id',flat=True))
     if not rows or not expected.issubset({row.student_id for row in rows}):
         raise ValidationError('Every active student needs a score row before this result can proceed.')

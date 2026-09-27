@@ -79,6 +79,8 @@ import StudentTimetable from './pages/student/Timetable';
 import AffinityDomain from './pages/teacher/AffinityDomain';
 import MyTimetable from './pages/teacher/MyTimetable';
 import TeachingOperations from './pages/teacher/TeachingOperations';
+import TeacherScheme from './pages/teacher/TeacherScheme';
+import CurriculumManager from './pages/admin/CurriculumManager';
 import ScoreEntry from './pages/teacher/ScoreEntry';
 import TakeAttendance from './pages/teacher/TakeAttendance';
 
@@ -115,6 +117,7 @@ function AppRoutes() {
             <Route path="subject-assignments" element={<SubjectAssignment />} />
             <Route path="timetable" element={<TimetableBuilder />} />
             <Route path="teaching" element={<TeachingOperations admin />} />
+            <Route path="curriculum" element={<CurriculumManager />} />
 
             {/* Calendar */}
             <Route path="calendar"             element={<CalendarSettings />} />
@@ -176,6 +179,7 @@ function AppRoutes() {
             <Route path="domains" element={<AffinityDomain />} />
             <Route path="timetable" element={<MyTimetable />} />
             <Route path="teaching" element={<TeachingOperations />} />
+            <Route path="scheme" element={<TeacherScheme />} />
             {/*
               Upcoming teacher routes:
               <Route path="classes"      element={<MyClasses />} />

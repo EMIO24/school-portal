@@ -40,7 +40,7 @@ def _active_teacher(user, school):
 def _row(record=None, slot=None):
     if record:
         return {
-            'slot_id': record.slot_id, 'date': record.date.isoformat(), 'term': record.term_id,
+            'id': record.pk, 'slot_id': record.slot_id, 'date': record.date.isoformat(), 'term': record.term_id,
             'class_arm': record.class_arm_id_snapshot, 'class_name': record.class_name,
             'subject': record.subject_id_snapshot, 'subject_name': record.subject_name,
             'period_name': record.period_name, 'period_start': record.period_start.isoformat(timespec='minutes'),
@@ -53,7 +53,7 @@ def _row(record=None, slot=None):
             'updated_at': record.updated_at,
         }
     return {
-        'slot_id': slot.pk, 'date': None, 'term': slot.term_id,
+        'id': None, 'slot_id': slot.pk, 'date': None, 'term': slot.term_id,
         'class_arm': slot.class_arm_id, 'class_name': slot.class_arm.full_name,
         'subject': slot.subject_id, 'subject_name': slot.subject.name,
         'period_name': slot.period.name, 'period_start': slot.period.start_time.isoformat(timespec='minutes'),
@@ -192,6 +192,10 @@ class LessonOutcomeView(APIView):
                 return Response(_row(record))
             if revision != record.revision:
                 return Response({'detail': 'The lesson changed. Reload it before saving.'}, status=409)
+            if outcome in ('missed', 'cancelled'):
+                from curriculum.models import TopicCoverage
+                if TopicCoverage.objects.filter(lesson=record, active=True).exists():
+                    return Response({'detail': 'Remove active curriculum coverage before changing this lesson to missed or cancelled.'}, status=409)
             if user.role == 'teacher' and record.recorded_by_id != user.pk:
                 return Response({'detail': 'Ask a school administrator to correct this outcome.'}, status=403)
             changed = [name for name, before, after in (
