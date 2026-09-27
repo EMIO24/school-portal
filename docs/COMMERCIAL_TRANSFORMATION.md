@@ -1092,3 +1092,68 @@ Do not report these as closed or elevate harmless P2 work without evidence.
 timetable and assignments to record dated lesson outcomes and exceptions, which
 become trustworthy inputs for curriculum and principal views. This roadmap
 does not begin implementation.
+
+### Batch 10 teaching operations — development evidence, 2026-09-27
+
+Roadmap commit `85513a9` was pushed to `origin/commercial-transformation`
+before implementation. Production remains on its prior Basic baseline.
+Existing Period/TimetableEntry, Term/Holiday, tenant middleware, school RBAC,
+platform audit and mobile/design primitives were reused.
+
+**Occurrence strategy:** lazy. A day view derives unresolved lessons from
+weekday, term bounds, non-break periods and configured holidays. It creates no
+future or fabricated historical outcomes. An explicit save creates one
+`LessonRecord` per school + original timetable slot ID + date. The unique
+database constraint, transactional row lock, revision check and unique-race
+read-back protect duplicate, stale and simultaneous saves. Repeating the same
+outcome is a no-op and emits no extra audit event.
+
+**Historical representation:** the record retains the original slot ID and
+nullable slot link, term name, class/subject identifiers and names, period
+name/times, scheduled teacher identifier/name, actual teacher/name, outcome,
+note, original actor/timestamp, update timestamp and revision. Recorded history
+survives timetable edits, slot deletion, subject renaming and teacher account
+deactivation. A deleted term still leaves the snapshot readable by date.
+Unresolved dates are derived from the *current* timetable; historical
+unrecorded schedules are not versioned and must not be treated as proof of
+missed teaching.
+
+**Outcomes and roles:** no row means “Outcome not recorded.” Delivered and
+missed require an affirmative teacher/admin save. School admins alone record
+cancellation and same-school active-teacher substitution. The originally
+scheduled teacher and actual substitute remain distinguishable. Assigned
+teachers may save their own current-day scheduled lesson; admins may inspect
+and correct school records. Parents, students, platform owners, unrelated
+teachers, foreign tenant references and inactive substitute teachers cannot
+write. Meaningful record/correction transitions use PlatformEvent; unchanged
+retries do not. Holiday dates cannot acquire a new outcome from a recurring
+slot. Past recorded outcomes remain readable when the current term changes.
+
+**Portal and resilience:** teacher and admin pages use shared cards and tokens.
+Teachers choose a date, see their own schedule and record an outcome on a
+phone. Admins filter date/class/teacher/subject/outcome and control substitutes.
+An uncertain save reads the dated authoritative list before claiming success;
+an unconfirmed save leaves an explicit review/retry message. No Redis, worker
+or Beat is required.
+
+**Validation:** targeted timetable tests: 12 on SQLite (11 pass, one
+PostgreSQL-only skip); 12/12 on an isolated local PostgreSQL cluster, including
+two simultaneous first saves and exactly one audit event. The affected backend
+suite passed 109 tests with one PostgreSQL-only skip. One versus 21 daily
+slots both used five SQL queries under SQLite and local PostgreSQL. Targeted
+frontend tests passed 5/5; affected frontend suites passed 31/31. Local Chrome
+mock-API journeys confirmed delivery/refresh at 390×844 and 1440×900, no
+whole-page overflow in Classic, Minimal, Compact Pro and Nova at 360×800 and
+1440×900, and read-back confirmation after an aborted 390px save response.
+An admin browser journey at 768×1024 recorded missed, corrected to cancelled,
+then assigned a substitute without whole-page overflow. These are local
+mock/browser measurements, not production timings. Django
+check and migration consistency passed; the additive migration was applied
+by the SQLite and PostgreSQL test runners. The final frontend production
+build passed (gzip JS 323.73 kB, CSS 45.44 kB).
+
+**Deferred:** a complete school-calendar engine, immutable versions of
+unrecorded historical schedules, server pagination for unusually large daily
+admin lists, richer substitution scheduling and full offline operation.
+Curriculum Progress → Batch 11. Principal Operations → Batch 12. Neither is
+implemented by Batch 10.

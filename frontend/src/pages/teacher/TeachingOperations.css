@@ -1,0 +1,34 @@
+.teaching-page { max-width: 1100px; margin: 0 auto; padding: clamp(1rem, 3vw, 2rem); color: var(--ink, #162334); }
+.teaching-header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.teaching-header h1 { margin: 0 0 .25rem; }
+.teaching-header p { margin: 0 0 1rem; color: var(--ink-muted, #566273); }
+.teaching-controls { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; margin: 1rem 0; }
+.teaching-controls label, .teaching-editor label { display: grid; gap: .35rem; font-weight: 600; }
+.teaching-controls input, .teaching-controls select, .teaching-editor select, .teaching-editor textarea {
+  min-height: 2.7rem; max-width: 100%; padding: .5rem; border: 1px solid var(--border, #b7c2cf);
+  border-radius: var(--radius, 8px); background: var(--surface, #fff); color: inherit;
+}
+.teaching-page button { min-height: 2.7rem; padding: .45rem .8rem; cursor: pointer; }
+.teaching-page button:disabled { opacity: .6; cursor: wait; }
+.teaching-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: .85rem; }
+.teaching-card, .teaching-editor { background: var(--surface, #fff); border: 1px solid var(--border, #d9e0e6); border-radius: var(--radius, 10px); padding: 1rem; }
+.teaching-card strong, .teaching-card span { display: block; }
+.teaching-card > div:first-child span, .teaching-card p { color: var(--ink-muted, #566273); }
+.teaching-card-footer { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+.teaching-status { font-weight: 700; }
+.teaching-status.missed { color: #a52626; }
+.teaching-status.delivered, .teaching-status.substituted { color: #166743; }
+.teaching-status.cancelled { color: #7a4a12; }
+.teaching-notice, .teaching-error { padding: .7rem; border-radius: 6px; }
+.teaching-notice { background: #e8f5ef; }
+.teaching-error { background: #fceaea; color: #8f1b1b; }
+.teaching-editor { margin-top: 1rem; display: grid; gap: .75rem; }
+.teaching-editor h2, .teaching-editor p { margin: 0; }
+.teaching-editor textarea { min-height: 5rem; }
+.teaching-editor > div { display: flex; justify-content: flex-end; gap: .5rem; }
+@media (max-width: 600px) {
+  .teaching-header { flex-direction: column; }
+  .teaching-controls label, .teaching-controls button { width: 100%; }
+  .teaching-controls input, .teaching-controls select { width: 100%; }
+  .teaching-card-footer button { width: 100%; }
+}

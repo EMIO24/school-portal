@@ -136,3 +136,42 @@ class TimetableEntry(models.Model):
                     'period': self.period.name,
                 }
             })
+
+
+class LessonRecord(models.Model):
+    """One explicit outcome for a dated timetable slot; absence means unresolved."""
+
+    class Outcome(models.TextChoices):
+        DELIVERED = 'delivered', 'Delivered'
+        MISSED = 'missed', 'Missed'
+        CANCELLED = 'cancelled', 'Cancelled'
+        SUBSTITUTED = 'substituted', 'Substituted'
+
+    school = models.ForeignKey('tenants.School', on_delete=models.CASCADE, related_name='lesson_records')
+    timetable_entry = models.ForeignKey(TimetableEntry, null=True, blank=True, on_delete=models.SET_NULL, related_name='lesson_records')
+    # Stable even when an administrator deletes the recurring timetable entry.
+    slot_id = models.PositiveBigIntegerField()
+    date = models.DateField()
+    term = models.ForeignKey('academics.Term', null=True, on_delete=models.SET_NULL)
+    term_name = models.CharField(max_length=80)
+    class_arm_id_snapshot = models.PositiveBigIntegerField()
+    class_name = models.CharField(max_length=160)
+    subject_id_snapshot = models.PositiveBigIntegerField()
+    subject_name = models.CharField(max_length=160)
+    period_name = models.CharField(max_length=50)
+    period_start = models.TimeField()
+    period_end = models.TimeField()
+    scheduled_teacher_id = models.PositiveBigIntegerField(null=True, blank=True)
+    scheduled_teacher_name = models.CharField(max_length=160, blank=True)
+    actual_teacher = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='delivered_lesson_records')
+    actual_teacher_name = models.CharField(max_length=160, blank=True)
+    outcome = models.CharField(max_length=12, choices=Outcome.choices)
+    note = models.CharField(max_length=500, blank=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='recorded_lesson_records')
+    recorded_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    revision = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['school', 'slot_id', 'date'], name='unique_lesson_slot_date')]
+        indexes = [models.Index(fields=['school', 'date', 'outcome'])]
