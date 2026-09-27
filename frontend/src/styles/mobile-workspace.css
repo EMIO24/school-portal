@@ -1,5 +1,7 @@
 /* Shared phone/tablet behavior for all five portal designs. */
 .workspace-backdrop,.workspace-drawer-close{display:none}
+.connectivity-banner{padding:10px 18px;font-size:14px;line-height:1.5;border-bottom:1px solid #d5bd68;background:#fff5cc;color:#443516}
+.connectivity-banner.is-recovered{border-color:#9acbac;background:#e8f5eb;color:#164b2b}
 @media(max-width:1024px){
   .workspace,.workspace.layout-executive{display:flex;flex-direction:column;min-height:100dvh;width:100%;max-width:100%}
   .workspace.layout-heritage{padding:0}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { downloadReport } from "../../services/pdf";
 import api from "../../services/api";
+import { classifyRequestFailure } from "../../services/requestState";
 import "./FeeCollection.css";
 
 function paymentRetryKey() {
@@ -36,6 +37,8 @@ export default function FeeCollection() {
   const [page, setPage]                 = useState(1);
   const [pageInfo, setPageInfo]         = useState({ next: null, previous: null });
   const [loading, setLoading]           = useState(false);
+  const [loadError, setLoadError]         = useState("");
+  const balanceRequest = useRef(0);
   const [modal, setModal]               = useState(null);
   const [schedules, setSchedules]       = useState([]);
   const [payForm, setPayForm]           = useState({
@@ -64,17 +67,20 @@ export default function FeeCollection() {
 
 
   const loadOutstanding = useCallback(() => {
+    const request = ++balanceRequest.current;
     setLoading(true);
+    setLoadError("");
     let url = `/api/fees/outstanding/?term=${selectedTerm}&page=${page}`;
     if (selectedArm) url += `&class_arm=${selectedArm}`;
     api.get(url)
       .then(({ data: d }) => {
+        if (request !== balanceRequest.current) return;
         setOutstanding(Array.isArray(d) ? d : d.results || []);
         setSummary(Array.isArray(d) ? null : d.summary || null);
         setPageInfo(Array.isArray(d) ? { next: null, previous: null } : { next: d.next, previous: d.previous });
-        setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(err => { if (request === balanceRequest.current) setLoadError(classifyRequestFailure(err).message); })
+      .finally(() => { if (request === balanceRequest.current) setLoading(false); });
   }, [selectedTerm, selectedArm, page]);
 
   useEffect(() => {
@@ -152,11 +158,11 @@ export default function FeeCollection() {
       <h1 className="page-title">Fee Collection</h1>
 
       {/* Summary cards */}
-      <div className="fee-summary-row">
+      {!loading && !loadError && <div className="fee-summary-row">
         <div className="summary-card"><span>Expected</span><strong>₦{totalExpected.toLocaleString()}</strong></div>
         <div className="summary-card green"><span>Collected</span><strong>₦{totalCollected.toLocaleString()}</strong></div>
         <div className="summary-card red"><span>Outstanding</span><strong>₦{totalOutstanding.toLocaleString()}</strong></div>
-      </div>
+      </div>}
 
       {/* Filters */}
       <div className="filter-row">
@@ -174,8 +180,9 @@ export default function FeeCollection() {
       </div>
 
       <div className="card table-wrap">
-        {loading && <p className="empty-row">Loading…</p>}
-        <table>
+        {loading && <p className="empty-row" role="status">Loading balances…</p>}
+        {loadError && <p className="empty-row" role="alert">{loadError} <button type="button" onClick={loadOutstanding}>Retry</button></p>}
+        {!loadError && !loading && <table className="fee-directory">
           <thead>
             <tr>
               <th>Student</th>
@@ -192,13 +199,13 @@ export default function FeeCollection() {
               const st = statusOf(row.paid, row.total_fees);
               return (
                 <tr key={row.student_id}>
-                  <td>{row.student_name}</td>
-                  <td>{row.class}</td>
-                  <td>₦{Number(row.total_fees).toLocaleString()}</td>
-                  <td>₦{Number(row.paid).toLocaleString()}</td>
-                  <td>₦{Number(row.outstanding).toLocaleString()}</td>
-                  <td><span className={`status-badge st-${st}`}>{st.charAt(0).toUpperCase() + st.slice(1)}</span></td>
-                  <td>
+                  <td data-label="Student">{row.student_name}</td>
+                  <td data-label="Class">{row.class}</td>
+                  <td data-label="Total">₦{Number(row.total_fees).toLocaleString()}</td>
+                  <td data-label="Paid">₦{Number(row.paid).toLocaleString()}</td>
+                  <td data-label="Balance">₦{Number(row.outstanding).toLocaleString()}</td>
+                  <td data-label="Status"><span className={`status-badge st-${st}`}>{st.charAt(0).toUpperCase() + st.slice(1)}</span></td>
+                  <td data-label="Action">
                     {st !== "paid" && (
                       <button className="btn-sm" onClick={() => openPayModal(row)}>Record Payment</button>
                     )}
@@ -210,7 +217,7 @@ export default function FeeCollection() {
               <tr><td colSpan={7} className="empty-row">No data. Select a term to load.</td></tr>
             )}
           </tbody>
-        </table>
+        </table>}
       </div>
       <nav aria-label="Debtor pages" className="filter-row">
         <button disabled={!pageInfo.previous || loading} onClick={() => setPage(value => value - 1)}>Previous</button>

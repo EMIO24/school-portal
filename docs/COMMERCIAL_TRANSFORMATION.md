@@ -823,3 +823,54 @@ repeat imports, relationships and account state. A 400-student, 40-teacher,
 import and student retry in 15.86 seconds on local SQLite. That timing says
 nothing about PostgreSQL or production throughput. Historical records, automated
 column transformation and opening balances remain deferred.
+
+### Batch 8 mobile and resilience foundation — 2026-09-27
+
+Batch 7 `5b2d56ce66a1d0f7e2e9cabfc7181643ff23f9ca` was pushed to
+`origin/commercial-transformation` before this batch. The validated Basic
+production baseline remains unchanged. No backend schema, dependency, worker,
+production data or deployment was changed.
+
+The existing authenticated shell already had a 1024px drawer, focus trap,
+Escape handling and sign-out link. Batch 8 adds a shared browser connectivity
+notice and a bounded read-failure classifier. Browser online state is only a
+signal; request failures still drive page errors. Reconnection never resubmits
+writes. Score drafts, attendance, result transitions and manual payments retain
+their Batch 6 reconciliation/idempotency flows. Student/staff/fee directories
+use labeled rows on phones; the gradebook keeps sticky identity columns and
+internal scrolling; attendance controls have larger touch targets. The parent
+dashboard clears a previous child's data during a switch and ignores a late
+response for the child no longer selected. Fee balances are hidden while a new
+page loads or a read fails, so an old amount is not presented as current.
+
+No new persistent data cache was added. Existing cached school theme/branding
+is relatively stable public metadata and is refreshed by ThemeProvider;
+authorization remains server-driven. Student records, scores, attendance,
+result publication, fee balances, payment state, permissions and account state
+must remain authoritative from the server. The manifest and Paideia icons
+already provide install metadata; registration of a nonexistent service worker
+was removed. There is no offline read store, queued write or background sync.
+
+Future offline work requires a per-tenant/per-user data classification, explicit
+session/logout cleanup, conflict/version checks against server state, and a
+decision on device encryption. Score and attendance conflicts need domain
+resolution; financial writes must not be casually queued. Shared-device safety
+currently relies on in-memory page state and protected-route authorization;
+no Batch 8 operational data is persisted in the browser.
+
+Local Chrome CSS fixture checks at 360×800, 390×844, 768×1024 and 1440×900
+found no whole-page horizontal overflow for representative shell, directory,
+gradebook, attendance and parent markup. The gradebook scrolls within its own
+container. A separate local mock API served the built application for
+authenticated Chrome smoke journeys: admin students, staff, migration and fees;
+teacher score and attendance saves; parent child switching, results and fees;
+and student dashboard, results, attendance and fees. Teacher saves, admin
+search and parent child switching passed under 400 ms latency with 90 KB/s
+download and 45 KB/s upload limits. The browser
+showed offline and recovery notices after a brief connection interruption;
+after sign-out and Back, the protected student row was not visible. These are
+local mock journeys, not production network measurements. Component tests cover
+delayed child switching, reconnect messaging and Batch 6 write behavior.
+Production build
+gzip sizes: JS 320.03 kB, CSS 43.91 kB; these are local build artifacts, not
+transferred-byte or production timing measurements.

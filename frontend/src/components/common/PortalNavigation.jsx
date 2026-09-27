@@ -3,6 +3,7 @@ import { featureForRoute, hasFeature } from '../../services/features';
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import ConnectivityBanner from './ConnectivityBanner';
 import './PortalNavigation.css';
 
 export const ROLE_LINKS = {
@@ -75,6 +76,7 @@ export default function PortalNavigation({ children }) {
     </aside>
     <div className="workspace-body">
       <header className="workspace-topbar"><div><span className="workspace-eyebrow">{platform ? 'Your platform, at a glance' : 'Welcome to your school portal'}</span><strong>{active?.[1] || 'School workspace'}</strong></div><div className="workspace-person"><span className="workspace-avatar">{displayName?.slice(0,1).toUpperCase()}</span><div><strong>{displayName}</strong><small>{user.role.replace('_',' ')}</small></div></div></header>
+      <ConnectivityBanner />
       <div id="workspace-content" tabIndex={-1} className="workspace-content">{children}</div>
       <footer className="workspace-footer"><span>{name}</span><span>{platform ? 'School management, made clear.' : school?.motto || 'A place for every learner.'}</span></footer>
     </div>

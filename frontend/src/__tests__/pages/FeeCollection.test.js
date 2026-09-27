@@ -26,3 +26,23 @@ test('uncertain manual-payment response retries identical details and key',async
   expect(api.post.mock.calls[1][1]).toEqual(first);
   await waitFor(()=>expect(screen.queryByRole('button',{name:'Retry same payment'})).not.toBeInTheDocument());
 });
+
+test('does not present a previous term balance while the next term loads or after a read failure', async () => {
+  api.get.mockReset();
+  api.get.mockImplementation(url => {
+    if (url === '/api/terms/') return Promise.resolve({ data: [
+      { id: 1, name: 'First term', is_current: true }, { id: 2, name: 'Second term' },
+    ] });
+    if (url === '/api/class-arms/') return Promise.resolve({ data: [] });
+    if (url.includes('term=1')) return Promise.resolve({ data: { results: [
+      { student_id: 7, student_name: 'Test Student', class: 'JSS1A', total_fees: 1000, paid: 0, outstanding: 1000 },
+    ], next: null, previous: null } });
+    return Promise.reject(new Error('connection lost'));
+  });
+  renderPage(<FeeCollection />);
+  expect(await screen.findByText('Test Student')).toBeInTheDocument();
+  fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '2' } });
+  expect(screen.queryByText('₦1,000')).not.toBeInTheDocument();
+  expect(await screen.findByRole('alert')).toHaveTextContent("We couldn't reach Paideia");
+  expect(screen.queryByText('Test Student')).not.toBeInTheDocument();
+});

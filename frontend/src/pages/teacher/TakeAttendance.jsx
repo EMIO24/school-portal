@@ -250,8 +250,8 @@ export default function TakeAttendance() {
       {!session && (
         <div className="att-controls">
           <div className="att-field-group">
-            <label>Term</label>
-            <select className="att-select" value={selectedTerm}
+            <label htmlFor="attendance-term">Term</label>
+            <select id="attendance-term" className="att-select" value={selectedTerm}
               onChange={e => setSelectedTerm(e.target.value)}>
               <option value="">— Select term —</option>
               {terms.map(t => <option key={t.id} value={t.id}>{t.name_display || t.name}{t.session_name ? ` / ${t.session_name}` : ""}</option>)}
@@ -259,8 +259,8 @@ export default function TakeAttendance() {
           </div>
 
           <div className="att-field-group">
-            <label>Class</label>
-            <select className="att-select" value={selectedClassArm}
+            <label htmlFor="attendance-class">Class</label>
+            <select id="attendance-class" className="att-select" value={selectedClassArm}
               onChange={e => setSelectedClassArm(e.target.value)}>
               <option value="">— Select class —</option>
               {classArms.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -268,15 +268,15 @@ export default function TakeAttendance() {
           </div>
 
           <div className="att-field-group">
-            <label>Date</label>
-            <input type="date" className="att-input" value={selectedDate}
+            <label htmlFor="attendance-date">Date</label>
+            <input id="attendance-date" type="date" className="att-input" value={selectedDate}
               onChange={e => setSelectedDate(e.target.value)} />
           </div>
 
           {schoolMode === 'per_period' && (
             <div className="att-field-group">
-              <label>Period</label>
-              <select className="att-select" value={selectedPeriod}
+              <label htmlFor="attendance-period">Period</label>
+              <select id="attendance-period" className="att-select" value={selectedPeriod}
                 onChange={e => setSelectedPeriod(e.target.value)}>
                 <option value="">— Select period —</option>
                 {periods.filter(p => !p.is_break).map(p => (
@@ -376,6 +376,8 @@ export default function TakeAttendance() {
                             key={s.key}
                             className={`att-status-btn is-${STATUS_KEY[s.key]}${rec.status === s.key ? ' active' : ''}`}
                             title={s.title}
+                            aria-label={`${s.title} for ${student.student_name}`}
+                            aria-pressed={rec.status === s.key}
                             disabled={isFinalized || submitting || finalizing}
                             onClick={() => {setSuccess(null);dispatch({
                               type: 'SET_STATUS',
@@ -392,6 +394,7 @@ export default function TakeAttendance() {
                         <span /><span />
                         <input
                           className="att-remark-input"
+                          aria-label={`Remark for ${student.student_name}`}
                           placeholder="Remark (optional)…"
                           value={rec.remark}
                           disabled={submitting || finalizing}

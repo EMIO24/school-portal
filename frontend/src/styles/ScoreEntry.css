@@ -544,4 +544,14 @@
     --col-score:  60px;
   }
   .gb-table thead th { font-size: .62rem; padding: 0 6px; }
+  .gb-page{min-width:0;padding:16px 10px}
+  .gb-controls{min-width:0}
+  .gb-controls>.gb-field-group{min-width:0}
+  .gb-controls>.gb-field-group:last-child{width:100%}
+  .gb-controls>.gb-field-group:last-child>div{flex-wrap:wrap}
+  .gb-controls>.gb-field-group:last-child button{min-height:44px;flex:1}
+  .gb-table-wrap{max-width:100%;min-width:0;overflow:auto;overscroll-behavior-x:contain}
+  .workspace .workspace-content .gb-table{display:table;width:max-content;min-width:100%;overflow:visible}
+  .gb-table th.col-name,.gb-table td.col-name{max-width:140px;white-space:normal;overflow-wrap:anywhere}
+  .gb-score-input{min-height:44px}
 }

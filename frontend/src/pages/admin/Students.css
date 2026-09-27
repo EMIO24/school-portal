@@ -1,0 +1,15 @@
+.student-filters{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:20px}
+.student-filters label{display:grid;gap:6px;min-width:0}
+.student-directory{max-width:100%;overflow-x:auto}
+.student-directory table{width:100%;text-align:left;border-collapse:collapse}
+.student-directory th,.student-directory td{padding:10px;border-bottom:1px solid #dce4ea;overflow-wrap:anywhere}
+.student-directory a{min-height:44px;display:inline-flex;align-items:center}
+@media(max-width:600px){
+  .student-filters{display:grid;grid-template-columns:minmax(0,1fr)}
+  .student-filters input,.student-filters select{width:100%}
+  .student-directory table,.student-directory tbody,.student-directory tr,.student-directory td{display:block;width:100%}
+  .student-directory thead{display:none}
+  .student-directory tr{padding:10px 12px;margin-bottom:12px;background:#fff;border:1px solid #dce4ea;border-radius:10px}
+  .student-directory td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:5px 0;border:0;text-align:right}
+  .student-directory td::before{content:attr(data-label);font-weight:600;color:#526778;text-align:left;flex-shrink:0}
+}

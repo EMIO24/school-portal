@@ -1,8 +1,9 @@
 import { useTheme } from "../../context/ThemeContext";
 import { hasFeature } from "../../services/features";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
+import { classifyRequestFailure } from "../../services/requestState";
 import "./ParentDashboard.css";
 
 const GRADE = (avg) => {
@@ -23,6 +24,9 @@ export default function ParentDashboard() {
   const [activeIdx, setActiveIdx] = useState(0);
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading]     = useState(false);
+  const [childrenLoading, setChildrenLoading] = useState(true);
+  const [error, setError] = useState("");
+  const requestVersion = useRef(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -34,14 +38,19 @@ export default function ParentDashboard() {
         setChildren(list);
         if (list.length > 0) loadDashboard(list[0].student_id);
       })
-      .catch(() => {});
+      .catch(err => setError(classifyRequestFailure(err).message))
+      .finally(() => setChildrenLoading(false));
   }, [operational]);
 
   function loadDashboard(studentId) {
+    const version = ++requestVersion.current;
     setLoading(true);
+    setDashboard(null);
+    setError("");
     api.get(`/api/parent/dashboard/${studentId}/`)
-      .then(({ data }) => { setDashboard(data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(({ data }) => { if (version === requestVersion.current) setDashboard(data); })
+      .catch(err => { if (version === requestVersion.current) setError(classifyRequestFailure(err).message); })
+      .finally(() => { if (version === requestVersion.current) setLoading(false); });
   }
 
   function switchChild(idx) {
@@ -91,6 +100,7 @@ export default function ParentDashboard() {
               <button
                 key={c.student_id}
                 className={`ward-card ${i === activeIdx ? "active" : ""}`}
+                aria-pressed={i === activeIdx}
                 onClick={() => switchChild(i)}
               >
                 <div className="ward-avatar">{c.name.charAt(0)}</div>
@@ -101,7 +111,9 @@ export default function ParentDashboard() {
           </div>
         )}
 
-        {loading && <p className="loading-msg">Loading…</p>}
+        {child && <p className="parent-current-child" role="status">Showing {child.name}{child.class ? ` — ${child.class}` : ""}</p>}
+        {(loading || childrenLoading) && <p className="loading-msg" role="status">Loading child information…</p>}
+        {error && <div className="parent-load-error" role="alert">{error} <button type="button" onClick={() => child ? loadDashboard(child.student_id) : window.location.reload()}>Retry</button></div>}
 
         {!loading && d && (
           <div className="dashboard-cards">
@@ -198,7 +210,7 @@ export default function ParentDashboard() {
           </div>
         )}
 
-        {children.length === 0 && !loading && (
+        {children.length === 0 && !loading && !childrenLoading && !error && (
           <div className="no-children">
             <p>No children linked to your account yet.</p>
             <p>Contact the school admin to link your child's record.</p>
