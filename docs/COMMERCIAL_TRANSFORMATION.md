@@ -1233,3 +1233,57 @@ the additive `curriculum.0001_initial` migration applied in PostgreSQL tests.
 **Deferred:** objective-level delivery, curriculum copying/import, richer
 calendar-to-week mapping, reliable ahead/behind indicators, broader offline
 editing and parent/student curriculum views. Principal Operations → Batch 12.
+
+### Batch 12 principal operations — development evidence, 2026-09-27
+
+Batch 11 `d56d6cada00bd6b9eaca98bd739ea8da8d63e9ab` was pushed and verified
+at `origin/commercial-transformation` before this work. Production was not
+changed. The Basic school-admin dashboard now reads `/api/principal/` directly
+from tenant-scoped source records. The endpoint accepts a bounded section,
+selected date and school term; it has no writes, cached snapshot table, worker
+or new migration. Teachers, students, parents, platform owners and foreign
+school users cannot read it. Premium analytics remains separately gated.
+
+The old dashboard's enrollment count was partial; its cached average, pass
+rate, fee collection percentage, leaderboard and low-attendance alert were
+not reliable principal operations facts. The dashboard now shows active
+enrollment and teaching staff, finalized attendance marks and class coverage,
+dated lesson outcomes, explicit lesson-linked curriculum topic coverage,
+score-entry review states and recorded payments against configured term fee
+schedules. Every actionable group links to its existing source workflow.
+An unfinalized attendance register is excluded because starting one creates
+default-present marks before review. Missing finalized class registers are
+shown separately from absence. Unrecorded lesson outcomes remain distinct
+from missed lessons. Holidays and weekends suppress expected teaching and
+attendance. For dates older than seven days, teaching shows only stored
+outcomes because recurring timetable history is not versioned.
+
+Finance reports only payments recorded against selected-term schedules, not
+receivables or cash ledger totals. Curriculum reports covered, partial and
+not-started topics, never ahead/behind. Section-level errors can be retried;
+late responses from an older selection are ignored. The admin attendance,
+teaching, curriculum and results pages accept dashboard filter links.
+
+On isolated local PostgreSQL, the six read sections used 5/9/7/6/3/6 SQL
+queries (snapshot/attendance/teaching/curriculum/results/finance). The same
+counts held after adding five students, two class arms and twenty topics to
+the fixture; the combined read cost was 36 queries across six independent
+HTTP sections. Batch 10's dated lesson projection also held at five queries
+with one and 21 slots. Targeted principal tests: 7/7; affected backend tests:
+66/66. Targeted dashboard/teaching frontend tests: 8/8; affected
+curriculum/result review tests: 8/8; full page inventory: 59/59. Django
+check, migration consistency and optimized frontend build
+passed. Local Chrome mock-API views at 360×800 Scholar, 390×844 Classic,
+768×1024 Compact Pro, 1440×900 Nova and Executive rendered with no whole-page
+horizontal overflow. Mock navigation verified Teaching Operations and Scheme
+of Work links; a 503 finance section recovered through Retry. These are local
+browser and query observations, not production performance claims.
+An additional local Chrome check followed the filtered result review link and
+changed the school date to a mocked configured holiday; attendance and teaching
+both displayed the holiday state and no false alarms. The source workflow
+journey and retry used only mock API data and a local static build.
+
+Deferred: historical timetable versioning, ahead/behind curriculum inference,
+advanced analytics and AI. Communication Centre remains Batch 13; the
+Student Finance Ledger remains Batch 14; scratch-card/PIN commercial
+hardening remains Batch 15.

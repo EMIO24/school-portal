@@ -22,3 +22,13 @@ test('reconciles an uncertain publication response against the authoritative she
   expect(api.post).toHaveBeenCalledTimes(1);
   confirm.mockRestore();
 });
+
+test('opens the review subject supplied by the principal source link', async () => {
+  window.history.pushState({}, '', '/admin/results?term=1&class_arm=1&subject=1');
+  referenceOptions.mockResolvedValue({ data: [{ id: 1, name: 'Math' }] });
+  api.get.mockResolvedValue({ data: { students: [], entries: [], configuration: { components: [] } } });
+  renderPage(<ResultReview classArm={1} term={1}/>);
+  expect(await screen.findByLabelText('Review subject')).toHaveValue('1');
+  expect(api.get).toHaveBeenCalledWith('/api/gradebook/entries/sheet/?class_arm=1&term=1&subject=1');
+  window.history.pushState({}, '', '/');
+});

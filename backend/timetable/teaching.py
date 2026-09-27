@@ -65,6 +65,48 @@ def _row(record=None, slot=None):
     }
 
 
+def lesson_day_rows(school, day, term_id=None, teacher_id=None):
+    """The same dated lesson projection used by teaching operations and the principal view."""
+    terms = Term.objects.filter(session__school=school, start_date__lte=day, end_date__gte=day)
+    if term_id:
+        terms = terms.filter(pk=term_id)
+    term_ids = list(terms.values_list('pk', flat=True))
+    holiday_terms = set(Holiday.objects.filter(
+        term_id__in=term_ids, start_date__lte=day, end_date__gte=day
+    ).values_list('term_id', flat=True))
+    weekday = ('MON', 'TUE', 'WED', 'THU', 'FRI', None, None)[day.weekday()]
+    slots = []
+    if weekday:
+        slots = list(TimetableEntry.objects.filter(
+            school=school, term_id__in=[pk for pk in term_ids if pk not in holiday_terms],
+            day_of_week=weekday, period__is_break=False
+        ).select_related('term', 'class_arm__class_level', 'subject', 'period', 'teacher')
+                     .order_by('period__order_index', 'class_arm_id'))
+    records = LessonRecord.objects.filter(school=school, date=day).select_related('actual_teacher')
+    if term_id:
+        records = records.filter(term_id=term_id)
+    if teacher_id:
+        slots = [slot for slot in slots if slot.teacher_id == teacher_id]
+        records = records.filter(scheduled_teacher_id=teacher_id) | records.filter(actual_teacher_id=teacher_id)
+    by_slot = {record.slot_id: record for record in records}
+    recorded_positions = {
+        (record.term_id, record.class_arm_id_snapshot, record.period_start, record.period_end)
+        for record in by_slot.values()
+    }
+    rows = []
+    for slot in slots:
+        recorded = by_slot.pop(slot.pk, None)
+        if recorded:
+            rows.append(_row(recorded))
+        elif (slot.term_id, slot.class_arm_id, slot.period.start_time, slot.period.end_time) not in recorded_positions:
+            rows.append(_row(slot=slot))
+    rows.extend(_row(record=record) for record in by_slot.values())
+    for row in rows:
+        row['date'] = day.isoformat()
+    rows.sort(key=lambda row: (row['period_start'], row['class_name'], row['slot_id']))
+    return rows, bool(holiday_terms)
+
+
 class LessonDayView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -76,42 +118,8 @@ class LessonDayView(APIView):
             return Response({'date': 'Use a valid ISO date.'}, status=400)
         if request.query_params.get('term') and not request.query_params['term'].isdigit():
             return Response({'term': 'Choose a valid term.'}, status=400)
-        school = request.tenant
-        terms = Term.objects.filter(session__school=school, start_date__lte=day, end_date__gte=day)
-        if request.query_params.get('term'):
-            terms = terms.filter(pk=request.query_params['term'])
-        term_ids = list(terms.values_list('pk', flat=True))
-        holiday_terms = set(Holiday.objects.filter(
-            term_id__in=term_ids, start_date__lte=day, end_date__gte=day
-        ).values_list('term_id', flat=True))
-        weekday = ('MON', 'TUE', 'WED', 'THU', 'FRI', None, None)[day.weekday()]
-        slots = []
-        if weekday:
-            slots = list(TimetableEntry.objects.filter(
-                school=school, term_id__in=[pk for pk in term_ids if pk not in holiday_terms],
-                day_of_week=weekday, period__is_break=False
-            ).select_related('term', 'class_arm__class_level', 'subject', 'period', 'teacher')
-                         .order_by('period__order_index', 'class_arm_id'))
-        records = LessonRecord.objects.filter(school=school, date=day).select_related('actual_teacher')
-        if request.query_params.get('term'):
-            records = records.filter(term_id=request.query_params['term'])
-        if request.user.role == 'teacher':
-            slots = [s for s in slots if s.teacher_id == request.user.pk]
-            records = records.filter(scheduled_teacher_id=request.user.pk) | records.filter(actual_teacher_id=request.user.pk)
-        by_slot = {r.slot_id: r for r in records}
-        recorded_positions = {
-            (r.term_id, r.class_arm_id_snapshot, r.period_start, r.period_end) for r in by_slot.values()
-        }
-        rows = []
-        for slot in slots:
-            recorded = by_slot.pop(slot.pk, None)
-            if recorded:
-                rows.append(_row(recorded))
-            elif (slot.term_id, slot.class_arm_id, slot.period.start_time, slot.period.end_time) not in recorded_positions:
-                rows.append(_row(slot=slot))
-        rows.extend(_row(record=r) for r in by_slot.values())
-        for row in rows:
-            row['date'] = day.isoformat()
+        rows, holiday = lesson_day_rows(request.tenant, day, request.query_params.get('term'),
+                                       request.user.pk if request.user.role == 'teacher' else None)
         for field in ('class_arm', 'teacher', 'subject'):
             raw = request.query_params.get(field)
             if raw:
@@ -125,8 +133,7 @@ class LessonDayView(APIView):
             if outcome not in ('delivered', 'missed', 'cancelled', 'substituted', 'unresolved'):
                 return Response({'outcome': 'Choose a valid outcome.'}, status=400)
             rows = [r for r in rows if (r['outcome'] or 'unresolved') == outcome]
-        rows.sort(key=lambda r: (r['period_start'], r['class_name'], r['slot_id']))
-        return Response({'date': day.isoformat(), 'holiday': bool(holiday_terms), 'lessons': rows})
+        return Response({'date': day.isoformat(), 'holiday': holiday, 'lessons': rows})
 
 
 class LessonOutcomeView(APIView):

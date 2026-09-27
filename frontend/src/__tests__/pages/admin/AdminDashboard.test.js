@@ -1,80 +1,78 @@
-﻿import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import AdminDashboard from "../../../pages/admin/AdminDashboard";
-jest.mock("../../../context/ThemeContext", () => ({useTheme: () => ({school: {name: 'Test School', entitlements: {features: ['analytics']}}})}));
-jest.mock("../../../hooks/useAuth", () => ({useAuth: () => ({user: {role:'school_admin'}})}));
-jest.mock("../../../components/common/WorkspaceHome", () => () => <div>School shortcuts</div>);
-import api from "../../../services/api";
+import React from 'react';
+import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import AdminDashboard from '../../../pages/admin/AdminDashboard';
+import api from '../../../services/api';
 
-jest.mock("../../../services/api", () => ({
-  __esModule: true, default: { get: jest.fn(), post: jest.fn() },
-}));
-const analytics = {
-  total_students: 120, school_average: 68, overall_pass_rate: 82, fee_collection_rate: 75,
-  subject_averages: [], grade_distribution: {}, class_averages: [],
-  top_students: [{ name: "Ada Okafor", class: "Grade 5A", average: 95 }], attendance_school_avg: 88,
+jest.mock('../../../components/common/WorkspaceHome', () => () => <div>School shortcuts</div>);
+jest.mock('../../../services/api', () => ({ __esModule: true, default: { get: jest.fn() } }));
+
+const snapshot = { term: 1, active_students: 12, active_teachers: 2,
+  terms: [{ id: 1, name: 'first', session__name: '2026/27', start_date: '2026-09-01', end_date: '2026-12-18', is_current: true }] };
+const sections = {
+  attendance: { state: 'no_records', marks: { present: 0, absent: 0, late: 0, excused: 0 },
+    classes_with_records: 0, classes_expected: 1, classes_without_records: [{ id: 2, name: 'JSS1 A' }] },
+  teaching: { state: 'scheduled', scheduled: 1, counts: { delivered: 0, missed: 0, cancelled: 0, substituted: 0, unresolved: 1 },
+    queue: [{ slot_id: 3, class_name: 'JSS1 A', subject_name: 'Math', period_name: 'First' }] },
+  curriculum: { state: 'configured', groups: [{ class_arm: 2, class_name: 'JSS1 A', class_level: 4,
+    subject: 5, subject_name: 'Math', covered: 1, planned: 3, partial: 1, not_started: 1 }] },
+  results: { state: 'recorded', counts: { submitted: 1, approved: 0, published: 0 },
+    groups: [{ class_arm: 2, class_name: 'JSS1 A', subject: 5, subject_name: 'Math', submitted: 1, approved: 0, published: 0 }] },
+  finance: { state: 'unconfigured' },
 };
-function mockRequests({ terms = [{ id: 1, name: "First Term", is_current: true }], snapshot = analytics, fail = "" } = {}) {
-  api.get.mockImplementation(async url => {
-    if (url.includes(fail) && fail) throw new Error("Offline");
-    if (url === "/api/terms/") return { data: terms };
-    if (url.includes("/analytics/")) return { data: snapshot, status: snapshot ? 200 : 204 };
-    return { data: { count: 2, results: [] } };
+
+function show() { return render(<MemoryRouter><AdminDashboard /></MemoryRouter>); }
+beforeEach(() => {
+  jest.resetAllMocks();
+  api.get.mockImplementation((url, config) => {
+    if (url !== '/api/principal/') throw Error('Unexpected URL');
+    const section = config.params.section;
+    return Promise.resolve({ data: section === 'snapshot' ? snapshot : sections[section] });
   });
-}
-beforeEach(() => { jest.resetAllMocks(); mockRequests(); });
-
-test("loads school counts and current-term analytics", async () => {
-  render(<AdminDashboard />);
-  expect(await screen.findByText("Ada Okafor")).toBeVisible();
-  expect(screen.getByText("120")).toBeVisible();
-  expect(screen.getByText("Enrolled Students")).toBeVisible();
-  expect(api.get).toHaveBeenCalledWith("/api/analytics/overview/?term=1");
 });
 
-test("shows school counts even when no analytics snapshot exists", async () => {
-  mockRequests({ snapshot: null });
-  render(<AdminDashboard />);
-  await waitFor(() => expect(screen.getByText(/Your term overview is ready to prepare/)).toBeVisible());
-  expect(screen.getByText("Enrolled Students")).toBeVisible();
-  expect(screen.getAllByText("2")).toHaveLength(4);
+test('shows source linked operational facts without analytics refresh', async () => {
+  show();
+  expect(await screen.findByText('Active students')).toBeVisible();
+  expect(await screen.findByText(/Outcome not recorded: 1/)).toBeVisible();
+  expect(screen.getByText(/0 of 1 classes/)).toBeVisible();
+  expect(screen.getByText(/1\/3 covered/)).toBeVisible();
+  expect(screen.getByText(/1 score entries submitted/)).toBeVisible();
+  expect(screen.getByText(/No fee schedules configured/)).toBeVisible();
+  expect(screen.queryByText(/School Average|Top 5 Students|Refresh Analytics/)).not.toBeInTheDocument();
+  expect(screen.getByText('Outcome not recorded: 1').closest('a')).toHaveAttribute('href', expect.stringContaining('outcome=unresolved'));
+  expect(api.get).toHaveBeenCalledTimes(6);
 });
 
-test("stops loading when there are no terms and disables refresh", async () => {
-  mockRequests({ terms: [] });
-  render(<AdminDashboard />);
-  expect(await screen.findByText(/No academic terms found/)).toBeVisible();
-  expect(screen.queryByText(/Loading analytics/)).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Refresh Analytics/ })).toBeDisabled();
+test('one failed section can be retried while the others remain visible', async () => {
+  let fail = true;
+  api.get.mockImplementation((url, config) => {
+    const section = config.params.section;
+    if (section === 'finance' && fail) return Promise.reject(Error('Offline'));
+    return Promise.resolve({ data: section === 'snapshot' ? snapshot : sections[section] });
+  });
+  show();
+  expect(await screen.findByText(/Recorded school fees unavailable/)).toBeVisible();
+  expect(screen.getByText(/Outcome not recorded: 1/)).toBeVisible();
+  fail = false;
+  fireEvent.click(screen.getByRole('region', { name: 'Recorded school fees' }).querySelector('button'));
+  expect(await screen.findByText(/No fee schedules configured/)).toBeVisible();
 });
 
-test("selects the first term when none is marked current", async () => {
-  mockRequests({ terms: [{ id: 7, name: "First Term" }] });
-  render(<AdminDashboard />);
-  await screen.findByText("Ada Okafor");
-  expect(api.get).toHaveBeenCalledWith("/api/analytics/overview/?term=7");
-});
-
-test("reports analytics failures without hiding school counts", async () => {
-  mockRequests({ fail: "/analytics/" });
-  render(<AdminDashboard />);
-  expect(await screen.findByRole("alert")).toHaveTextContent("Could not load analytics");
-  expect(screen.getByText("Enrolled Students")).toBeVisible();
-});
-
-test("reports a failed term request and stops loading", async () => {
-  mockRequests({ fail: "/terms/" });
-  render(<AdminDashboard />);
-  expect(await screen.findByRole("alert")).toHaveTextContent("Could not load terms");
-  expect(screen.queryByText(/Loading analytics/)).not.toBeInTheDocument();
-});
-
-test("refreshes and reports queued processing", async () => {
-  mockRequests({ snapshot: null });
-  api.post.mockResolvedValue({ data: {} });
-  render(<AdminDashboard />);
-  await waitFor(() => expect(screen.getByText(/Your term overview is ready to prepare/)).toBeVisible());
-  fireEvent.click(screen.getByRole("button", { name: /Refresh Analytics/ }));
-  await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/analytics/refresh/?term=1"));
-  expect(await screen.findByRole("status")).toHaveTextContent("Refresh requested");
+test('late data from a previous term does not replace the selected term', async () => {
+  let resolveOld;
+  api.get.mockImplementation((url, config) => {
+    const section = config.params.section;
+    if (section === 'snapshot') return Promise.resolve({ data: { ...snapshot, terms: [...snapshot.terms,
+      { ...snapshot.terms[0], id: 2, name: 'second' }] } });
+    if (section === 'teaching' && String(config.params.term) === '1') return new Promise(resolve => { resolveOld = resolve; });
+    return Promise.resolve({ data: section === 'teaching' ? { ...sections.teaching, scheduled: 2 } : sections[section] });
+  });
+  show();
+  await screen.findByText('Active students');
+  fireEvent.change(screen.getByLabelText('Academic term'), { target: { value: '2' } });
+  expect(await screen.findByText('2 dated lessons')).toBeVisible();
+  resolveOld({ data: { ...sections.teaching, scheduled: 99 } });
+  await waitFor(() => expect(screen.getByText('2 dated lessons')).toBeVisible());
+  expect(screen.queryByText('99 dated lessons')).not.toBeInTheDocument();
 });

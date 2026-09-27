@@ -93,8 +93,9 @@ function RemarkDrawer({ student, termId, onSaved, onClose }) {
 export default function ResultManagement() {
   const [terms,      setTerms]      = useState([]);
   const [classArms,  setClassArms]  = useState([]);
-  const [selTerm,    setSelTerm]    = useState('');
-  const [selClass,   setSelClass]   = useState('');
+  const query = new URLSearchParams(window.location.search);
+  const [selTerm,    setSelTerm]    = useState(query.get('term') || '');
+  const [selClass,   setSelClass]   = useState(query.get('class_arm') || '');
 
   const [students,   setStudents]   = useState([]);
   const [loading,    setLoading]    = useState(false);
@@ -114,7 +115,7 @@ export default function ResultManagement() {
       setTerms(termList);
       setClassArms(c.data.results ?? c.data);
       const current = termList.find(x => x.is_current);
-      if (current) setSelTerm(String(current.id));
+      if (current) setSelTerm(previous => previous || String(current.id));
     });
   }, []);
 

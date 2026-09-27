@@ -84,8 +84,9 @@ export default function AttendanceOverview() {
   const [terms,     setTerms]     = useState([]);
   const [classArms, setClassArms] = useState([]);
 
-  const [selectedTerm,     setSelectedTerm]     = useState('');
-  const [selectedClassArm, setSelectedClassArm] = useState('');
+  const query = new URLSearchParams(window.location.search);
+  const [selectedTerm,     setSelectedTerm]     = useState(query.get('term') || '');
+  const [selectedClassArm, setSelectedClassArm] = useState(query.get('class_arm') || '');
   const [threshold,        setThreshold]        = useState(THRESHOLD_DEFAULT);
 
   const [heatmapRows,   setHeatmapRows]   = useState([]);
@@ -106,7 +107,7 @@ export default function AttendanceOverview() {
       setTerms(termList);
       setClassArms(c.data.results ?? c.data);
       const active = termList.find(x => x.is_current);
-      if (active) setSelectedTerm(String(active.id));
+      if (active) setSelectedTerm(previous => previous || String(active.id));
     });
   }, []);
 

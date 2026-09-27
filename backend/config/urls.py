@@ -9,6 +9,7 @@ admin.site.has_permission = admin_permission
 from django.urls import include, path
 from django.http import JsonResponse
 from results.urls import results_urlpatterns, scratch_card_urlpatterns
+from analytics.principal import PrincipalOperationsView
 
 
 def health_check(request):
@@ -52,6 +53,7 @@ urlpatterns = [
     path('api/parent/',        include('accounts.parent_urls')),
 
     # Phase 5
+    path('api/principal/', PrincipalOperationsView.as_view()),
     path('api/analytics/',     include('analytics.urls')),
     path('api/reports/',       include('analytics.reports_urls')),  # transcript only
     path('api/promotion/',     include('promotion.urls')),

@@ -4,7 +4,7 @@ import api from '../../services/api';
 import {scoringError} from './ScoringConfiguration';
 
 export default function ResultReview({classArm,term}) {
-  const [subjects,setSubjects]=useState([]), [subject,setSubject]=useState(''), [sheet,setSheet]=useState(null);
+  const [subjects,setSubjects]=useState([]), [subject,setSubject]=useState(() => new URLSearchParams(window.location.search).get('subject') || ''), [sheet,setSheet]=useState(null);
   const [error,setError]=useState(''), [notice,setNotice]=useState(''), [busy,setBusy]=useState(false), [reason,setReason]=useState(''), [revision,setRevision]=useState(0);
   const actionInFlight=useRef(false);
   useEffect(()=>{referenceOptions('/api/subjects/').then(r=>setSubjects(r.data.results ?? r.data)).catch(e=>setError(scoringError(e)));},[]);

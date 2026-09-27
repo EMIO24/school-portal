@@ -9,7 +9,10 @@ const fields = { term: '', class_level: '', subject: '', class_arm: '' };
 
 export default function CurriculumManager() {
   const [options, setOptions] = useState({ terms: [], levels: [], subjects: [], arms: [] });
-  const [selected, setSelected] = useState(fields);
+  const [selected, setSelected] = useState(() => {
+    const query = new URLSearchParams(window.location.search);
+    return Object.fromEntries(Object.keys(fields).map(key => [key, query.get(key) || '']));
+  });
   const [plan, setPlan] = useState(null);
   const [holidays, setHolidays] = useState([]);
   const [form, setForm] = useState({ week: 1, week_label: '', position: 1, title: '', description: '', objectives: '' });

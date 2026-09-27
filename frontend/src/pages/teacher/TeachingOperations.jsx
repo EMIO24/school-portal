@@ -14,13 +14,15 @@ const today = () => {
 const label = outcome => outcome ? outcome[0].toUpperCase() + outcome.slice(1) : 'Outcome not recorded';
 
 export default function TeachingOperations({ admin = false }) {
-  const [day, setDay] = useState(today);
+  const initial = new URLSearchParams(window.location.search);
+  const [day, setDay] = useState(() => admin && /^\d{4}-\d{2}-\d{2}$/.test(initial.get('date') || '') ? initial.get('date') : today());
   const [rows, setRows] = useState([]);
   const [holiday, setHoliday] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [filters, setFilters] = useState({ class_arm: '', teacher: '', subject: '', outcome: '' });
+  const [filters, setFilters] = useState({ class_arm: '', teacher: '', subject: '',
+    outcome: admin ? (initial.get('outcome') || '') : '' });
   const [editing, setEditing] = useState(null);
   const [coverageLesson, setCoverageLesson] = useState(null);
   const [form, setForm] = useState({ outcome: 'delivered', note: '', actual_teacher: '' });
