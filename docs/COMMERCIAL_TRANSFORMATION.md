@@ -19,8 +19,9 @@ not a deployment source. Reuse its ideas only after reviewing production compati
 - CBT: question bank, DOCX import, exam sessions and marking exist.
 - Analytics/notifications: snapshot tasks and durable notification outbox exist;
   shared worker/Beat requirements need commercial cost review.
-- Branding: five validated layouts and school identity exist; ten semantic-token
-  presets and draft/publish appearance are later slices.
+- Branding: ten validated semantic-token presets, school identity and a tenant-scoped
+  appearance preview/save exist after Batch 9; draft/publish and document styling
+  remain separate capabilities.
 - Deployment: Docker/Railway backend and Vercel proxy fixes preserved. Legacy CI
   targets main and includes Cloudflare deployment; align release automation before launch.
 - Testing: baseline system/migration checks and 51 selected readiness tests passed;
@@ -953,3 +954,141 @@ suites. No Batch 9 product regression or P0/P1 finding was identified. The
 temporary baseline worktree was removed; Batch 9's previously passing build,
 backend, browser and security evidence remains applicable. Production was not
 changed.
+
+## Post-Batch-9 master roadmap reconciliation — 2026-09-27
+
+**Boundary.** Development `commercial-transformation` at `849068c` contains
+Batches 6–9; production remains on the validated Basic baseline. That commercial
+baseline is not final Basic. This is a plan only; none of the batches below is
+implemented or deployed by this section.
+
+**North star.** One connected school operating system: School Configuration →
+People → Academics → Timetable → Teaching → Curriculum → Attendance → Assessment
+→ Results → Finance → Communication → Parent/Student Experience → Management
+Intelligence. Priorities: academic depth, operational visibility, reliability
+and Nigerian-school fit. Authoritative, tenant-scoped records must support
+metrics and cross-domain connections.
+
+**Current boundary.** Plans, active-student billing snapshots, automatic 100+
+discount, immutable subscription invoices, Paystack verification and idempotent
+settlement exist. Basic has people, academics, configurable assessment/grading,
+gradebook review/publication, attendance, manual fees/receipts, parent/student
+portals, guided setup, Migration Centre, mobile/resilience foundations, ten
+designs and appearance controls. Recurring timetable slots and conflict checks
+exist; dated lesson delivery and curriculum tracking do not. Manual email/SMS
+notification tools are currently Basic entitlements, with provider charges;
+portal announcements and event automation are incomplete. CBT, analytics,
+transcript and school-fee Paystack code exists but does not establish final
+Premium commercial readiness. Enterprise inherits current Premium features
+without multi-campus operations. Batch 6 proved one backup/isolated restore, not
+recurring production backups.
+
+**Final Basic.** Keep the existing core and add dated teaching delivery tied to
+timetable slots, term/week/topic curriculum progress, principal operational
+queues, controlled manual/portal communication, auditable student invoices and
+opening balances, configurable report sections and core management reports.
+Basic must support a normal daily school workflow without an always-on worker.
+Do not silently remove its existing email/SMS entitlement: any split between
+core communication and Premium automation needs a backward-compatible,
+commercially approved decision.
+
+**Premium.** Extend Basic with production-validated CBT, advanced results and
+promotion, online school-fee payments, communication automation, and explainable
+cross-domain analytics/intervention. Advanced migration/bulk operations are
+proposed here, with tier placement to validate commercially. Assistive AI may
+draft materials or explain source-linked trends only after privacy, evaluation
+and cost gates; it must not set grades, attendance, payments, discipline,
+permissions or reconciliation. Priority support is an operating policy.
+
+**Enterprise.** Model school group → campus → campus operations before central
+roles, approvals, executive reporting, bounded custom configuration and
+integrations. Preserve tenant/campus isolation. Bespoke development and
+dedicated resources are separately scoped and priced.
+
+**Finance direction.** Fee structure → student invoice/ledger → payment →
+balance → receipt → reconciliation → reporting. Batch 7 deferred opening-balance
+migration because FeeSchedule/FeePayment cannot represent brought-forward debt
+with auditable origin. Batch 14 designs and tests that domain before importing
+balances. Discounts, scholarships, instalments and credits need provenance and
+adjustment rules. This is school-fee finance, not general accounting. Paideia
+subscription invoices remain a separate immutable billing domain, retaining
+the existing rolling-month extension.
+
+**Communication and infrastructure.** Basic provides controlled manual/portal
+communication and retains currently entitled manual email/SMS tools. Premium
+adds event triggers, delivery/retry tracking and provider cost controls. SMS
+credits and payment fees remain separately charged. Enterprise may add approved
+institutional audiences/integrations. Basic runs on Django/PostgreSQL with
+synchronous core workflows. Premium may use shared Redis/Celery/Beat where
+justified; Enterprise also defaults to shared hosting. No worker per school.
+WhatsApp/push require demand, API and cost validation before implementation.
+
+**Sequence decision: Path A.** Finish final Basic operating workflows before
+Premium expansion. Existing timetable, academics, attendance and fees supply
+the dependencies. Teaching and curriculum then produce principal metrics and
+communication events. CBT-first development would leave that daily operating
+chain incomplete. Each batch must include tenant isolation, RBAC, audit,
+historical integrity and safe retry tests; final hardening verifies rather than
+introduces security.
+
+| Batch | Name | Tier | Main outcome | Depends on | Risk |
+| --- | --- | --- | --- | --- | --- |
+| 10 | Teaching Operations | Basic | Record dated scheduled/delivered/missed lessons | Timetable/assignments | Medium |
+| 11 | Curriculum Progress | Basic | Term/week/topic plans tied to lesson evidence | 10 | Medium |
+| 12 | Principal Operations | Basic | Actionable daily queues from authoritative data | 10–11, attendance/fees/results | Medium |
+| 13 | Communication Centre | Basic | Manual/portal audiences and history | 12, notifications | Medium |
+| 14 | Student Finance Ledger | Basic | Auditable invoices, adjustments and opening balances | Fees/Migration Centre | High |
+| 15 | Controlled Reports and Basic Validation | Basic | Configured documents, reports and full-term simulation | 10–14 | Medium |
+| 16 | CBT Commercial Hardening | Premium | Concurrent exams and recovery through marking | 15, existing CBT | High |
+| 17 | Advanced Academics and Intelligence | Premium | Historical results and explainable cross-domain trends | 11–12, 15 | High |
+| 18 | Online School-Fee Payments | Premium | Safe payment allocation/reconciliation | 14, existing settlement | High |
+| 19 | Communication Automation | Premium | Event triggers, delivery/retry and cost controls | 13, 18 | Medium |
+| 20 | Advanced Migration and Assistive Tools | Premium | Historical/bulk import and a bounded assistive pilot | 14, 17, privacy gates | High |
+| 21 | Institutional Hierarchy | Enterprise | Group/campus model, roles and approvals | Basic/Premium data contracts | High |
+| 22 | Enterprise Reporting and Integrations | Enterprise | Executive reports and scoped external interfaces | 21 | High |
+| 23 | Integrated Release Hardening | Shared | Recovery, security, performance and deployment evidence | 10–22 | High |
+
+**Boundaries and completion signals.** Batch 10 proves an auditable dated lesson
+outcome, including cancellation/substitution, teacher/admin permission and
+cross-tenant tests; no timetable generator. Batch 11 proves planned, covered
+and remaining topics from lesson evidence; no AI curriculum. Batch 12 proves
+source-linked principal attendance, teaching, result and finance queues with
+correct date boundaries; no decorative counts. Batch 13 proves audience
+selection, manual announcement and history; no event automation. Batch 14 proves
+invoice/payment/adjustment reconciliation and audited opening-balance import;
+no general ledger. Batch 15 proves configurable PDF sections, broadsheets,
+core reports and a realistic full-term Basic journey; no drag-and-drop designer.
+These Basic batches use existing infrastructure unless measurement demands more.
+
+Batch 16 proves scheduling, autosave/timeout, marking, gradebook handoff and
+tenant-safe exam concurrency; no new exam product. Batch 17 proves historical
+academic workflows and explainable trends; no opaque classification. Batch 18
+proves fee allocation and repeated webhook/reconcile safety; no new provider.
+Batch 19 proves event delivery, retry/audit and spend limits; no free unlimited
+SMS. Batch 20 proves validated historical import and, only if gates pass, one
+opt-in reviewed assistive use case; no automated decisions or obligation to ship
+AI. Premium jobs use shared workers only when needed. Batch 21 proves campus
+and central-role isolation with approvals; no campus code forks. Batch 22
+proves scoped integration contracts and cross-campus totals without leakage;
+no speculative vendor adapters. Batch 23 proves recurring restore, browser/PDF,
+slow-network, concurrency and rollback gates; it does not defer security fixes.
+
+**Milestones.** Final Basic Operational Baseline follows Batch 15 after a normal
+school term including finance and principal workflows passes. Premium Commercial
+Baseline follows Batch 20 after CBT, automation, payments and intelligence are
+commercially validated; optional AI is not a gate. Enterprise Baseline follows
+Batch 22 after campus isolation/central workflows pass. Paideia 1.0 Candidate
+follows Batch 23 after cross-tier integration and release/recovery evidence.
+Every milestone needs a separate deployment decision.
+
+**P2/deferred.** Recurring/platform production backups and retention; release
+branch protection; disabled synthetic school in commercial school totals;
+opening-balance model (14); historical import and broader format/column
+transformation (20); full offline only after tenant/user cache privacy design;
+production mobile/network measurements; Batch 9 report/document polish (15).
+Do not report these as closed or elevate harmless P2 work without evidence.
+
+**Recommended next batch: Batch 10 — Teaching Operations.** Use the existing
+timetable and assignments to record dated lesson outcomes and exceptions, which
+become trustworthy inputs for curriculum and principal views. This roadmap
+does not begin implementation.
