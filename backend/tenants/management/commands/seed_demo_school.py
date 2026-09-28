@@ -1,12 +1,17 @@
 import os
-from datetime import date
+from datetime import date, time, timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.utils import timezone
 
 from accounts.models import CustomUser, ParentStudentLink
-from academics.models import AcademicSession, Term
+from academics.models import AcademicSession, Holiday, Term
+from analytics.models import AnalyticsSnapshot
+from attendance.models import AttendanceRecord, AttendanceSession
+from cbt.models import CBTExam, Question, Topic
 from enrollment.models import (
     ClassArm,
     ClassLevel,
@@ -16,6 +21,11 @@ from enrollment.models import (
     SubjectAssignment,
 )
 from fees.models import FeeCategory, FeePayment, FeeSchedule, SchoolPaymentAccount
+from gradebook.models import AffectiveDomain, PsychomotorDomain, ScoreEntry
+from gradebook.scoring import policy_for
+from notifications.models import NotificationLog, NotificationTemplate
+from results.models import ResultRemark
+from timetable.models import Period, TimetableEntry
 from tenants.models import School
 
 
@@ -56,7 +66,10 @@ class Command(BaseCommand):
             name="Greenfield International Academy",
             slug=DEMO_SLUG,
             subdomain=DEMO_SLUG,
-            logo="https://placehold.co/512x512/173B56/FFFFFF.png?text=GIA",
+            logo=os.environ.get(
+                "DEMO_SCHOOL_LOGO_URL",
+                "https://raw.githubusercontent.com/EMIO24/school-portal/production-readiness-check/frontend/public/greenfield-academy-logo.svg",
+            ),
             theme_config={
                 "layout": "scholar",
                 "primary_color": "#173B56",
@@ -274,6 +287,205 @@ class Command(BaseCommand):
                     relationship="guardian",
                 )
 
+        # Calendar / holidays
+        holidays = [
+            Holiday.objects.create(term=term, name="Independence Day", start_date=date(2026, 10, 1), end_date=date(2026, 10, 1), holiday_type="public"),
+            Holiday.objects.create(term=term, name="Mid-Term Break", start_date=date(2026, 10, 29), end_date=date(2026, 10, 30), holiday_type="school"),
+            Holiday.objects.create(term=term, name="First Term Examination Break", start_date=date(2026, 12, 7), end_date=date(2026, 12, 11), holiday_type="exam_break"),
+        ]
+
+        # School-day periods and a conflict-free timetable generated from the
+        # authoritative SubjectAssignment rows.
+        period_specs = [
+            ("Assembly", time(7, 45), time(8, 0), True),
+            ("Period 1", time(8, 0), time(8, 40), False),
+            ("Period 2", time(8, 40), time(9, 20), False),
+            ("Period 3", time(9, 20), time(10, 0), False),
+            ("Short Break", time(10, 0), time(10, 20), True),
+            ("Period 4", time(10, 20), time(11, 0), False),
+            ("Period 5", time(11, 0), time(11, 40), False),
+            ("Lunch Break", time(11, 40), time(12, 20), True),
+            ("Period 6", time(12, 20), time(13, 0), False),
+            ("Period 7", time(13, 0), time(13, 40), False),
+        ]
+        periods = [
+            Period.objects.create(school=school, name=name, start_time=start, end_time=end, order_index=i, is_break=is_break)
+            for i, (name, start, end, is_break) in enumerate(period_specs, start=1)
+        ]
+        teaching_periods = [p for p in periods if not p.is_break]
+        days = ["MON", "TUE", "WED", "THU", "FRI"]
+        occupied_class, occupied_teacher = set(), set()
+        timetable_entries = []
+        for assignment in SubjectAssignment.objects.filter(school=school, term=term).select_related("teacher__user", "class_arm", "subject"):
+            placed = False
+            for day in days:
+                for period in teaching_periods:
+                    class_key = (assignment.class_arm_id, day, period.id)
+                    teacher_key = (assignment.teacher.user_id, day, period.id)
+                    if class_key in occupied_class or teacher_key in occupied_teacher:
+                        continue
+                    entry = TimetableEntry.objects.create(
+                        school=school, term=term, class_arm=assignment.class_arm,
+                        subject=assignment.subject, teacher=assignment.teacher.user,
+                        day_of_week=day, period=period,
+                    )
+                    timetable_entries.append(entry)
+                    occupied_class.add(class_key)
+                    occupied_teacher.add(teacher_key)
+                    placed = True
+                    break
+                if placed:
+                    break
+            if not placed:
+                raise CommandError(f"Could not place timetable assignment {assignment.id} without a conflict.")
+
+        # Historical daily attendance gives dashboards meaningful percentages.
+        # Ten school days are enough to demonstrate present/late/absent/excused.
+        attendance_dates = [
+            date(2026, 9, 14), date(2026, 9, 15), date(2026, 9, 16), date(2026, 9, 17), date(2026, 9, 18),
+            date(2026, 9, 21), date(2026, 9, 22), date(2026, 9, 23), date(2026, 9, 24), date(2026, 9, 25),
+        ]
+        attendance_sessions = []
+        attendance_records = 0
+        for day_index, attendance_date in enumerate(attendance_dates):
+            for arm_index, arm in enumerate(arms):
+                session_row = AttendanceSession.objects.create(
+                    school=school, class_arm=arm, teacher=arm.class_teacher,
+                    term=term, date=attendance_date, mode="daily", is_finalized=True,
+                )
+                attendance_sessions.append(session_row)
+                for student in [s for s in students if s.current_class_id == arm.id]:
+                    selector = (student.id + day_index + arm_index) % 20
+                    status = "absent" if selector == 0 else "late" if selector == 1 else "excused" if selector == 2 else "present"
+                    AttendanceRecord.objects.create(
+                        attendance_session=session_row, student=student.user,
+                        status=status, remark="Demo attendance record" if status != "present" else "",
+                    )
+                    attendance_records += 1
+
+        # Use the school's real term scoring policy. Seed published scores for
+        # every student/eligible subject so results, broadsheets and analytics
+        # are testable from all role portals.
+        scoring = policy_for(school, term, create=True)
+        score_entries = []
+        result_remarks = []
+        for student_index, student in enumerate(students):
+            eligible_subjects = [s for s in subjects if student.current_class.class_level in s.class_levels.all()]
+            totals = []
+            for subject_index, subject in enumerate(eligible_subjects):
+                base = 55 + ((student_index * 7 + subject_index * 5) % 36)
+                component_scores = {
+                    "first_test": str(min(10, 5 + base % 6)),
+                    "second_test": str(min(10, 5 + (base + 2) % 6)),
+                    "assignment": str(min(10, 6 + (base + 1) % 5)),
+                    "project": str(min(5, 3 + base % 3)),
+                    "practical": str(min(5, 3 + (base + 1) % 3)),
+                    "exam_score": str(min(60, 30 + base % 31)),
+                }
+                teacher_assignment = SubjectAssignment.objects.get(term=term, class_arm=student.current_class, subject=subject)
+                entry = ScoreEntry.objects.create(
+                    school=school, student=student.user, subject=subject,
+                    class_arm=student.current_class, session=session, term=term,
+                    teacher=teacher_assignment.teacher.user, policy=scoring,
+                    component_scores=component_scores, review_state="approved", is_published=True,
+                )
+                score_entries.append(entry)
+                totals.append(entry.total_score)
+            average = sum(totals, Decimal("0")) / len(totals)
+            result_remarks.append(ResultRemark.objects.create(
+                school=school, student=student.user, term=term, class_arm=student.current_class,
+                class_teacher_remark="A positive term. Keep working consistently.",
+                principal_remark="Good progress. Aim even higher next term.",
+                total_score=sum(totals, Decimal("0")), average_score=average,
+                subjects_offered=len(totals),
+            ))
+            AffectiveDomain.objects.create(
+                school=school, student=student.user, class_arm=student.current_class, term=term,
+                punctuality=4, neatness=4, honesty=5, attentiveness=4,
+                relationship_with_others=4, leadership=3, creativity=4,
+                sport_games=3, handling_of_tools=4,
+            )
+            PsychomotorDomain.objects.create(
+                school=school, student=student.user, class_arm=student.current_class, term=term,
+                handwriting=4, drawing=3, verbal_fluency=4, musical_skills=3,
+            )
+        for arm in arms:
+            rows = sorted([r for r in result_remarks if r.class_arm_id == arm.id], key=lambda r: r.average_score, reverse=True)
+            for position, remark in enumerate(rows, start=1):
+                ResultRemark.objects.filter(pk=remark.pk).update(computed_position=position)
+
+        # Premium CBT demo: reusable question bank plus a live test exam for
+        # JSS1A. Its window is relative to seeding so it remains testable.
+        math = next(s for s in subjects if s.code == "MTH")
+        jss1a = next(a for a in arms if a.class_level.name == "JSS1" and a.name == "A")
+        topic = Topic.objects.create(school=school, subject=math, class_level=levels["JSS1"], name="Whole Numbers")
+        questions = []
+        for i in range(1, 21):
+            a, b = i + 3, (i % 5) + 2
+            answer = a + b
+            options = [
+                {"id": "A", "text": str(answer), "image_url": None},
+                {"id": "B", "text": str(answer + 1), "image_url": None},
+                {"id": "C", "text": str(answer - 1), "image_url": None},
+                {"id": "D", "text": str(answer + 2), "image_url": None},
+            ]
+            questions.append(Question.objects.create(
+                school=school, subject=math, topic=topic, class_level=levels["JSS1"],
+                question_text=f"What is {a} + {b}?", question_type="mcq",
+                difficulty=["easy", "medium", "hard"][i % 3],
+                cognitive_level="application" if i % 3 else "knowledge",
+                options=options, correct_answer="A",
+                explanation=f"{a} + {b} = {answer}.", created_by=teachers[0].user,
+            ))
+        now = timezone.now()
+        cbt_exam = CBTExam.objects.create(
+            school=school, title="JSS1 Mathematics Demo CBT", subject=math,
+            term=term, session=session, created_by=teachers[0].user,
+            start_datetime=now - timedelta(days=1), end_datetime=now + timedelta(days=30),
+            duration_minutes=20, instructions="Answer all 10 questions. You may review answers before submission.",
+            selection_mode="random_from_bank",
+            random_config=[{"topic_id": topic.id, "count": 10}],
+            randomize_questions=True, randomize_options=True, allow_review=True,
+            show_score_immediately=True, status="published",
+        )
+        cbt_exam.class_arms.add(jss1a)
+
+        # Communication templates and representative logs.
+        fee_template = NotificationTemplate.objects.create(
+            school=school, name="Outstanding Fee Reminder", type="both",
+            subject="Greenfield fee reminder",
+            body="Dear parent, please review your child's outstanding first-term fees in the portal.",
+            category="fee",
+        )
+        result_template = NotificationTemplate.objects.create(
+            school=school, name="Result Published", type="email",
+            subject="First Term result is available",
+            body="Your child's First Term result is now available in the Greenfield parent portal.",
+            category="result",
+        )
+        for i, student in enumerate(students[:12]):
+            NotificationLog.objects.create(
+                school=school, template=fee_template if i % 2 else result_template,
+                channel="email", recipient_email=student.guardian_email, student=student,
+                message_body=(fee_template.body if i % 2 else result_template.body),
+                status="sent", sent_at=timezone.now() - timedelta(days=i % 5),
+            )
+
+        # Pre-populate a dashboard snapshot; production can still recompute it.
+        AnalyticsSnapshot.objects.create(
+            school=school, term=term,
+            data={
+                "demo": True,
+                "active_students": len(students),
+                "teachers": len(teachers),
+                "classes": len(arms),
+                "attendance_sessions": len(attendance_sessions),
+                "published_score_entries": len(score_entries),
+                "cbt_questions": len(questions),
+                "note": "Seeded snapshot for Greenfield sales/demo testing.",
+            },
+        )
+
         # Realistic first-term fee obligations. These are the same FeeSchedule
         # records consumed by the existing parent/student Paystack checkout.
         fee_specs = [
@@ -349,6 +561,11 @@ class Command(BaseCommand):
         self.stdout.write("Brand: #173B56 / #256D85 / #D8A548 with demo logo")
         self.stdout.write(f"Students: {len(students)} | Teachers: {len(teachers)} | Parents: {len(parents)}")
         self.stdout.write(f"Classes: {len(arms)} | Subjects: {len(subjects)} | Assignments: {assignment_count}")
+        self.stdout.write(f"Calendar: {len(holidays)} holidays | Timetable: {len(periods)} periods / {len(timetable_entries)} lessons")
+        self.stdout.write(f"Attendance: {len(attendance_sessions)} sessions / {attendance_records} records")
+        self.stdout.write(f"Results: {len(score_entries)} published scores / {len(result_remarks)} student remarks")
+        self.stdout.write(f"CBT: {len(questions)} reusable questions | Exam: {cbt_exam.title}")
+        self.stdout.write(f"Notifications: 2 templates / 12 sent demo logs | Analytics snapshot: ready")
         self.stdout.write(f"Fee categories: {len(fee_categories)} | Fee schedules: {len(fee_schedules)}")
         self.stdout.write("Per student: Tuition ₦75,000 + Development ₦10,000 + ICT ₦5,000 = ₦90,000")
         if paystack_connected:
