@@ -36,6 +36,8 @@ from enrollment.models import StudentProfile, ClassArm
 from .models import FeeCategory, FeeSchedule, FeePayment
 from .serializers import FeeCategorySerializer, FeeScheduleSerializer, FeePaymentSerializer
 from .services.paystack import PaystackService
+from .ledger import record_payment_entry, account_balance
+from .models import StudentLedgerEntry, StudentPaymentAllocation
 from tenants.document_branding import secure_document_response
 from tenants.document_branding import receipt_barcode_data_uri, school_branding_context
 
@@ -208,6 +210,8 @@ class StudentFeesView(APIView):
     def get(self, request, pk):
         school  = getattr(request, 'tenant', None)
         term_id = request.query_params.get('term')
+        if term_id and not re.fullmatch(r'[1-9][0-9]*', str(term_id)):
+            return Response({'detail': 'Select a valid term.'}, status=400)
 
         try:
             student = payment_student(request, pk)
@@ -230,15 +234,31 @@ class StudentFeesView(APIView):
         for p in all_payments:
             payments_by_sched.setdefault(p.fee_schedule_id, []).append(p)
 
+        position = account_balance(school, student)
+        charges = {entry.fee_schedule_id: entry for entry in StudentLedgerEntry.objects.filter(
+            school=school, student=student, kind='charge', fee_schedule__in=schedules)}
+        applied = {row['charge__fee_schedule_id']: row['total'] for row in
+            StudentPaymentAllocation.objects.filter(school=school, charge__student=student,
+                charge__fee_schedule__in=schedules).values('charge__fee_schedule_id').annotate(total=Sum('amount'))}
+        paid_allocations = {row['charge__fee_schedule_id']: row['total'] for row in
+            StudentPaymentAllocation.objects.filter(school=school, charge__student=student,
+                charge__fee_schedule__in=schedules, credit__kind='payment')
+                .values('charge__fee_schedule_id').annotate(total=Sum('amount'))}
+
         result = []
         for sched in schedules:
             sched_payments = payments_by_sched.get(sched.id, [])
             paid = sum(p.amount_paid for p in sched_payments) or Decimal('0')
+            charge = charges.get(sched.pk)
             result.append({
                 'schedule':    FeeScheduleSerializer(sched).data,
-                'amount':      sched.amount,
-                'paid':        paid,
-                'outstanding': max(sched.amount - paid, Decimal('0')),
+                'amount':      charge.signed_amount if charge else sched.amount,
+                'paid':        paid_allocations.get(sched.pk, Decimal('0')) if charge else paid,
+                'credits':     applied.get(sched.pk, Decimal('0')) - paid_allocations.get(sched.pk, Decimal('0')) if charge else Decimal('0'),
+                'outstanding': max(charge.signed_amount - applied.get(sched.pk, Decimal('0')), Decimal('0'))
+                               if charge and position['state'] == 'active' else None,
+                'charge_state': 'charged' if charge else 'not_generated',
+                'finance_state': position['state'],
                 'payments':    FeePaymentSerializer(sched_payments, many=True).data,
             })
 
@@ -264,6 +284,9 @@ class ManualPaymentView(APIView):
         missing  = [f for f in required if not d.get(f)]
         if missing:
             return Response({'error': f"Missing fields: {', '.join(missing)}"}, status=400)
+        if any(isinstance(d[field], bool) or not re.fullmatch(r'[1-9][0-9]*', str(d[field]))
+               for field in ('student_id', 'fee_schedule_id')):
+            return Response({'error': 'Select a valid student and fee item.'}, status=400)
 
         # Tenant-scoped lookups guard against cross-school writes
         try:
@@ -283,7 +306,7 @@ class ManualPaymentView(APIView):
             return Response({'error': 'Online payments must be verified through Paystack.'}, status=400)
         try:
             amount = Decimal(str(d['amount_paid']))
-            if not amount.is_finite() or amount <= 0 or amount != amount.quantize(Decimal('0.01')):
+            if not amount.is_finite() or amount <= 0 or amount > Decimal('99999999.99') or amount != amount.quantize(Decimal('0.01')):
                 raise ValueError()
         except Exception:
             return Response({'error': 'Enter a positive amount with at most two decimal places.'}, status=400)
@@ -304,20 +327,36 @@ class ManualPaymentView(APIView):
                 if not same_payment:
                     return Response({'error': 'This payment retry key was already used for different details.'}, status=409)
                 return Response(FeePaymentSerializer(existing).data, status=200)
+        charge = StudentLedgerEntry.objects.filter(school=school, student=student,
+            fee_schedule=schedule, kind='charge').first()
+        opening = StudentLedgerEntry.objects.filter(school=school, student=student, kind='opening').first()
+        old_opening_period = bool(opening and schedule.term.start_date <= opening.effective_date)
         paid = FeePayment.objects.filter(student=student, fee_schedule=schedule).aggregate(total=Sum('amount_paid'))['total'] or Decimal(0)
-        if not student.current_class or schedule.class_level_id != student.current_class.class_level_id or amount > schedule.amount - paid:
-            return Response({'error': 'Payment must match this student and cannot exceed the outstanding balance.'}, status=400)
+        if charge:
+            applied = charge.charge_allocations.aggregate(total=Sum('amount'))['total'] or Decimal(0)
+            remaining = max(charge.signed_amount - applied, Decimal(0))
+        elif old_opening_period:
+            remaining = account_balance(school, student)['outstanding']
+        else:
+            remaining = schedule.amount - paid
+        allow_credit = d.get('allow_credit') is True
+        if (not charge and not old_opening_period and (not student.current_class or schedule.class_level_id != student.current_class.class_level_id)) or \
+                (allow_credit and (not charge and not old_opening_period or account_balance(school, student)['state'] != 'active')) or \
+                (not allow_credit and amount > remaining):
+            return Response({'error': 'Payment must match a valid student charge and cannot exceed the outstanding amount unless account credit is explicitly selected.'}, status=400)
         payment = FeePayment(
             school=school,
             student=student,
             fee_schedule=schedule,
-            amount_paid=d['amount_paid'],
+            amount_paid=amount,
             payment_date=payment_date,
             method=d.get('method', 'cash'),
             recorded_by=request.user,
             receipt_number=receipt_number,
         )
         payment.save()
+        record_payment_entry(payment, key='manual:' + hashlib.sha256(idempotency_key.encode()).hexdigest()
+                             if idempotency_key else '')
         return Response(FeePaymentSerializer(payment).data, status=201)
 
 

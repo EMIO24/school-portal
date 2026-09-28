@@ -1,0 +1,7 @@
+.student-ledger{background:var(--surface,#fff);border:1px solid var(--border,#dbe2e8);border-radius:var(--radius,12px);padding:20px;min-width:0;margin:18px 0;overflow-wrap:anywhere}
+.student-ledger-totals{display:flex;gap:24px;flex-wrap:wrap}.student-ledger-totals p{display:flex;flex-direction:column;gap:4px}.student-ledger-totals strong{font-size:1.35rem}
+.student-ledger-rows{display:grid;gap:8px}.student-ledger-rows article{display:flex;justify-content:space-between;gap:14px;padding:12px;border:1px solid #d4dce2;border-radius:6px}
+.student-ledger-rows article>div{display:flex;flex-direction:column;gap:4px;min-width:0}.student-ledger-rows article>div:last-child{text-align:right}
+.student-ledger button{min-height:44px;padding:8px 12px;border:1px solid #627381;border-radius:6px;background:var(--surface,#fff);color:var(--text,#172b3a);cursor:pointer}
+.student-ledger :focus-visible{outline:3px solid #397bad;outline-offset:3px}
+@media(max-width:500px){.student-ledger{padding:12px}.student-ledger-rows article{flex-direction:column}.student-ledger-rows article>div:last-child{text-align:left}}

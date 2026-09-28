@@ -131,7 +131,7 @@ test('manual payment retry reuses one idempotency key', async () => {
   api.get.mockImplementation(async url => {
     if (url.includes('/terms/')) return { data: [{ id: 1, name: 'First', is_current: true }] };
     if (url.includes('/class-arms/')) return { data: [] };
-    if (url.includes('/outstanding/')) return { data: [{ student_id: 3, student_name: 'Ada Student', class: 'JSS1A', total_fees: 1000, paid: 0, outstanding: 1000 }] };
+    if (url.includes('/ledger/accounts/')) return { data: [{ student_id: 3, student_name: 'Ada Student', class: 'JSS1A', state:'active', total_fees: 1000, paid: 0, outstanding: 1000, credit:0 }] };
     if (url.includes('/fees/student/')) return { data: [{ schedule: { id: 2, fee_category_name: 'Tuition' }, outstanding: 1000 }] };
     return { data: [] };
   });
@@ -156,17 +156,17 @@ test('fee collection paginates debtors while retaining school-wide totals', asyn
   api.get.mockImplementation(async url => {
     if (url.includes('/terms/')) return { data: [{ id: 1, name: 'First', is_current: true }] };
     if (url.includes('/class-arms/')) return { data: [] };
-    if (url.includes('/outstanding/')) return { data: {
+    if (url.includes('/ledger/accounts/')) return { data: {
       count: 500, next: url.includes('page=2') ? null : 'next', previous: url.includes('page=2') ? 'previous' : null,
       summary: { total_expected: 500000, total_collected: 200000, total_outstanding: 300000 },
-      results: [{ student_id: 3, student_name: 'Ada Student', class: 'JSS1A', total_fees: 1000, paid: 400, outstanding: 600 }],
+      results: [{ student_id: 3, student_name: 'Ada Student', class: 'JSS1A', state:'active', total_fees: 1000, paid: 400, outstanding: 600, credit:0 }],
     } };
     return { data: [] };
   });
   renderPage(<FeeCollection />);
   expect(await screen.findByText('₦500,000')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/fees/outstanding/?term=1&page=2'));
+  await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/fees/ledger/accounts/?page=2&term=1'));
   expect(screen.getByText('Page 2')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Download Debtors PDF' }));
   await waitFor(() => expect(downloadReport).toHaveBeenCalledWith(

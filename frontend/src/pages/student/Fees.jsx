@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useContext, useCallback } from "react";
+import React, { useState, useEffect, useContext, useCallback, useRef } from "react";
 import { AuthContext } from "../../context/AuthContext";
 import api from "../../services/api";
 import { downloadFile } from "../../services/download";
+import StudentLedger from "../../components/common/StudentLedger";
 import "./Fees.css";
 
 export default function Fees({ studentId: requestedStudentId }) {
@@ -14,6 +15,8 @@ export default function Fees({ studentId: requestedStudentId }) {
   const [loading, setLoading]   = useState(false);
   const [paying, setPaying]     = useState(false);
   const [selected, setSelected] = useState({});
+  const [feeError, setFeeError] = useState('');
+  const loadVersion = useRef(0);
 
   useEffect(() => {
     api.get("/api/terms/").then(({ data }) => {
@@ -26,14 +29,17 @@ export default function Fees({ studentId: requestedStudentId }) {
 
 
   const loadFees = useCallback(() => {
-    setLoading(true);
+    const version = ++loadVersion.current;
+    setLoading(true); setFeeError(''); setFeeData([]); setSelected({});
     api.get(`/api/fees/student/${studentId}/?term=${selectedTerm}`)
-      .then(({ data }) => { setFeeData(Array.isArray(data) ? data : []); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(({ data }) => { if (version === loadVersion.current) setFeeData(Array.isArray(data) ? data : []); })
+      .catch(() => { if (version === loadVersion.current) setFeeError('Could not load term fees. Retry.'); })
+      .finally(() => { if (version === loadVersion.current) setLoading(false); });
   }, [selectedTerm, studentId]);
 
   useEffect(() => {
     if (selectedTerm && studentId) loadFees();
+    return () => {loadVersion.current += 1;};
   }, [loadFees, selectedTerm, studentId]);
 
 
@@ -43,7 +49,7 @@ export default function Fees({ studentId: requestedStudentId }) {
 
   async function payOnline() {
     const ids = feeData
-      .filter(f => selected[f.schedule.id] && Number(f.outstanding) > 0)
+      .filter(f => selected[f.schedule.id] && f.outstanding != null && Number(f.outstanding) > 0)
       .map(f => f.schedule.id);
     if (ids.length === 0) return;
     setPaying(true);
@@ -63,11 +69,12 @@ export default function Fees({ studentId: requestedStudentId }) {
     }
   }
 
-  const anySelected = feeData.some(f => selected[f.schedule.id] && Number(f.outstanding) > 0);
+  const anySelected = feeData.some(f => selected[f.schedule.id] && f.outstanding != null && Number(f.outstanding) > 0);
 
   return (
     <main className="page-shell fees-page">
       <h1 className="page-title">My Fees</h1>
+      {studentId && <StudentLedger studentId={studentId} />}
 
       <div className="fees-filter-row">
         <select className="fees-select" value={selectedTerm} onChange={e => setSelectedTerm(e.target.value)}>
@@ -77,11 +84,13 @@ export default function Fees({ studentId: requestedStudentId }) {
       </div>
 
       {loading && <p className="empty-row">Loading fees…</p>}
+      {feeError && <p role="alert">{feeError} <button type="button" onClick={loadFees}>Retry</button></p>}
 
       <div className="fee-cards">
         {feeData.map(f => {
-          const pct = f.amount > 0 ? Math.min(100, Math.round((Number(f.paid) / Number(f.amount)) * 100)) : 0;
-          const outstanding = Number(f.outstanding);
+          const outstanding = f.outstanding == null ? null : Number(f.outstanding);
+          const pct = outstanding != null && Number(f.amount) > 0
+            ? Math.min(100, Math.round(((Number(f.amount) - outstanding) / Number(f.amount)) * 100)) : 0;
           return (
             <div key={f.schedule.id} className={`fee-card ${outstanding === 0 ? "fee-paid" : ""}`}>
               <div className="fee-card-header">
@@ -96,7 +105,8 @@ export default function Fees({ studentId: requestedStudentId }) {
               <div className="fee-amounts">
                 <div><span>Total</span><strong>₦{Number(f.amount).toLocaleString()}</strong></div>
                 <div><span>Paid</span><strong className="green">₦{Number(f.paid).toLocaleString()}</strong></div>
-                <div><span>Outstanding</span><strong className={outstanding > 0 ? "red" : "green"}>₦{outstanding.toLocaleString()}</strong></div>
+                {Number(f.credits) > 0 && <div><span>Discounts / credits</span><strong className="green">₦{Number(f.credits).toLocaleString()}</strong></div>}
+                <div><span>Outstanding</span><strong className={outstanding > 0 ? "red" : "green"}>{outstanding == null ? 'Awaiting charge or balance verification' : `₦${outstanding.toLocaleString()}`}</strong></div>
               </div>
               <div className="fee-progress-bar">
                 <div className="fee-progress-fill" style={{ width: `${pct}%` }} />

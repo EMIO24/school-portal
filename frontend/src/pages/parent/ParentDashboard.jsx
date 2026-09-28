@@ -169,7 +169,7 @@ export default function ParentDashboard() {
             {/* Fee card */}
             <div className="dash-card">
               <div className="card-label">Fees</div>
-              {d.fee_status ? (
+              {d.fee_status?.state === 'active' ? (
                 <>
                   <div className="fee-row">
                     <div>
@@ -185,11 +185,13 @@ export default function ParentDashboard() {
                   </div>
                   {d.fee_status.outstanding > 0 && (
                     <button className="card-btn" onClick={() => navigate(`/parent/fees/${child?.student_id}`)}>
-                      Pay Now
+                      View Fees
                     </button>
                   )}
                 </>
-              ) : <p className="no-data">No fee data.</p>}
+              ) : <p className="no-data">{d.fee_status?.state === 'legacy_review'
+                ? 'Your school is verifying the opening fee balance.'
+                : 'No student charges have been generated yet.'}</p>}
             </div>
 
             {/* Timetable card */}

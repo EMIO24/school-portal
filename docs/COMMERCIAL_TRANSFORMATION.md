@@ -1368,3 +1368,105 @@ Local Chrome mock-API journeys covered admin publish/history and parent
 inbox/read at 360×800 Scholar, 390×844 Classic, 768×1024 Compact Pro,
 1440×900 Nova and Executive with no page-level horizontal overflow. These
 are local observations, not production performance or delivery measurements.
+
+## Batch 14 — Student finance ledger
+
+Batch 13 commit `3d9554ccf942b72860d32aa1c7fdfec69d1d73a1` was pushed
+and verified on `origin/commercial-transformation` before this batch. The
+production baseline was not changed. Earlier finance used mutable FeeSchedule
+amounts minus FeePayment sums to infer balances. FeePayment and receipt PDFs
+were genuine payment records, but the actual historical student obligation
+could not be reconstructed after fee edits or for a school migrating old debt.
+The old debtor list inherited that ambiguity. Manual payment already had a
+school-row lock and deterministic receipt number for retry keys; those remain.
+
+StudentFinanceAccount records whether a student account is active or needs
+legacy opening review. It stores no balance. StudentLedgerEntry is the
+authoritative dated history: charge, opening, payment, discount, scholarship
+and adjustment entries are signed. Positive entries add debt; negative entries
+reduce it. `sum(signed_amount)` is the account balance; positive balance is
+outstanding and negative balance is an explicit credit. All amounts are NGN
+Decimal(14,2), with exact cent validation and no binary float calculation in
+the backend. Zero is displayed only after an actual entry (including a
+verified zero opening). A missing account or unreconciled legacy account is
+unknown, never zero. Entries preserve actor name, timestamp, effective date,
+reason/reference where applicable, tenant and academic context. `FeePayment`
+continues to own receipts; one ledger payment links to one real FeePayment.
+
+Admins synchronously generate charges from current FeeSchedule rows for
+active students. Each charge snapshots amount, class, due date and source
+schedule. The school-row lock and unique student/schedule charge constraint
+make repeats safe. Later edits to FeeSchedule do not change existing charges.
+An opening balance represents verified net debt or credit at a cutover date,
+including old obligations; it is not a payment or a current-term charge.
+Accounts with old receipts start in `legacy_review`, without fabricated
+charges. Generation skips them until opening review; after opening, it skips
+fee structures for terms starting on or before the opening's effective date.
+Payments against those old structures reduce the opening balance without
+creating a duplicate charge. A school must choose a cutover date that
+separates old obligations from new charges. Pre-cutover receipts remain
+downloadable but their original obligation provenance is unknowable from
+today's FeeSchedule rows.
+
+The guided Migration Centre now accepts one verified opening balance per
+student source reference or admission number, with nonnegative amount,
+debt/credit direction, effective date, reason and source reference. It uses
+the existing CSV mapping, preview, rejected-row and confirmation flow. A
+matching rerun is reused; a different opening is rejected for manual review.
+Historical payment transactions are not imported or invented. Schools may
+also record a single opening balance from the admin student-account page.
+
+Manual and existing verified Paystack school-fee payments enter the same
+ledger service in the transaction that creates the FeePayment. Manual retry
+keys still resolve to the same receipt; conflicting details return 409.
+The existing Paystack checkout reads frozen charge remainder where present
+and requires school review for ambiguous legacy balances or unapplied account
+credit; it does not silently charge a changed fee structure or ignore credit.
+School-row locks serialize charge generation, payments and adjustments under
+PostgreSQL. A payment is explicitly tied to one fee structure. It allocates
+to that student's frozen charge up to the unpaid amount; any excess, when
+explicitly permitted, remains account credit. Partial and repeat payments
+are supported without a formal instalment schedule. Discount and scholarship
+entries require a generated charge and reason. Signed adjustments require
+an actor and reason and remain visible as corrections; they never edit an
+old entry. School audit events record action and signed amount without
+credentials. No delete or edit endpoint exists for entries or allocations.
+Student fee cards report payment allocations separately from discounts and
+scholarships so an award is never labelled as a cash payment.
+
+Admin accounts, debtor totals, parent dashboard, student fee view and the
+Principal finance summary now read ledger states. Debtors are active students
+with a positive known whole-account balance. Credits and verified zeros are
+excluded; unknown accounts are counted separately. Debtor totals are
+calculated before pagination. Class, session, term, student search and
+minimum-outstanding filters are available on the debtor API; term/session
+select accounts with activity in that period while balances remain whole
+account. Parent access requires an explicit linked child; students see only
+their own account. The shared history view shows running balance and real
+receipt links. Admin mutation remains school-admin only because the current
+RBAC has no separate Principal role. The Principal view shows known ledger
+outstanding/debtors and flags partial finance state when accounts are
+unverified; its period's recorded-payment count still uses FeePayment.
+
+The Basic ledger runs synchronously on Django Web and PostgreSQL. It needs
+no Celery Worker, Celery Beat, Redis or new always-running Railway service.
+Formal instalment schedules, historical payment import and advanced account
+exports are deferred. Paystack school-fee expansion may reuse the settlement
+hook in Batch 18; automated debtor/payment communications remain Batch 19.
+Controlled reports and scratch-card/result access hardening remain Batch 15.
+
+Validation used isolated local PostgreSQL for money and race tests, and the
+existing isolated browser sandbox for UI journeys. The 500-student commercial
+simulation's finance list returned 50 rows in seven SQL queries and 85 ms
+locally; this is local evidence, not a production service-level claim.
+PostgreSQL races covered repeat charge generation, repeat adjustment keys,
+same-key payment retries and two payments competing for one charge. Browser
+checks covered admin charge generation, account history, discount, partial
+payment, authenticated receipt PDF, linked-parent and own-student history at
+1440x900, 768x1024 and 390x844 with no page-level horizontal overflow.
+The affected PostgreSQL suite initially found the old seven-query finance
+gate exceeded; the account summaries were consolidated and the 500-student
+gate then passed. The full affected suite was not repeated after that
+isolated performance correction because its guided-migration load test took
+over four hours; focused PostgreSQL finance, query and concurrency tests
+were rerun. No production deployment or data mutation occurred.

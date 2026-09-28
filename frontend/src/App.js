@@ -65,6 +65,7 @@ import NoticeInbox from "./pages/common/NoticeInbox";
 import NotificationTemplates  from "./pages/admin/NotificationTemplates";
 import FeeSetup               from "./pages/admin/FeeSetup";
 import FeeCollection          from "./pages/admin/FeeCollection";
+import FinanceAccount         from "./pages/admin/FinanceAccount";
 
 // ── Phase 5 pages ──────────────────────────────────────────────────────────
 import Promotion        from "./pages/admin/Promotion";
@@ -164,6 +165,7 @@ function AppRoutes() {
             <Route path="subscription" element={<Subscription />} />
             <Route path="fee-setup"      element={<FeeSetup />} />
             <Route path="fee-collection" element={<FeeCollection />} />
+            <Route path="finance/:studentId" element={<FinanceAccount />} />
 
             {/* Promotion */}
             <Route path="promotion" element={<Promotion />} />

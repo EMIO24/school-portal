@@ -152,6 +152,8 @@ export default function AdminDashboard() {
           : item.state === 'no_term' ? <p>Select a term first.</p>
           : <><p>{item.configured_schedules} configured schedules · {item.recorded_payments} recorded payments</p>
             <p>₦{Number(item.recorded_amount).toLocaleString('en-NG')} recorded against those schedules. This is not a receivables or cash ledger total.</p>
+            <p>{item.debtor_count} verified debtor accounts · ₦{Number(item.known_outstanding).toLocaleString('en-NG')} known outstanding across their full accounts.</p>
+            {!!item.unknown_accounts && <p role="status">{item.unknown_accounts} student accounts still need charge generation or opening-balance verification; the known total excludes them.</p>}
             <Link to="/admin/fee-collection">Inspect payments and balances</Link></>}
       </Section>
     </div>

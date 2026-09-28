@@ -13,6 +13,7 @@ from academics.models import AcademicSession, Term
 from attendance.models import AttendanceRecord, AttendanceSession
 from enrollment.models import ClassArm, ClassLevel, StaffProfile, StudentProfile, Subject, SubjectAssignment
 from fees.invoices import issue_invoice
+from fees.ledger import generate_charges, record_payment_entry
 from fees.models import FeeCategory, FeePayment, FeeSchedule, SubscriptionOffer
 from gradebook.models import ScoreEntry
 from gradebook.scoring import calculate, policy_for
@@ -187,6 +188,7 @@ class Command(BaseCommand):
             ) for level in levels for category in categories
         ])
         tuition = {row.class_level_id: row for row in schedules if row.fee_category_id == categories[0].pk}
+        generate_charges(school, term, admin)
         payments = FeePayment.objects.bulk_create([
             FeePayment(
                 school=school, student=student, fee_schedule=tuition[student.current_class.class_level_id],
@@ -195,6 +197,8 @@ class Command(BaseCommand):
                 receipt_number=f'SIM-REC-{i + 1:06d}',
             ) for i, student in enumerate(students[:300])
         ])
+        for payment in payments:
+            record_payment_entry(payment)
 
         policy = policy_for(school, term, create=True)
         historical_policy = policy_for(school, historical_term, create=True)
@@ -289,10 +293,12 @@ class Command(BaseCommand):
         schedule = FeeSchedule.objects.create(
             school=school, term=term, class_level=level, fee_category=category, amount=Decimal('10000.00'),
         )
-        FeePayment.objects.create(
+        generate_charges(school, term, admin)
+        payment = FeePayment.objects.create(
             school=school, student=student, fee_schedule=schedule, amount_paid=Decimal('5000.00'),
             payment_date=date(2026, 9, 15), method='cash', recorded_by=admin, receipt_number='BOUNDARY-REC-0001',
         )
+        record_payment_entry(payment)
         policy = policy_for(school, term, create=True)
         values = {'first_test': '8', 'second_test': '8', 'assignment': '8', 'project': '4', 'practical': '4', 'exam_score': '45'}
         ScoreEntry.objects.create(

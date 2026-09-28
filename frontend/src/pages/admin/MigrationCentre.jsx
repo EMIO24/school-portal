@@ -7,6 +7,7 @@ const labels = {
   classes: 'Classes and arms', subjects: 'Subjects', students: 'Students',
   staff: 'Teachers', parents: 'Parents and guardians',
   parent_links: 'Parent-child links', assignments: 'Teacher assignments',
+  opening_balances: 'Verified opening balances',
 };
 const aliases = {regno: 'student_ref', studentnumber: 'student_ref'};
 const normalized = value => value.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -111,11 +112,12 @@ export default function MigrationCentre() {
       <ul>{readiness.steps.filter(step => !step.complete).map(step => <li key={step.key}>{step.label} needs attention</li>)}</ul>
       {!!readiness.missing_assignments && <p>{readiness.missing_assignments} class and subject combinations need a teacher.</p>}
     </section>}
-    <section><h2>1. Choose data type</h2><p>Foundation: classes, subjects. People: students, teachers, parents. Then link children and assign teachers.</p>
+    <section><h2>1. Choose data type</h2><p>Foundation: classes, subjects. People: students, teachers, parents. Then link children and assign teachers. Import verified opening balances after student identities are settled.</p>
       <label>Data type <select value={domain} onChange={event => reset(event.target.value)}>
         {domains.map(item => <option key={item.key} value={item.key}>{labels[item.key]}</option>)}</select></label>
       <button type="button" onClick={template} disabled={!selected || busy}>Download CSV template</button>
       {selected && <p>Required: {selected.required.join(', ')}. Reference students with their source student_ref; no Paideia database IDs or passwords.</p>}
+      {domain === 'opening_balances' && <p>One verified balance per student. Direction is debt or credit. Amount is nonnegative; zero is allowed when verified. Effective date and source reference preserve provenance. Historical payments stay as existing receipts.</p>}
     </section>
     <section><h2>2. Upload and map columns</h2>
       <label>CSV file <input type="file" accept=".csv,text/csv" onChange={event => chooseFile(event.target.files[0])}/></label>
@@ -142,6 +144,6 @@ export default function MigrationCentre() {
       </div>}
     </section>}
     {error && <p role="alert">{error}</p>}
-    <p>Opening fee balances require a separate reviewed finance setup; do not import old payments as new receipts.</p>
+    <p>Opening balances require human verification before import. Do not import old payments as new receipts.</p>
   </main>;
 }

@@ -18,6 +18,8 @@ from accounts.models import ParentStudentLink
 from accounts.parent_auth import phone_value
 from accounts.permissions import IsSchoolAdmin
 from academics.models import Term
+from fees.ledger import money, post_adjustment
+from fees.models import StudentFinanceAccount, StudentLedgerEntry
 from tenants.models import PlatformEvent, School
 from .models import (ClassArm, ClassLevel, MigrationStudentReference, StaffProfile,
                      StudentProfile, Subject, SubjectAssignment)
@@ -38,6 +40,8 @@ DOMAINS = {
                      ('parent_email', 'student_ref', 'relationship')),
     'assignments': (('teacher_email', 'class_level', 'class_arm', 'subject_code'),
                     ('teacher_email', 'class_level', 'class_arm', 'subject_code')),
+    'opening_balances': (('student_ref', 'amount', 'direction', 'effective_date', 'reason', 'reference'),
+                         ('student_ref', 'amount', 'direction', 'effective_date', 'reason', 'reference')),
 }
 ALIASES = {'regno': 'student_ref', 'studentnumber': 'student_ref',
            'teacheremail': 'teacher_email', 'parentemail': 'parent_email',
@@ -105,6 +109,7 @@ def arm_for(school, level, value):
 
 
 def identify(domain, row):
+    if domain == 'opening_balances': return row['student_ref'].casefold()
     if domain == 'students': return row['student_ref'].casefold()
     if domain in ('staff', 'parents'): return row['email'].casefold()
     if domain == 'parent_links': return (row['parent_email'].casefold(), row['student_ref'].casefold())
@@ -116,6 +121,39 @@ def identify(domain, row):
 
 def assess(domain, row, school):
     """Return (action, resolved data); perform no writes."""
+    if domain == 'opening_balances':
+        identity = MigrationStudentReference.objects.filter(school=school,
+            reference__iexact=row['student_ref']).select_related('student').first()
+        student = identity.student if identity else StudentProfile.objects.filter(school=school,
+            admission_number__iexact=row['student_ref']).first()
+        if not student or student.school_id != school.pk or student.user.school_id != school.pk:
+            raise ValueError('student_ref', 'Match one student in this school by source reference or admission number.')
+        if row['direction'].casefold() not in ('debt', 'credit'):
+            raise ValueError('direction', 'Choose debt or credit.')
+        try:
+            amount = money(row['amount'], allow_zero=True)
+        except ValueError:
+            raise ValueError('amount', 'Enter a nonnegative naira amount with at most two decimal places.')
+        signed = -amount if row['direction'].casefold() == 'credit' else amount
+        effective = date(row['effective_date'], 'effective_date')
+        from django.utils import timezone
+        if not effective or effective > timezone.localdate():
+            raise ValueError('effective_date', 'Use a date no later than today.')
+        reason, reference = row['reason'].strip(), row['reference'].strip()
+        if not reason or len(reason) > 500 or not reference or len(reference) > 100:
+            raise ValueError('reason', 'Provide a reason (500 characters) and source reference (100 characters).')
+        existing = StudentLedgerEntry.objects.filter(school=school, student=student, kind='opening').first()
+        if existing:
+            if (existing.signed_amount != signed or existing.effective_date != effective or
+                    existing.reason != reason or existing.reference != reference):
+                raise ValueError('student_ref', 'Opening balance already exists with different details; review manually.')
+            return 'REUSE', {}
+        account = StudentFinanceAccount.objects.filter(school=school, student=student).first()
+        if account and account.state == 'active' and StudentLedgerEntry.objects.filter(
+                school=school, student=student).exists():
+            raise ValueError('student_ref', 'This account already has activity; review its opening manually.')
+        return 'CREATE', {'student': student, 'signed': signed, 'effective': effective,
+                          'reason': reason, 'reference': reference}
     if domain == 'classes':
         name, level = level_for(school, row['class_level'], allow_new=True)
         arm_name = row['class_arm'].strip()
@@ -240,7 +278,14 @@ def assess(domain, row, school):
 
 
 def create(domain, row, school, data):
-    if domain == 'classes':
+    if domain == 'opening_balances':
+        try:
+            post_adjustment(school, data['student'], data['actor'], kind='opening',
+                amount=data['signed'], reason=data['reason'], reference=data['reference'],
+                effective_date=data['effective'], key=f'opening-import:{school.pk}:{data["student"].pk}')
+        except ValueError as exc:
+            raise ValueError('student_ref', str(exc)) from exc
+    elif domain == 'classes':
         level, _ = ClassLevel.objects.get_or_create(school=school, name=data['level_name'])
         ClassArm.objects.create(school=school, class_level=level, name=data['arm_name'])
     elif domain == 'subjects':
@@ -399,7 +444,9 @@ class MigrationCentre(APIView):
                             if student_email: seen_emails.add(student_email)
                             seen_people.add(person)
                         if operation == 'import' and action == 'CREATE':
-                            with transaction.atomic(): create(domain, row, school, data)
+                            with transaction.atomic():
+                                if domain == 'opening_balances': data['actor'] = request.user
+                                create(domain, row, school, data)
                         outcome = {'row': number, 'action': action}
                     except ValueError as exc:
                         outcome = {'row': number, 'action': 'REJECT', 'field': exc.args[0], 'reason': exc.args[1]}

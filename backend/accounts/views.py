@@ -310,16 +310,17 @@ class ParentStudentDashboardView(APIView):
             }
 
         # ── Fee status ─────────────────────────────────────────────────────
-        fee_status = None
-        if term and student.current_class:
-            schedules = FeeSchedule.objects.filter(school=school, term=term, class_level=student.current_class.class_level)
-            total     = schedules.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-            paid      = FeePayment.objects.filter(student=student, fee_schedule__in=schedules).aggregate(t=Sum('amount_paid'))['t'] or Decimal('0')
-            fee_status = {
-                'total':       float(total),
-                'paid':        float(paid),
-                'outstanding': float(max(total - paid, Decimal('0'))),
-            }
+        from fees.ledger import account_balance
+        from fees.models import StudentLedgerEntry
+        position = account_balance(school, student)
+        fee_status = {'state': position['state'],
+                      'outstanding': str(position['outstanding']) if position['outstanding'] is not None else None,
+                      'credit': str(position['credit']) if position['credit'] is not None else None}
+        if position['state'] == 'active':
+            fee_status['total'] = str(StudentLedgerEntry.objects.filter(school=school, student=student,
+                signed_amount__gt=0).aggregate(t=Sum('signed_amount'))['t'] or Decimal('0'))
+            fee_status['paid'] = str(-(StudentLedgerEntry.objects.filter(school=school, student=student,
+                kind='payment').aggregate(t=Sum('signed_amount'))['t'] or Decimal('0')))
 
         # ── Today's timetable ──────────────────────────────────────────────
         today_schedule = []

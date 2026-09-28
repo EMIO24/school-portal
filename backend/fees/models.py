@@ -71,6 +71,65 @@ class FeePayment(models.Model):
         return f"{self.receipt_number} â€” {self.student} â‚¦{self.amount_paid}"
 
 
+class StudentFinanceAccount(models.Model):
+    """Cutover state; balances are derived from entries, never cached here."""
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    student = models.OneToOneField('enrollment.StudentProfile', on_delete=models.PROTECT, related_name='finance_account')
+    state = models.CharField(max_length=20, choices=[('active', 'Active'), ('legacy_review', 'Legacy balance needs review')])
+    cutover_at = models.DateTimeField(auto_now_add=True)
+    opened_at = models.DateTimeField(null=True, blank=True)
+    opened_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+
+
+class StudentLedgerEntry(models.Model):
+    KIND_CHOICES = [
+        ('charge', 'Charge'), ('opening', 'Opening balance'), ('payment', 'Payment'),
+        ('discount', 'Discount'), ('scholarship', 'Scholarship'),
+        ('adjustment', 'Adjustment'), ('reversal', 'Reversal'),
+    ]
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    student = models.ForeignKey('enrollment.StudentProfile', on_delete=models.PROTECT, related_name='ledger_entries')
+    term = models.ForeignKey('academics.Term', on_delete=models.PROTECT, null=True, blank=True)
+    fee_schedule = models.ForeignKey(FeeSchedule, on_delete=models.PROTECT, null=True, blank=True)
+    fee_payment = models.OneToOneField(FeePayment, on_delete=models.PROTECT, null=True, blank=True, related_name='ledger_entry')
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    signed_amount = models.DecimalField(max_digits=14, decimal_places=2)
+    description = models.CharField(max_length=200)
+    class_name_snapshot = models.CharField(max_length=100, blank=True)
+    due_date_snapshot = models.DateField(null=True, blank=True)
+    reason = models.CharField(max_length=500, blank=True)
+    reference = models.CharField(max_length=100, blank=True)
+    effective_date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    actor_name = models.CharField(max_length=300, blank=True)
+    idempotency_key = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['school', 'student', 'id']), models.Index(fields=['school', 'term', 'student'])]
+        constraints = [
+            models.UniqueConstraint(fields=['school', 'student', 'fee_schedule'],
+                condition=models.Q(kind='charge', fee_schedule__isnull=False), name='unique_student_schedule_charge'),
+            models.UniqueConstraint(fields=['school', 'idempotency_key'],
+                condition=~models.Q(idempotency_key=''), name='unique_student_ledger_retry_key'),
+            models.CheckConstraint(check=~models.Q(signed_amount=0) | models.Q(kind='opening'), name='student_ledger_nonzero'),
+        ]
+
+
+class StudentPaymentAllocation(models.Model):
+    """Explicit amount of one credit applied to one frozen charge."""
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    credit = models.ForeignKey(StudentLedgerEntry, on_delete=models.PROTECT, related_name='credit_allocations')
+    charge = models.ForeignKey(StudentLedgerEntry, on_delete=models.PROTECT, related_name='charge_allocations')
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['credit', 'charge'], name='unique_credit_charge_allocation'),
+            models.CheckConstraint(check=models.Q(amount__gt=0), name='student_allocation_positive'),
+        ]
+
+
 class SchoolPaymentAccount(models.Model):
     school = models.ForeignKey('tenants.School', on_delete=models.CASCADE, related_name='payment_accounts')
     mode = models.CharField(max_length=4, choices=[('test', 'Test'), ('live', 'Live')])

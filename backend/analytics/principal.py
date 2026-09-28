@@ -144,10 +144,18 @@ def finance(school, term):
         return {'state': 'no_term'}
     schedules = FeeSchedule.objects.filter(school=school, term=term)
     payments = FeePayment.objects.filter(school=school, fee_schedule__in=schedules)
-    return {'state': 'configured' if schedules.exists() else 'unconfigured',
+    from enrollment.models import StudentProfile
+    from fees.ledger import balance_accounts
+    students = StudentProfile.objects.filter(school=school, status='active')
+    known = balance_accounts(school, students)
+    unknown = students.count() - known.count()
+    debtors = known.filter(balance__gt=0)
+    return {'state': 'unconfigured' if not schedules.exists() else 'partial' if unknown else 'configured',
             'configured_schedules': schedules.count(),
             'recorded_payments': payments.count(),
-            'recorded_amount': str(payments.aggregate(total=Sum('amount_paid'))['total'] or 0)}
+            'recorded_amount': str(payments.aggregate(total=Sum('amount_paid'))['total'] or 0),
+            'known_outstanding': str(debtors.aggregate(total=Sum('balance'))['total'] or 0),
+            'debtor_count': debtors.count(), 'unknown_accounts': unknown}
 
 
 SECTIONS = {'snapshot': snapshot, 'attendance': attendance, 'teaching': teaching,

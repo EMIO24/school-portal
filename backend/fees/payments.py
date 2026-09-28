@@ -79,6 +79,26 @@ def add_months(day, months):
     return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
 
 
+def payable_fee_amount(school, student, schedule):
+    """Use a frozen charge when present; decline ambiguous legacy debt."""
+    from .ledger import account_balance
+    from .models import StudentLedgerEntry
+    position = account_balance(school, student)
+    if position['state'] == 'legacy_review' or (position['credit'] or Decimal('0.00')) > 0:
+        return None
+    opening = StudentLedgerEntry.objects.filter(school=school, student=student, kind='opening').first()
+    if opening and schedule.term.start_date <= opening.effective_date:
+        return None
+    charge = StudentLedgerEntry.objects.filter(school=school, student=student,
+        fee_schedule=schedule, kind='charge').first()
+    if charge:
+        applied = charge.charge_allocations.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        return max(charge.signed_amount - applied, Decimal('0.00'))
+    paid = FeePayment.objects.filter(student=student, fee_schedule=schedule).aggregate(
+        total=Sum('amount_paid'))['total'] or Decimal('0.00')
+    return max(schedule.amount - paid, Decimal('0.00'))
+
+
 @transaction.atomic
 def settle(reference, data):
     school_id = PaymentOrder.objects.values_list('school_id', flat=True).get(reference=reference)
@@ -121,17 +141,19 @@ def settle(reference, data):
     if order.kind == 'fees':
         for allocation in order.allocations:
             schedule = FeeSchedule.objects.filter(pk=allocation['schedule_id'], school=school).first()
-            paid = FeePayment.objects.filter(student=order.student, fee_schedule=schedule).aggregate(total=Sum('amount_paid'))['total'] or Decimal(0)
-            if schedule is None or int(max(Decimal(0), schedule.amount - paid) * 100) < allocation['amount_kobo']:
+            remaining = payable_fee_amount(school, order.student, schedule) if schedule else None
+            if remaining is None or int(remaining * 100) < allocation['amount_kobo']:
                 order.status, order.note = 'review', 'Fee balance changed; contact the owner to reconcile or refund this payment.'
                 order.save(update_fields=['status', 'note'])
                 logger.warning("payment_review_required order_id=%s reference=%s reason=balance_changed", order.pk, order.reference)
                 return order
         for allocation in order.allocations:
-            FeePayment.objects.create(school=school, student=order.student,
+            payment = FeePayment.objects.create(school=school, student=order.student,
                 fee_schedule_id=allocation['schedule_id'], amount_paid=Decimal(allocation['amount_kobo']) / 100,
                 payment_date=timezone.localdate(), method='paystack', paystack_reference=reference,
                 paystack_status='success', recorded_by=order.payer)
+            from .ledger import record_payment_entry
+            record_payment_entry(payment)
     else:
         today = timezone.localdate()
         if school.subscription_ends_on and school.subscription_ends_on >= today and school.subscription_plan not in ('free', order.plan):
@@ -225,8 +247,10 @@ class PaystackInitiateView(APIView):
             }, status=409)
         allocations = []
         for schedule in schedules:
-            paid = FeePayment.objects.filter(student=student, fee_schedule=schedule).aggregate(total=Sum('amount_paid'))['total'] or Decimal(0)
-            outstanding = int(max(Decimal(0), schedule.amount - paid) * 100)
+            remaining = payable_fee_amount(request.tenant, student, schedule)
+            if remaining is None:
+                return Response({'error': 'This fee account needs school review before online payment.'}, status=409)
+            outstanding = int(remaining * 100)
             if outstanding:
                 allocations.append({'schedule_id': schedule.pk, 'amount_kobo': outstanding})
         if not allocations:

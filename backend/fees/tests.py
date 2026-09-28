@@ -48,7 +48,13 @@ class PaystackTests(TestCase):
     def data(self, order, **overrides):
         return {'status':'success', 'reference':order.reference, 'amount':order.amount_kobo, 'currency':'NGN', 'domain':'test', 'customer':{'email':order.payer_email}, 'id':123, **overrides}
     def test_outstanding_only_and_idempotent_receipts(self):
-        FeePayment.objects.create(school=self.school, student=self.student, fee_schedule=self.fee, amount_paid=2500, payment_date=date.today(), method='cash')
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.post('/api/fees/pay/manual/', {
+            'student_id': self.student.pk, 'fee_schedule_id': self.fee.pk,
+            'amount_paid': '2500.00', 'payment_date': '2026-09-27',
+            'method': 'cash', 'idempotency_key': 'paystack-partial-0001',
+        }, format='json', **self.headers).status_code, 201)
+        self.client.force_authenticate(self.user)
         self.assertEqual(self.start().status_code,200)
         order = PaymentOrder.objects.get()
         self.assertEqual(order.amount_kobo,750000)
@@ -56,6 +62,35 @@ class PaystackTests(TestCase):
         settle(order.reference,self.data(order)); settle(order.reference,self.data(order))
         self.assertEqual(FeePayment.objects.filter(paystack_reference=order.reference).count(),1)
         self.assertEqual(self.start().status_code,400)
+    def test_paystack_uses_frozen_charge_after_fee_structure_edit(self):
+        from .ledger import generate_charges, account_balance
+        generate_charges(self.school, self.fee.term, self.admin)
+        self.fee.amount = Decimal('20000.00')
+        self.fee.save(update_fields=['amount'])
+        self.assertEqual(self.start().status_code, 200)
+        order = PaymentOrder.objects.get()
+        self.assertEqual(order.amount_kobo, 1000000)
+        settle(order.reference, self.data(order))
+        self.assertEqual(account_balance(self.school, self.student)['outstanding'], Decimal('0.00'))
+
+    def test_paystack_declines_unverified_legacy_balance(self):
+        FeePayment.objects.create(school=self.school, student=self.student, fee_schedule=self.fee,
+            amount_paid=Decimal('200.00'), payment_date=date.today(), method='cash')
+        self.assertEqual(self.start().status_code, 409)
+        self.assertFalse(PaymentOrder.objects.exists())
+    def test_paystack_declines_account_credit_until_school_review(self):
+        from .ledger import generate_charges
+        generate_charges(self.school, self.fee.term, self.admin)
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.post('/api/fees/pay/manual/', {
+            'student_id': self.student.pk, 'fee_schedule_id': self.fee.pk,
+            'amount_paid': '11000.00', 'payment_date': '2026-09-27',
+            'method': 'cash', 'allow_credit': True,
+            'idempotency_key': 'paystack-credit-0001',
+        }, format='json', **self.headers).status_code, 201)
+        self.client.force_authenticate(self.user)
+        self.assertEqual(self.start().status_code, 409)
+        self.assertFalse(PaymentOrder.objects.exists())
     def test_pending_checkout_blocks_duplicate(self):
         self.start()
 
