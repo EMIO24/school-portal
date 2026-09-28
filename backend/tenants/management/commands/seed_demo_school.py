@@ -1,6 +1,7 @@
 import os
 from datetime import date
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -14,6 +15,7 @@ from enrollment.models import (
     Subject,
     SubjectAssignment,
 )
+from fees.models import FeeCategory, FeePayment, FeeSchedule, SchoolPaymentAccount
 from tenants.models import School
 
 
@@ -272,11 +274,90 @@ class Command(BaseCommand):
                     relationship="guardian",
                 )
 
+        # Realistic first-term fee obligations. These are the same FeeSchedule
+        # records consumed by the existing parent/student Paystack checkout.
+        fee_specs = [
+            ("Tuition Fee", "First-term tuition and academic services", 75000),
+            ("Development Levy", "School development and facilities levy", 10000),
+            ("ICT Levy", "Digital learning and ICT services", 5000),
+        ]
+        fee_categories = []
+        for name, description, _ in fee_specs:
+            fee_categories.append(
+                FeeCategory.objects.create(
+                    school=school,
+                    name=name,
+                    description=description,
+                    is_compulsory=True,
+                )
+            )
+
+        fee_schedules = []
+        due_date = date(2026, 10, 2)
+        for level in levels.values():
+            for category, (_, _, amount) in zip(fee_categories, fee_specs):
+                fee_schedules.append(
+                    FeeSchedule.objects.create(
+                        school=school,
+                        term=term,
+                        class_level=level,
+                        fee_category=category,
+                        amount=amount,
+                        due_date=due_date,
+                    )
+                )
+
+        # Seed a few historical/manual payments so finance screens demonstrate
+        # paid, part-paid and unpaid families. Most students remain outstanding
+        # and can be used for the real Paystack test checkout.
+        tuition_by_level = {
+            schedule.class_level_id: schedule
+            for schedule in fee_schedules
+            if schedule.fee_category.name == "Tuition Fee"
+        }
+        for student in students[:8]:
+            schedule = tuition_by_level[student.current_class.class_level_id]
+            amount = 75000 if student.pk % 2 == 0 else 30000
+            FeePayment.objects.create(
+                school=school,
+                student=student,
+                fee_schedule=schedule,
+                amount_paid=amount,
+                payment_date=date(2026, 9, 15),
+                method="bank_transfer",
+                recorded_by=admin,
+            )
+
+        # A genuine Paystack subaccount is required by the production checkout.
+        # Never commit or invent one. Supplying this Railway variable connects
+        # the demo school to the existing Paystack flow.
+        demo_subaccount = os.environ.get("DEMO_PAYSTACK_SUBACCOUNT_CODE", "").strip()
+        paystack_connected = False
+        if demo_subaccount:
+            SchoolPaymentAccount.objects.create(
+                school=school,
+                mode=settings.PAYSTACK_MODE,
+                subaccount_code=demo_subaccount,
+                business_name=school.name,
+                bank_name="Demo settlement account",
+                account_last_four="0000",
+            )
+            paystack_connected = True
+
         self.stdout.write(self.style.SUCCESS("Greenfield International Academy demo created."))
         self.stdout.write(f"School ID: {school.id} | slug: {school.slug} | plan: {school.subscription_plan}")
         self.stdout.write("Brand: #173B56 / #256D85 / #D8A548 with demo logo")
         self.stdout.write(f"Students: {len(students)} | Teachers: {len(teachers)} | Parents: {len(parents)}")
         self.stdout.write(f"Classes: {len(arms)} | Subjects: {len(subjects)} | Assignments: {assignment_count}")
+        self.stdout.write(f"Fee categories: {len(fee_categories)} | Fee schedules: {len(fee_schedules)}")
+        self.stdout.write("Per student: Tuition ₦75,000 + Development ₦10,000 + ICT ₦5,000 = ₦90,000")
+        if paystack_connected:
+            self.stdout.write(self.style.SUCCESS(f"Paystack {settings.PAYSTACK_MODE} settlement account connected."))
+        else:
+            self.stdout.write(self.style.WARNING(
+                "Fees are ready, but Paystack checkout is not connected. "
+                "Set DEMO_PAYSTACK_SUBACCOUNT_CODE to a real Paystack test subaccount and rerun with --reset."
+            ))
         self.stdout.write("Admin: admin@greenfield.demo")
         self.stdout.write("Teacher example: teacher1@greenfield.demo")
         self.stdout.write("Parent example: parent1@greenfield.demo")
