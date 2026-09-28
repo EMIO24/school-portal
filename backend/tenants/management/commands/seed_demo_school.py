@@ -20,7 +20,10 @@ from enrollment.models import (
     Subject,
     SubjectAssignment,
 )
-from fees.models import FeeCategory, FeePayment, FeeSchedule, SchoolPaymentAccount
+from fees.models import (
+    FeeCategory, FeePayment, FeeSchedule, PaymentException, PaymentOrder,
+    SchoolPaymentAccount,
+)
 from gradebook.models import AffectiveDomain, PsychomotorDomain, ScoreEntry
 from gradebook.scoring import policy_for
 from notifications.models import NotificationLog, NotificationTemplate
@@ -60,6 +63,15 @@ class Command(BaseCommand):
             )
             return
         if existing:
+            # Financial audit/history models deliberately use PROTECT in
+            # production. A demo reset is an explicit destructive operation,
+            # so remove only this demo tenant's protected finance records first.
+            # PaymentException protects PaymentOrder, and PaymentOrder protects
+            # School/User/Student/Invoice; delete in dependency order.
+            demo_orders = PaymentOrder.objects.filter(school=existing)
+            PaymentException.objects.filter(school=existing).delete()
+            demo_orders.delete()
+            FeePayment.objects.filter(school=existing).delete()
             existing.delete()
 
         school = School.objects.create(
