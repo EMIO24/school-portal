@@ -1,4 +1,5 @@
 from contextlib import redirect_stdout
+from datetime import date, time
 from decimal import Decimal
 from io import StringIO
 from time import perf_counter
@@ -17,6 +18,11 @@ from enrollment.models import ClassArm, StaffProfile, StudentProfile, Subject, S
 from fees.models import FeePayment, FeeSchedule, TermInvoice
 from gradebook.models import ScoreEntry, TermScoring
 from tenants.models import School
+from timetable.models import Period, TimetableEntry, LessonRecord
+from curriculum.models import TopicCoverage
+from notifications.models import Communication
+from results.models import ScratchCard
+from django.contrib.auth.hashers import make_password
 
 
 class CommercialSimulationTests(TestCase):
@@ -181,6 +187,45 @@ class CommercialSimulationTests(TestCase):
             '/api/fees/pay/manual/', {**payload, 'amount_paid': '2000.00'}, format='json'
         ).status_code, 409)
 
+    def test_connected_basic_day_across_new_operational_modules(self):
+        assignment = SubjectAssignment.objects.filter(school=self.school, term=self.term).select_related(
+            'class_arm__class_level', 'subject', 'teacher__user').first()
+        period = Period.objects.create(school=self.school, name='Simulation P1', start_time=time(8),
+                                       end_time=time(9), order_index=1)
+        slot = TimetableEntry.objects.create(school=self.school, term=self.term, class_arm=assignment.class_arm,
+            subject=assignment.subject, teacher=assignment.teacher.user, day_of_week='MON', period=period)
+        lesson = self.client.put(f'/api/timetable/lessons/{slot.pk}/2026-09-21/',
+            {'outcome': 'delivered', 'revision': 0}, format='json')
+        self.assertEqual(lesson.status_code, 201, lesson.data)
+        topic = self.client.post('/api/curriculum/plans/', {
+            'term': self.term.pk, 'class_level': assignment.class_arm.class_level_id,
+            'subject': assignment.subject_id, 'week': 2, 'position': 1,
+            'title': 'Simulation topic', 'objectives': ['Explain the lesson'],
+        }, format='json')
+        self.assertEqual(topic.status_code, 201, topic.data)
+        coverage = self.client.put(f"/api/curriculum/lessons/{lesson.data['id']}/topics/{topic.data['topic']}/",
+            {'state': 'covered', 'revision': 0}, format='json')
+        self.assertIn(coverage.status_code, (200, 201), coverage.data)
+        self.assertEqual(TopicCoverage.objects.filter(school=self.school).count(), 1)
+        notice = self.client.post('/api/communications/send/', {
+            'title': 'Class notice', 'body': 'The lesson was delivered.', 'audience': 'class_parents',
+            'class_arm_id': assignment.class_arm_id, 'channels': ['portal'],
+        }, format='json', HTTP_IDEMPOTENCY_KEY='simulation-notice-001')
+        self.assertIn(notice.status_code, (200, 201), notice.data)
+        self.assertEqual(Communication.objects.filter(school=self.school).count(), 1)
+        published = ScoreEntry.objects.filter(school=self.school, term=self.term, is_published=True).first()
+        self.assertEqual(self.client.get(
+            f'/api/results/slip-data/{published.student_id}/?term={self.term.pk}').status_code, 200)
+        self.assertEqual(self.client.get('/api/fees/outstanding/?term=' + str(self.term.pk)).status_code, 200)
+        self.assertEqual(self.client.get('/api/principal/?term=' + str(self.term.pk)).status_code, 200)
+        card = ScratchCard.objects.create(school=self.school, term=self.term,
+            serial_number='SIM-REPORT-001', pin_hash=make_password('1234567890'), batch_name='Simulation')
+        public = APIClient()
+        checked = public.post('/api/results/check/', {
+            'admission_number': published.student.student_profile.admission_number,
+            'serial_number': card.serial_number, 'pin': '1234567890'}, format='json')
+        self.assertEqual(checked.status_code, 200, checked.data)
+
     def test_representative_endpoint_query_counts_are_bounded(self):
         assignment = SubjectAssignment.objects.filter(school=self.school, term=self.term).first()
         published = ScoreEntry.objects.filter(school=self.school, term=self.term, is_published=True).first()
@@ -192,6 +237,8 @@ class CommercialSimulationTests(TestCase):
             ('attendance', f'/api/attendance/sessions/class-report/?class_arm={assignment.class_arm_id}&term={self.term.pk}', self.admin, 5),
             ('gradebook', f'/api/gradebook/entries/sheet/?class_arm={assignment.class_arm_id}&subject={assignment.subject_id}&term={self.term.pk}', self.admin, 9),
             ('results', f'/api/results/class-results/?class_arm={published.class_arm_id}&term={self.term.pk}', self.admin, 5),
+            ('report_config', '/api/results/report-configuration/', self.admin, 5),
+            ('student_report', f'/api/results/slip-data/{published.student_id}/?term={self.term.pk}', self.admin, 20),
             ('debtors', f'/api/fees/outstanding/?term={self.term.pk}', self.admin, 7),
             ('low_attendance', f'/api/attendance/sessions/low-attendance/?term={self.term.pk}&threshold=95', self.admin, 5),
             ('parent_children', '/api/parent/children/', parent, 5),

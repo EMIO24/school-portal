@@ -31,6 +31,7 @@ import { MarketingPage } from "./pages/public/Marketing";
 import AdminDashboard   from "./pages/admin/AdminDashboard";
 import SchoolSetup from "./pages/admin/SchoolSetup";
 import SchoolAppearance from "./pages/admin/SchoolAppearance";
+import ReportConfiguration from "./pages/admin/ReportConfiguration";
 import MigrationCentre from "./pages/admin/MigrationCentre";
 import CalendarSettings from "./pages/admin/CalendarSettings";
 import Students         from "./pages/admin/Students";
@@ -130,6 +131,7 @@ function AppRoutes() {
             <Route path="students/new"         element={<StudentForm />} />
             <Route path="setup" element={<SchoolSetup />} />
             <Route path="appearance" element={<SchoolAppearance />} />
+            <Route path="report-cards" element={<ReportConfiguration />} />
             <Route path="migration" element={<MigrationCentre />} />
             <Route path="students/import"      element={
               <BulkImportPage type="students" />

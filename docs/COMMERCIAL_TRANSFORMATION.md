@@ -1470,3 +1470,89 @@ gate then passed. The full affected suite was not repeated after that
 isolated performance correction because its guided-migration load test took
 over four hours; focused PostgreSQL finance, query and concurrency tests
 were rerun. No production deployment or data mutation occurred.
+
+## Batch 15 — controlled reports and Basic validation
+
+Batch 14 commit `b5cd970d218af44f41e653bf3d275fcafc58730b` was pushed
+unchanged and its full SHA verified at `origin/commercial-transformation`
+before Batch 15 edits. Production remains unchanged. Existing `ScoreEntry`,
+assessment policies, grade bands, published results, remarks, finalized
+attendance, school branding, PDFs and optional scratch cards remain the
+sources of academic and identity data. Report configuration changes only
+presentation: Classic Academic, Modern or Compact; title; display of comments,
+attendance, position, skills and known next-term date; and a bounded watermark.
+Assessment columns use the configured score components. Signatures remain
+printed signing lines because there is no approved signature-image workflow.
+
+The first publication of a term captures the school's bounded presentation
+settings and branding in `PublishedReportStyle`. Later configuration changes
+affect previews and future terms, not an already published term. The data
+migration captures the best-known current branding for terms published before
+this release and assigns their original Classic appearance; their exact
+historical branding cannot be reconstructed if it was changed earlier.
+Official student and parent results require all existing score rows for that
+student and term to be published; partial reopening hides the official slip,
+class ZIP and public card response until republished. Broadsheets additionally
+require current position totals. School admins
+can preview unpublished entries with a conspicuous preview label. Historical
+report class and attendance totals follow the score's class arm, not a
+student's later class assignment or sessions from other classes. Only
+explicitly recorded, finalized attendance contributes; a missing register
+remains unknown. Position
+computation rejects incomplete publication. The printable result fallback
+still contains real subjects, configured component scores, totals and grades
+when native PDF rendering is unavailable.
+
+Scratch-card serials and PINs use cryptographic randomness; PINs remain
+hashed. Public checking has generic failure responses, the existing 10/min
+anonymous throttle, term-bound published-result checks and an atomic
+single-use update. Revoked cards remain visible to administrators with actor
+and timestamp but cannot be used. Batch summaries distinguish generated,
+used, unused and revoked cards. A card is optional; authenticated Basic
+student and linked-parent result access does not require one. Card generation
+retains its existing Premium entitlement; Basic does not gain that feature.
+Unbound cards
+retain the existing current-term behavior; bound cards fetch their own
+historical term. Basic does not acquire Premium CBT or online fee-payment
+entitlements.
+
+Validation uses isolated local PostgreSQL and the existing disposable browser
+sandbox, never production data. The 500-active-student simulation connects
+teaching evidence, curriculum coverage, a portal notice, published result,
+student finance, Principal summary and a valid optional scratch card. The
+Principal Command Centre currently uses school-admin authorization; there is
+no distinct Principal role. Browser validation covered report configuration,
+authorized preview, own published student result and admin navigation at
+1440x900, 768x1024 and 390x844 without page-level horizontal overflow. The
+ten existing portal designs remain one shared component tree with distinct
+structural treatments. The Basic request/database path needs no Worker,
+Beat, Redis or extra always-running Railway service; production settings
+accept a local-memory cache when `REDIS_URL` is absent. Distributed public
+throttle coordination is weaker without Redis and should be revisited only
+if traffic or abuse warrants a shared cache.
+Optional Celery calls execute eagerly without Redis so a memory broker cannot
+silently discard queued work; normal Basic operations do not invoke them.
+
+The frontend regression passed 47 suites and 320 tests, and its production
+build compiled successfully. The isolated browser sandbox passed admin report
+configuration, student result access and navigation at the three sizes above.
+The local 500-student performance sample measured report configuration at two
+queries and one student report at 16 queries; the latter is constant for one
+student's report data, not a bulk PDF throughput claim. The broad affected
+PostgreSQL regression passed 326 of 326 tests with no failures, closing Batch
+14's earlier 195/196 evidence gap. Its 500-student sample measured debtor
+listing at seven queries, Principal snapshot at five and teacher daily slots
+at five for both one and 21 slots. These are isolated local observations, not
+production latency guarantees. The guided migration simulation processed
+400 students, 40 teachers, 40 parents, 20 arms and 15 subjects in isolated
+SQLite; the commercial simulation ran on PostgreSQL. Django system and
+migration checks passed. No P0/P1 finding remains from this batch's affected
+release review.
+
+FINAL BASIC OPERATIONAL BASELINE: ESTABLISHED locally. This decision covers
+the connected Basic workflows and the web/PostgreSQL cost profile; it does
+not deploy code or change production. Deferred work remains bounded:
+unrestricted report design, scheduled bulk PDF generation, formal instalment schedules,
+historical payment import, a separate Principal role, CBT commercial
+hardening, advanced academic intelligence, online school-fee expansion,
+automated communications, assistive AI and multi-campus workflows.

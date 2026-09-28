@@ -32,9 +32,12 @@ from .views import (
     ScratchCardBatchStatsView,
     ScratchCardUnusedCSVView,
     ScratchCardUnusedPDFView,
+    ReportConfigurationView,
+    ScratchCardRevokeView,
 )
 
 results_urlpatterns = [
+    path('report-configuration/', ReportConfigurationView.as_view(), name='report-configuration'),
     path('positions/compute/',             ComputePositionsView.as_view(),    name='compute-positions'),
     path('class-results/',                 ClassResultsView.as_view(),        name='class-results'),
     path('remarks/<int:student_id>/',      ResultRemarkView.as_view(),        name='result-remark'),
@@ -46,6 +49,7 @@ results_urlpatterns = [
 ]
 
 scratch_card_urlpatterns = [
+    path('<int:card_id>/revoke/', ScratchCardRevokeView.as_view(), name='scratch-card-revoke'),
     path('unused-pdf/', ScratchCardUnusedPDFView.as_view(), name='scratch-card-unused-pdf'),
     path('generate/',    ScratchCardGenerateView.as_view(),  name='scratch-card-generate'),
     path('',             ScratchCardListView.as_view(),      name='scratch-card-list'),

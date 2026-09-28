@@ -48,7 +48,7 @@ class ScratchCardSerializer(serializers.ModelSerializer):
         model  = ScratchCard
         fields = [
             'id', 'serial_number', 'batch_name', 'term', 'term_name',
-            'price', 'is_used', 'used_at', 'generated_by_name', 'created_at',
+            'price', 'is_used', 'used_at', 'revoked_at', 'generated_by_name', 'created_at',
         ]
 
     def get_generated_by_name(self, obj):

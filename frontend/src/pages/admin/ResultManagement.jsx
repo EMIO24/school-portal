@@ -13,6 +13,7 @@ import {referenceOptions} from '../../services/referenceOptions';
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
 import ResultReview from './ResultReview';
+import { Link } from 'react-router-dom';
 import { downloadFile } from '../../services/download';
 import '../../styles/Results.css';
 
@@ -201,6 +202,7 @@ export default function ResultManagement() {
           Result Management
           <small>Compute positions · Add remarks · Generate PDFs</small>
         </h1>
+        <Link className="res-btn res-btn--ghost" to="/admin/report-cards">Report card settings</Link>
       </div>
 
       {/* Controls */}

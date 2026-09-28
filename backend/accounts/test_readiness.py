@@ -109,5 +109,6 @@ class ReadinessChecks(TestCase):
 
     def test_public_result_checker_reaches_input_validation(self):
         r = APIClient(HTTP_X_SCHOOL_SLUG=self.b.slug).post('/api/results/check/', {}, format='json')
-        self.assertEqual(r.status_code, 400, 'Plan middleware blocks the public result checker before its view')
+        self.assertEqual(r.status_code, 403, 'Public result checks must use a generic credential error')
+        self.assertEqual(r.data['detail'], 'The supplied result-checking details are invalid or unavailable.')
 

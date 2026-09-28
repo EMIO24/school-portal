@@ -8,7 +8,7 @@ Deploy checklist:
   1. Set SECRET_KEY, DATABASE_URL, ALLOWED_HOSTS, PAYSTACK_SECRET_KEY,
      TERMII_API_KEY, CLOUDINARY_*, BREVO_API_KEY in Railway Variables tab.
   2. DATABASE_URL is auto-injected when you add the Railway PostgreSQL add-on.
-  3. REDIS_URL must be set to the Railway Redis URL (redis://...railway.internal or rediss://... for TLS).
+  3. Set REDIS_URL when enabling shared asynchronous services; Basic web operation does not require it.
   4. FRONTEND_URL should be your Vercel frontend URL for CORS.
 """
 
@@ -40,10 +40,10 @@ DATABASES = {
 
 # â”€â”€ Cache / Celery (Railway Redis via private networking or TLS) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-REDIS_URL = os.environ["REDIS_URL"]
+REDIS_URL = os.environ.get("REDIS_URL", "")
 _tls_redis = REDIS_URL.startswith("rediss://")
 
-CACHES = {
+CACHES = ({
     "default": {
         "BACKEND":  "django_redis.cache.RedisCache",
         "LOCATION": REDIS_URL,
@@ -52,10 +52,14 @@ CACHES = {
             **({"CONNECTION_POOL_KWARGS": {"ssl_cert_reqs": ssl.CERT_REQUIRED}} if _tls_redis else {}),
         },
     }
-}
+} if REDIS_URL else {
+    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
+})
 
-CELERY_BROKER_URL     = REDIS_URL
-CELERY_RESULT_BACKEND = REDIS_URL
+CELERY_BROKER_URL     = REDIS_URL or "memory://"
+CELERY_RESULT_BACKEND = REDIS_URL or "cache+memory://"
+CELERY_TASK_ALWAYS_EAGER = not bool(REDIS_URL)
+CELERY_TASK_EAGER_PROPAGATES = not bool(REDIS_URL)
 
 if _tls_redis:
     CELERY_BROKER_USE_SSL = {"ssl_cert_reqs": ssl.CERT_REQUIRED}

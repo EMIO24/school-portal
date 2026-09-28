@@ -47,7 +47,10 @@ def transition(request, action):
         elif not row.grade:
             raise ValidationError('Review the legacy score row before submission.')
     qs = ScoreEntry.objects.filter(pk__in=[row.pk for row in rows])
-    if action == 'publish': qs.update(is_published=True)
+    if action == 'publish':
+        from results.presentation import capture_presentation
+        capture_presentation(school, term)
+        qs.update(is_published=True)
     else: qs.update(review_state={'submit':'submitted','approve':'approved'}[action])
     PlatformEvent.objects.create(actor=request.user,actor_email=request.user.email,action='school.results_'+action,
         target=str(term.pk),details={'school_id':school.pk,**ids,'entries':[row.pk for row in rows]})

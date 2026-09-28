@@ -141,7 +141,7 @@ export default function MyResult({ studentId: requestedStudentId }) {
 
       {/* Result card */}
       {data && !loading && (
-        <div className="my-result-card">
+        <div className={`my-result-card report-${data.layout || 'classic'}`}>
 
           {/* Header */}
           <div className="my-result-header">
@@ -152,7 +152,7 @@ export default function MyResult({ studentId: requestedStudentId }) {
               <h2>{data.school_name}</h2>
               <p>{data.school_address}</p>
               <p style={{ marginTop: 4, opacity: .9, fontSize: '.82rem' }}>
-                Student Academic Report — {data.term_name} | {data.session_name}
+                {data.title || 'Student Academic Report'} — {data.term_name} | {data.session_name}
               </p>
             </div>
           </div>
@@ -196,14 +196,14 @@ export default function MyResult({ studentId: requestedStudentId }) {
 
             {/* Summary chips */}
             <div className="result-summary-row">
-              <div className="result-summary-chip">
+              {data.show_position !== false && <div className="result-summary-chip">
                 <span className="result-summary-chip__num pos">{ordinal(data.position)}</span>
                 <span className="result-summary-chip__label">Position</span>
-              </div>
-              <div className="result-summary-chip">
+              </div>}
+              {data.show_position !== false && <div className="result-summary-chip">
                 <span className="result-summary-chip__num">{data.class_size}</span>
                 <span className="result-summary-chip__label">In Class</span>
-              </div>
+              </div>}
               <div className="result-summary-chip">
                 <span className="result-summary-chip__num">{data.average_score?.toFixed(1)}</span>
                 <span className="result-summary-chip__label">Average</span>
@@ -212,10 +212,10 @@ export default function MyResult({ studentId: requestedStudentId }) {
                 <span className="result-summary-chip__num">{data.num_subjects}</span>
                 <span className="result-summary-chip__label">Subjects</span>
               </div>
-              <div className="result-summary-chip">
-                <span className="result-summary-chip__num">{data.att_percentage}%</span>
+              {data.show_attendance !== false && <div className="result-summary-chip">
+                <span className="result-summary-chip__num">{data.total_days ? `${data.att_percentage}%` : '—'}</span>
                 <span className="result-summary-chip__label">Attendance</span>
-              </div>
+              </div>}
             </div>
 
             {/* Score table */}
@@ -247,7 +247,7 @@ export default function MyResult({ studentId: requestedStudentId }) {
             </table>
 
             {/* Domains */}
-            {(data.affective_rows?.length > 0 || data.psychomotor_rows?.length > 0) && (
+            {data.show_skills !== false && (data.affective_rows?.length > 0 || data.psychomotor_rows?.length > 0) && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
                 {data.affective_rows?.length > 0 && (
                   <div>
@@ -280,7 +280,7 @@ export default function MyResult({ studentId: requestedStudentId }) {
             )}
 
             {/* Remarks */}
-            {(data.class_teacher_remark || data.principal_remark) && (
+            {data.show_comments !== false && (data.class_teacher_remark || data.principal_remark) && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
                 {[
                   { label: "Class Teacher's Remark", text: data.class_teacher_remark },
@@ -302,7 +302,7 @@ export default function MyResult({ studentId: requestedStudentId }) {
             )}
 
             {/* Next term */}
-            {data.next_term_date && (
+            {data.show_next_term !== false && data.next_term_date && (
               <div style={{
                 textAlign: 'center', padding: '8px 14px',
                 background: 'var(--res-navy-pale)', borderRadius: 6,

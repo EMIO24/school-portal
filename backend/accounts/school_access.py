@@ -57,11 +57,11 @@ class SchoolModulePermission(BasePermission):
                 if not profile: return False
                 require_assignment(request, profile.current_class_id, request.query_params.get('term'))
                 return name in ('SlipDataView','ResultSlipPDFView','ResultRemarkView') and request.method in SAFE_METHODS
-            from gradebook.models import ScoreEntry
+            from results.presentation import has_complete_published_result
             term = request.query_params.get('term', '')
             return (request.method in SAFE_METHODS and name in ('SlipDataView','ResultSlipPDFView','ResultRemarkView')
                 and owns_student(request, view.kwargs.get('student_id')) and str(term).isdigit()
-                and ScoreEntry.objects.filter(school=tenant, student_id=view.kwargs.get('student_id'), term_id=term, is_published=True).exists())
+                and has_complete_published_result(tenant, view.kwargs.get('student_id'), term))
         if module == 'analytics':
             return request.method in SAFE_METHODS and name in ('StudentTrendsView','TranscriptPDFView') and owns_student(request, view.kwargs.get('pk'), profile=True)
         return False
