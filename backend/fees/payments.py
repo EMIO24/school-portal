@@ -80,9 +80,19 @@ def add_months(day, months):
 
 
 def payable_fee_amount(school, student, schedule):
-    """Use a frozen charge when present; decline ambiguous legacy debt."""
+    """Use the frozen ledger charge and fail closed when receipt/ledger state diverges."""
     from .ledger import account_balance
     from .models import StudentLedgerEntry
+
+    # A FeePayment without its one-to-one ledger entry means money was recorded
+    # outside the supported posting path (legacy data, manual DB write, failed
+    # migration, or partial recovery). Do not calculate a safe online balance
+    # until the school/platform reconciles that drift.
+    if FeePayment.objects.filter(
+            school=school, student=student, fee_schedule=schedule,
+            ledger_entry__isnull=True).exists():
+        return None
+
     position = account_balance(school, student)
     if position['state'] == 'legacy_review' or (position['credit'] or Decimal('0.00')) > 0:
         return None
