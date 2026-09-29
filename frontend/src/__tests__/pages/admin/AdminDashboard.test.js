@@ -16,6 +16,13 @@ const sections = {
     queue: [{ slot_id: 3, class_name: 'JSS1 A', subject_name: 'Math', period_name: 'First' }] },
   curriculum: { state: 'configured', groups: [{ class_arm: 2, class_name: 'JSS1 A', class_level: 4,
     subject: 5, subject_name: 'Math', covered: 1, planned: 3, partial: 1, not_started: 1 }] },
+  academic_management: { state: 'configured', applicable_curriculum_scopes: 1,
+    standard_counts: { approved: 1 }, lesson_plan_counts: { submitted: 1 }, resource_counts: { reviewed: 1 },
+    lesson_plan_review_queue: [{ id: 9 }], resource_review_queue: [{ id: 10 }],
+    note: 'Lesson plans and approved resources are planning/review evidence; LessonRecord and TopicCoverage remain delivery evidence.',
+    groups: [{ class_arm: 2, class_name: 'JSS1 A', class_level: 4, subject: 5, subject_name: 'Math',
+      planned_topics: 3, covered_evidence_rows: 1, partial_evidence_rows: 0, lesson_outcomes: { delivered: 1 },
+      assessment_questions_linked: 2, online_assignments_linked: 1 }] },
   results: { state: 'recorded', counts: { submitted: 1, approved: 0, published: 0 },
     groups: [{ class_arm: 2, class_name: 'JSS1 A', subject: 5, subject_name: 'Math', submitted: 1, approved: 0, published: 0 }] },
   finance: { state: 'unconfigured' },
@@ -38,10 +45,12 @@ test('shows source linked operational facts without analytics refresh', async ()
   expect(screen.getByText(/0 of 1 classes/)).toBeVisible();
   expect(screen.getByText(/1\/3 covered/)).toBeVisible();
   expect(screen.getByText(/1 score entries submitted/)).toBeVisible();
+  expect(screen.getByText(/Approved standards: 1/)).toBeVisible();
+  expect(screen.getByText(/2 linked questions/)).toBeVisible();
   expect(screen.getByText(/No fee schedules configured/)).toBeVisible();
   expect(screen.queryByText(/School Average|Top 5 Students|Refresh Analytics/)).not.toBeInTheDocument();
   expect(screen.getByText('Outcome not recorded: 1').closest('a')).toHaveAttribute('href', expect.stringContaining('outcome=unresolved'));
-  expect(api.get).toHaveBeenCalledTimes(6);
+  expect(api.get).toHaveBeenCalledTimes(7);
 });
 
 test('one failed section can be retried while the others remain visible', async () => {
