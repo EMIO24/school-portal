@@ -11,6 +11,10 @@ from curriculum.models import (
     CurriculumSource,
     CurriculumVersion,
     SchoolAcademicStandard,
+    AcademicResource,
+    CurriculumTopic,
+    CurriculumWeek,
+    LessonPlan,
 )
 from enrollment.models import ClassLevel, Subject
 from tenants.models import School
@@ -263,3 +267,88 @@ class Batch17AcademicStandardAPITests(TestCase):
         }, format='json')
         self.assertEqual(response.status_code, 400)
         self.assertFalse(SchoolAcademicStandard.objects.filter(title='Invalid').exists())
+
+
+class Batch17LearningWorkflowAPITests(TestCase):
+    user = classmethod(operations.BasicOperationsTests.user.__func__)
+    setUpTestData = classmethod(operations.BasicOperationsTests.setUpTestData.__func__)
+
+    def setUp(self):
+        self.client = APIClient(HTTP_X_SCHOOL_SLUG=self.school.slug)
+        plan = CurriculumPlan.objects.create(
+            school=self.school, term=self.term, class_level=self.level, subject=self.subject
+        )
+        week = CurriculumWeek.objects.create(plan=plan, number=1)
+        self.topic = CurriculumTopic.objects.create(week=week, title='Whole Numbers', position=1)
+
+    def test_teacher_lesson_plan_lifecycle_requires_management_review(self):
+        self.client.force_authenticate(self.teacher)
+        created = self.client.post('/api/curriculum/lesson-plans/', {
+            'term': self.term.pk, 'class_arm': self.arm.pk, 'subject': self.subject.pk,
+            'curriculum_topic': self.topic.pk, 'title': 'Teaching Whole Numbers',
+            'objectives': 'Learners identify and compare whole numbers.',
+            'activities': 'Worked examples and pair practice.',
+            'assessment': 'Five-question exit ticket.',
+        }, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        plan_id = created.data['lesson_plan']['id']
+        self.assertEqual(
+            self.client.post(f'/api/curriculum/lesson-plans/{plan_id}/transition/',
+                             {'action': 'submit'}, format='json').status_code, 200
+        )
+        self.assertEqual(
+            self.client.post(f'/api/curriculum/lesson-plans/{plan_id}/transition/',
+                             {'action': 'review'}, format='json').status_code, 409
+        )
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(
+            self.client.post(f'/api/curriculum/lesson-plans/{plan_id}/transition/',
+                             {'action': 'review'}, format='json').status_code, 200
+        )
+        approved = self.client.post(f'/api/curriculum/lesson-plans/{plan_id}/transition/',
+                                    {'action': 'approve'}, format='json')
+        self.assertEqual(approved.status_code, 200, approved.data)
+        self.assertEqual(approved.data['lesson_plan']['status'], 'approved')
+
+    def test_lesson_plan_does_not_create_delivery_evidence(self):
+        from timetable.models import LessonRecord
+        from curriculum.models import TopicCoverage
+        self.client.force_authenticate(self.teacher)
+        response = self.client.post('/api/curriculum/lesson-plans/', {
+            'term': self.term.pk, 'class_arm': self.arm.pk, 'subject': self.subject.pk,
+            'curriculum_topic': self.topic.pk, 'title': 'Plan only',
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(LessonRecord.objects.count(), 0)
+        self.assertEqual(TopicCoverage.objects.count(), 0)
+
+    def test_approved_resource_is_reused_by_assigned_teacher_and_revised_without_mutation(self):
+        self.client.force_authenticate(self.teacher)
+        created = self.client.post('/api/curriculum/resources/', {
+            'class_level': self.level.pk, 'subject': self.subject.pk,
+            'title': 'Whole Numbers Foundation Note', 'kind': 'note',
+            'content': 'Approved institutional foundation content.',
+        }, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        resource_id = created.data['resource']['id']
+        self.assertEqual(
+            self.client.post(f'/api/curriculum/resources/{resource_id}/transition/',
+                             {'action': 'submit'}, format='json').status_code, 200
+        )
+        self.client.force_authenticate(self.admin)
+        for action in ('review', 'approve'):
+            self.assertEqual(
+                self.client.post(f'/api/curriculum/resources/{resource_id}/transition/',
+                                 {'action': action}, format='json').status_code, 200
+            )
+        original = AcademicResource.objects.get(pk=resource_id)
+        self.client.force_authenticate(self.teacher)
+        listing = self.client.get('/api/curriculum/resources/')
+        self.assertIn(resource_id, [row['id'] for row in listing.data['resources']])
+        revised = self.client.post(f'/api/curriculum/resources/{resource_id}/revise/', {}, format='json')
+        self.assertEqual(revised.status_code, 201, revised.data)
+        self.assertEqual(revised.data['resource']['revision'], 2)
+        self.assertEqual(revised.data['resource']['status'], 'draft')
+        original.refresh_from_db()
+        self.assertEqual(original.status, 'approved')
+        self.assertEqual(original.revision, 1)
