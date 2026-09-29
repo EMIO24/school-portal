@@ -22,7 +22,9 @@ export default function SchoolSetup() {
     setLoading(true); setError('');
     try {
       const [s,l,a] = await Promise.all([api.get('/api/school/setup/'),referenceOptions('/api/class-levels/'),referenceOptions('/api/class-arms/')]);
-      setSetup(s.data); setIdentity(s.data.identity); setLevels(l.data.results ?? l.data); setArms(a.data.results ?? a.data);
+      const setupData = s.data && typeof s.data === 'object' ? s.data : {};
+      setSetup({ ...setupData, steps: Array.isArray(setupData.steps) ? setupData.steps : [], class_level_choices: Array.isArray(setupData.class_level_choices) ? setupData.class_level_choices : [] });
+      setIdentity(setupData.identity || {}); setLevels(l.data.results ?? l.data); setArms(a.data.results ?? a.data);
     } catch(e) {setError(message(e));} finally {setLoading(false);}
   },[]);
   useEffect(() => {load();},[load]);
@@ -30,7 +32,7 @@ export default function SchoolSetup() {
     setBusy(true);setError('');setNotice('');
     try {await action();await load();setNotice(confirmation);} catch(e) {setError(message(e));} finally {setBusy(false);}
   }
-  const completed = setup?.steps.filter(s => s.complete).length || 0;
+  const completed = setup?.steps?.filter(s => s.complete).length || 0;
   return <main className="school-setup">
     <header><p>GET YOUR SCHOOL READY</p><h1>School setup</h1><p>Work through these steps in order. Progress reflects your saved school records.</p></header>
     {error && <div role="alert">{error} <button onClick={load} disabled={busy}>Retry</button></div>}
