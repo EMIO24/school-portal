@@ -62,6 +62,34 @@ class PaystackTests(TestCase):
         settle(order.reference,self.data(order)); settle(order.reference,self.data(order))
         self.assertEqual(FeePayment.objects.filter(paystack_reference=order.reference).count(),1)
         self.assertEqual(self.start().status_code,400)
+    def test_partial_online_payment_posts_only_requested_amount_to_ledger(self):
+        from .ledger import account_balance
+        with patch.object(PaystackService, 'initialize',
+                          side_effect=lambda email, amount, ref, callback, **kw:
+                          ('https://checkout.paystack.com/test', ref)):
+            response = self.client.post('/api/fees/pay/initiate/', {
+                'student_id': self.student.pk,
+                'allocations': [{'schedule_id': self.fee.pk, 'amount': '2500.00'}],
+            }, format='json', **self.headers)
+        self.assertEqual(response.status_code, 200, response.data)
+        order = PaymentOrder.objects.get()
+        self.assertEqual(order.amount_kobo, 250000)
+        self.assertEqual(order.allocations, [{'schedule_id': self.fee.pk, 'amount_kobo': 250000}])
+        settle(order.reference, self.data(order))
+        self.assertEqual(FeePayment.objects.get(paystack_reference=order.reference).amount_paid, Decimal('2500.00'))
+        self.assertEqual(account_balance(self.school, self.student)['outstanding'], Decimal('7500.00'))
+
+    def test_partial_online_payment_cannot_exceed_frozen_outstanding(self):
+        with patch.object(PaystackService, 'initialize',
+                          side_effect=lambda email, amount, ref, callback, **kw:
+                          ('https://checkout.paystack.com/test', ref)):
+            response = self.client.post('/api/fees/pay/initiate/', {
+                'student_id': self.student.pk,
+                'allocations': [{'schedule_id': self.fee.pk, 'amount': '10000.01'}],
+            }, format='json', **self.headers)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(PaymentOrder.objects.exists())
+
     def test_paystack_uses_frozen_charge_after_fee_structure_edit(self):
         from .ledger import generate_charges, account_balance
         generate_charges(self.school, self.fee.term, self.admin)
