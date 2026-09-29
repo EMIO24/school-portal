@@ -88,6 +88,8 @@ import MyTimetable from './pages/teacher/MyTimetable';
 import TeachingOperations from './pages/teacher/TeachingOperations';
 import TeacherScheme from './pages/teacher/TeacherScheme';
 import CurriculumManager from './pages/admin/CurriculumManager';
+import AcademicStandards from './pages/admin/AcademicStandards';
+import AcademicPlanning from './pages/common/AcademicPlanning';
 import ScoreEntry from './pages/teacher/ScoreEntry';
 import TakeAttendance from './pages/teacher/TakeAttendance';
 
@@ -125,6 +127,8 @@ function AppRoutes() {
             <Route path="timetable" element={<TimetableBuilder />} />
             <Route path="teaching" element={<TeachingOperations admin />} />
             <Route path="curriculum" element={<CurriculumManager />} />
+            <Route path="academic-standards" element={<AcademicStandards />} />
+            <Route path="academic-planning" element={<AcademicPlanning />} />
 
             {/* Calendar */}
             <Route path="calendar"             element={<CalendarSettings />} />
@@ -194,6 +198,7 @@ function AppRoutes() {
             <Route path="timetable" element={<MyTimetable />} />
             <Route path="teaching" element={<TeachingOperations />} />
             <Route path="scheme" element={<TeacherScheme />} />
+            <Route path="academic-planning" element={<AcademicPlanning />} />
             <Route path="term-questions" element={<QuestionBank termOnly />} />
             <Route path="question-bank" element={<QuestionBank />} />
             <Route path="exam-manager" element={<ExamManager />} />
