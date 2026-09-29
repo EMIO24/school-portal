@@ -36,7 +36,7 @@ describe("ParentDashboard", () => {
     render(<MemoryRouter><ThemeContext.Provider value={{school:null}}><ParentDashboard /></ThemeContext.Provider></MemoryRouter>);
     await screen.findByText("81%");
 
-    await userEvent.click(screen.getByRole("button", { name: /🔔/ }));
+    await act(async () => { await userEvent.click(screen.getByRole("button", { name: /🔔/ })); });
     expect(screen.getByText("Recent Messages")).toBeInTheDocument();
     expect(screen.getByText("PTA meeting")).toBeInTheDocument();
   });
@@ -55,7 +55,7 @@ describe("ParentDashboard", () => {
     });
     render(<MemoryRouter><ThemeContext.Provider value={{school:null}}><ParentDashboard /></ThemeContext.Provider></MemoryRouter>);
     await screen.findByRole('button', { name: /John Grade 3/i });
-    act(() => userEvent.click(screen.getByRole('button', { name: /John Grade 3/i })));
+    await act(async () => { await userEvent.click(screen.getByRole('button', { name: /John Grade 3/i })); });
     expect(screen.getByText(/Showing John Johnson/)).toBeInTheDocument();
     expect(screen.queryByText('81%')).not.toBeInTheDocument();
     await act(async () => finishJohn({ data: { ...dashboard, fee_status: { state: 'active', outstanding: 7000, paid: 12000 } } }));
