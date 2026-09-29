@@ -118,7 +118,7 @@ test('EntryModal stays hidden when closed', () => {
 
 test('QuestionEditor validates missing text and can cancel', () => {
   const close = jest.fn();
-  render(<QuestionEditor subjects={[]} classLevels={[]} onClose={close} />);
+  render(<QuestionEditor subjects={[]} classLevels={[]} onClose={close} termOnly />);
   fireEvent.click(screen.getByRole('button', { name: 'Save Question' }));
   expect(screen.getByText(/Question text is required/)).toBeVisible();
   expect(api.post).not.toHaveBeenCalled();
@@ -129,7 +129,7 @@ test('QuestionEditor validates missing text and can cancel', () => {
 test('QuestionEditor saves an edited question and updates the live preview', async () => {
   const saved = jest.fn();
   api.patch.mockResolvedValue({ data: { id: 1, question_text: 'Updated question' } });
-  render(<QuestionEditor question={{ id: 1, subject: 2, class_level: 3, question_type: 'fill_blank', question_text: 'Old question', correct_answer: '4' }} subjects={[]} classLevels={[]} onSaved={saved} />);
+  render(<QuestionEditor question={{ id: 1, subject: 2, class_level: 3, question_type: 'fill_blank', question_text: 'Old question', correct_answer: '4' }} subjects={[]} classLevels={[]} onSaved={saved} termOnly />);
   fireEvent.change(screen.getByPlaceholderText(/Type the question/), { target: { value: 'Updated question' } });
   expect(screen.getByText('Updated question', { selector: 'div' })).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Update Question' }));
@@ -139,7 +139,7 @@ test('QuestionEditor saves an edited question and updates the live preview', asy
 
 test('QuestionEditor uploads an image file and removes the URL input', async () => {
   api.post.mockResolvedValue({ data: { url: 'https://images.example.test/question.png' } });
-  render(<QuestionEditor question={{ id: 1, subject: 2, class_level: 3, question_type: 'fill_blank', question_text: 'Image question', correct_answer: '4' }} subjects={[]} classLevels={[]} onSaved={jest.fn()} onClose={jest.fn()} />);
+  render(<QuestionEditor question={{ id: 1, subject: 2, class_level: 3, question_type: 'fill_blank', question_text: 'Image question', correct_answer: '4' }} subjects={[]} classLevels={[]} onSaved={jest.fn()} onClose={jest.fn()} termOnly />);
   const file = new File(['image'], 'diagram.png', { type: 'image/png' });
   fireEvent.change(screen.getByLabelText('Choose question image (optional)'), { target: { files: [file] } });
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/cbt/questions/image/', expect.any(FormData), expect.any(Object)));
