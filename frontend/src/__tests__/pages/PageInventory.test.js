@@ -147,3 +147,17 @@ test.each([
   expect(screen.queryByRole('heading', { name: heading })).not.toBeInTheDocument();
   expect(api.post).not.toHaveBeenCalled();
 });
+
+
+test.each([
+  ['admin/SchoolSetup', 'Import Classes and Arms', '/admin/migration?type=classes'],
+  ['admin/SubjectManager', 'Import Subjects', '/admin/migration?type=subjects'],
+  ['admin/SubjectAssignment', 'Import Assignments', '/admin/migration?type=assignments'],
+  ['admin/TimetableBuilder', 'Import Timetable', '/admin/migration?type=timetable'],
+  ['admin/FeeSetup', 'Import Fee Schedule', '/admin/migration?type=fee_schedules'],
+  ['admin/AcademicStandards', 'Import Standard Topics', '/admin/migration?type=standard_topics'],
+])('%s exposes its contextual bulk-import entry point', async (file, label, href) => {
+  const Page = require(`../../pages/${file}`).default;
+  await act(async () => { renderPage(<Page />); });
+  expect(screen.getByRole('link', { name: new RegExp(label, 'i') })).toHaveAttribute('href', href);
+});
