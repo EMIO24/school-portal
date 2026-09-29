@@ -8,6 +8,9 @@ from rest_framework.test import APIClient
 from accounts.models import CustomUser, ParentStudentLink
 from academics.models import AcademicSession, Term
 from tenants.models import PlatformEvent, School
+from timetable.models import Period, TimetableEntry
+from fees.models import FeeCategory, FeeSchedule
+from curriculum.models import CurriculumSource, CurriculumVersion, SchoolAcademicStandard, AcademicStandardTopic
 from .models import (ClassArm, ClassLevel, MigrationStudentReference, StaffProfile, StudentProfile,
                      Subject, SubjectAssignment)
 
@@ -177,6 +180,104 @@ class MigrationCentreTests(TestCase):
                        'two@migration.test,JSS1,A,MATH')
         self.assertEqual(self.upload('assignments', 'validate', assignments).data['counts'],
                          {'CREATE': 1, 'REUSE': 0, 'REJECT': 1})
+
+
+
+    def test_high_volume_operational_imports_are_validated_and_retry_safe(self):
+        session = AcademicSession.objects.create(
+            school=self.school, name='2026/27',
+            start_date=date(2026, 9, 1), end_date=date(2027, 7, 1), is_current=True
+        )
+        term = Term.objects.create(
+            session=session, name='first', start_date=date(2026, 9, 1),
+            end_date=date(2026, 12, 15), is_current=True
+        )
+        self.upload('classes', 'import', 'class_level,class_arm\nJSS1,A')
+        self.upload('subjects', 'import', 'code,name,class_level\nMATH,Mathematics,JSS1')
+        self.upload('staff', 'import', 'first_name,last_name,email\nTayo,Teacher,tayo@migration.test')
+        self.upload('assignments', 'import',
+                    'teacher_email,class_level,class_arm,subject_code\ntayo@migration.test,JSS1,A,MATH')
+        Period.objects.create(
+            school=self.school, name='Period 1', start_time='08:00',
+            end_time='08:40', order_index=1
+        )
+
+        timetable_csv = (
+            'class_level,class_arm,subject_code,teacher_email,day,period\n'
+            'JSS1,A,MATH,tayo@migration.test,Monday,1'
+        )
+        preview = self.upload('timetable', 'validate', timetable_csv)
+        self.assertEqual(preview.data['counts'], {'CREATE': 1, 'REUSE': 0, 'REJECT': 0})
+        self.assertEqual(TimetableEntry.objects.count(), 0)
+        imported = self.upload('timetable', 'import', timetable_csv)
+        self.assertEqual(imported.data['counts']['CREATE'], 1)
+        self.assertEqual(self.upload('timetable', 'import', timetable_csv).data['counts']['REUSE'], 1)
+
+        category = FeeCategory.objects.create(school=self.school, name='Tuition')
+        fee_csv = 'class_level,fee_category,amount,due_date\nJSS1,Tuition,75000.00,2026-10-31'
+        preview = self.upload('fee_schedules', 'validate', fee_csv)
+        self.assertEqual(preview.data['counts']['CREATE'], 1)
+        self.assertEqual(FeeSchedule.objects.count(), 0)
+        imported = self.upload('fee_schedules', 'import', fee_csv)
+        self.assertEqual(imported.data['counts']['CREATE'], 1)
+        self.assertEqual(FeeSchedule.objects.get(fee_category=category, term=term).amount, 75000)
+        self.assertEqual(self.upload('fee_schedules', 'import', fee_csv).data['counts']['REUSE'], 1)
+        changed_fee = fee_csv.replace('75000.00', '80000.00')
+        self.assertEqual(self.upload('fee_schedules', 'validate', changed_fee).data['counts']['REJECT'], 1)
+
+        level = ClassLevel.objects.get(school=self.school, name='JSS1')
+        subject = Subject.objects.get(school=self.school, code='MATH')
+        source = CurriculumSource.objects.create(school=self.school, name='Recorded Source', kind='other')
+        version = CurriculumVersion.objects.create(source=source, label='2026')
+        standard = SchoolAcademicStandard.objects.create(
+            school=self.school, curriculum_version=version, class_level=level,
+            subject=subject, title='JSS1 Mathematics Standard', created_by=self.admin
+        )
+        topic_csv = (
+            'standard_title,class_level,subject_code,term,position,title,recommended_week,requirement,objectives\n'
+            'JSS1 Mathematics Standard,JSS1,MATH,first,1,Whole Numbers,1,required,Define whole numbers;Compare whole numbers'
+        )
+        preview = self.upload('standard_topics', 'validate', topic_csv)
+        self.assertEqual(preview.data['counts']['CREATE'], 1)
+        self.assertEqual(AcademicStandardTopic.objects.count(), 0)
+        imported = self.upload('standard_topics', 'import', topic_csv)
+        self.assertEqual(imported.data['counts']['CREATE'], 1)
+        topic = AcademicStandardTopic.objects.get(standard=standard, position=1)
+        self.assertEqual(topic.objectives.count(), 2)
+        self.assertEqual(self.upload('standard_topics', 'import', topic_csv).data['counts']['REUSE'], 1)
+        standard.status = SchoolAcademicStandard.Status.APPROVED
+        standard.save(update_fields=['status'])
+        second_topic = topic_csv.replace(',1,Whole Numbers,1,', ',2,Fractions,2,')
+        self.assertEqual(self.upload('standard_topics', 'validate', second_topic).data['counts']['REJECT'], 1)
+
+    def test_timetable_import_rejects_same_file_teacher_double_booking(self):
+        session = AcademicSession.objects.create(
+            school=self.school, name='2026/27',
+            start_date=date(2026, 9, 1), end_date=date(2027, 7, 1), is_current=True
+        )
+        Term.objects.create(
+            session=session, name='first', start_date=date(2026, 9, 1),
+            end_date=date(2026, 12, 15), is_current=True
+        )
+        self.upload('classes', 'import', 'class_level,class_arm\nJSS1,A\nJSS1,B')
+        self.upload('subjects', 'import', 'code,name,class_level\nMATH,Mathematics,JSS1')
+        self.upload('staff', 'import', 'first_name,last_name,email\nTayo,Teacher,tayo@migration.test')
+        self.upload('assignments', 'import',
+                    'teacher_email,class_level,class_arm,subject_code\n'
+                    'tayo@migration.test,JSS1,A,MATH\n'
+                    'tayo@migration.test,JSS1,B,MATH')
+        Period.objects.create(
+            school=self.school, name='Period 1', start_time='08:00',
+            end_time='08:40', order_index=1
+        )
+        csv = (
+            'class_level,class_arm,subject_code,teacher_email,day,period\n'
+            'JSS1,A,MATH,tayo@migration.test,MON,1\n'
+            'JSS1,B,MATH,tayo@migration.test,MON,1'
+        )
+        response = self.upload('timetable', 'validate', csv)
+        self.assertEqual(response.data['counts'], {'CREATE': 1, 'REUSE': 0, 'REJECT': 1})
+        self.assertEqual(TimetableEntry.objects.count(), 0)
 
     def test_400_student_simulation_is_retry_safe(self):
         session = AcademicSession.objects.create(school=self.school, name='2026/27',
