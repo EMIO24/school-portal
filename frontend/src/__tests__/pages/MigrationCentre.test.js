@@ -56,3 +56,19 @@ test('explicitly ignored column is sent as ignored rather than remapped', async 
   expect(await screen.findByRole('alert')).toHaveTextContent('Map required columns');
   expect(JSON.parse(api.post.mock.calls[0][1].get('mapping'))['Class Level']).toBeNull();
 });
+
+
+test('query parameter opens the requested high-volume import domain', async () => {
+  api.get.mockImplementation(async url => ({data: url === '/api/migration/'
+    ? {domains: [
+        {key: 'classes', required: ['class_level', 'class_arm'], columns: ['class_level', 'class_arm']},
+        {key: 'timetable', required: ['class_level', 'class_arm', 'subject_code', 'teacher_email', 'day', 'period'],
+          columns: ['class_level', 'class_arm', 'subject_code', 'teacher_email', 'day', 'period']},
+      ]}
+    : {steps: [], missing_assignments: 0}}));
+  renderPage(<MigrationCentre />, {path: '/admin/migration?type=timetable', route: '/admin/migration'});
+  expect(await screen.findByText('Timetable entries')).toBeVisible();
+  expect(screen.getByLabelText('Data type')).toHaveValue('timetable');
+  expect(screen.getByText(/Uses the current term/)).toBeVisible();
+  expect(screen.getByText(/Required: class_level, class_arm, subject_code, teacher_email, day, period/)).toBeVisible();
+});
