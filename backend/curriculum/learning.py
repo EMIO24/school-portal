@@ -276,7 +276,7 @@ class AcademicResourceReviseView(APIView):
             return Response({'detail': 'Academic resource access required.'}, status=403)
         previous = AcademicResource.objects.select_for_update().filter(
             pk=resource_id, school=request.tenant, status=AcademicResource.Status.APPROVED
-        ).select_related('class_level', 'subject', 'standard_topic').first()
+        ).select_related('class_level', 'subject').first()
         if not previous:
             return Response({'detail': 'Only an approved resource can start a new revision.'}, status=409)
         if request.user.role == 'teacher' and not SubjectAssignment.objects.filter(
