@@ -5,9 +5,9 @@ import api from '../../services/api';
 import { classifyRequestFailure } from '../../services/requestState';
 import './AdminDashboard.css';
 
-const sections = ['attendance', 'teaching', 'curriculum', 'results', 'finance'];
+const sections = ['attendance', 'teaching', 'curriculum', 'academic_management', 'results', 'finance'];
 const titles = { attendance: 'Student attendance', teaching: 'Teaching operations',
-  curriculum: 'Curriculum coverage', results: 'Result workflow', finance: 'Recorded school fees' };
+  curriculum: 'Curriculum coverage', academic_management: 'Academic management', results: 'Result workflow', finance: 'Recorded school fees' };
 const today = () => {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Africa/Lagos', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -139,6 +139,24 @@ export default function AdminDashboard() {
           <ul>{item.groups.map(row => <li key={`${row.class_arm}-${row.subject}`}><Link to={curriculumLink(row)}>{row.class_name} · {row.subject_name}</Link>
             {' '}{row.covered}/{row.planned} covered · {row.partial} partial · {row.not_started} not started</li>)}</ul>
           {item.groups.length === 0 && <p>No classes have a plan yet.</p>}</>}
+      </Section>
+      <Section name="academic_management" data={data.academic_management} error={errors.academic_management} loading={loading.academic_management} retry={retry}>{item =>
+        item.state === 'no_term' ? <p>Select a term first.</p> : <>
+          <p>{item.note}</p>
+          <div className="principal-facts">
+            <Link to="/admin/academic-standards">Applicable curriculum scopes: {item.applicable_curriculum_scopes}</Link>
+            <Link to="/admin/academic-standards">Approved standards: {item.standard_counts?.approved || 0}</Link>
+            <Link to="/admin/academic-planning">Lesson plans awaiting review: {(item.lesson_plan_counts?.submitted || 0) + (item.lesson_plan_counts?.reviewed || 0)}</Link>
+            <Link to="/admin/academic-planning">Resources awaiting review: {(item.resource_counts?.submitted || 0) + (item.resource_counts?.reviewed || 0)}</Link>
+          </div>
+          {item.groups?.length > 0 && <ul>{item.groups.map(row => <li key={row.class_arm + '-' + row.subject}>
+            <Link to={curriculumLink(row)}>{row.class_name} · {row.subject_name}</Link>
+            {' '}· {row.planned_topics} planned topics · {row.covered_evidence_rows} covered evidence rows
+            {' '}· {row.assessment_questions_linked} linked questions · {row.online_assignments_linked} linked assignments
+          </li>)}</ul>}
+          {item.lesson_plan_review_queue?.length > 0 && <p><Link to="/admin/academic-planning">Review submitted lesson plans</Link></p>}
+          {item.resource_review_queue?.length > 0 && <p><Link to="/admin/academic-planning">Review academic resources</Link></p>}
+        </>}
       </Section>
       <Section name="results" data={data.results} error={errors.results} loading={loading.results} retry={retry}>{item =>
         item.state === 'no_term' ? <p>Select a term first.</p> : <><p>{item.state === 'no_submissions' ? 'No submitted, approved or published score entries.' :
