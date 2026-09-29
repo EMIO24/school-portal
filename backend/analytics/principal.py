@@ -2,7 +2,7 @@
 from collections import defaultdict
 from datetime import date, timedelta
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -201,6 +201,148 @@ def academic_management(school, term):
         'note': 'Lesson plans and approved resources are planning/review evidence; LessonRecord and TopicCoverage remain delivery evidence.',
     }
 
+
+def academic_history(school, term):
+    """Compare factual academic records with the same term in the most recent earlier session."""
+    if not term:
+        return {'state': 'no_term'}
+
+    previous = Term.objects.filter(
+        session__school=school,
+        name=term.name,
+        session__start_date__lt=term.session.start_date,
+    ).select_related('session').order_by('-session__start_date').first()
+
+    def term_summary(target):
+        if not target:
+            return None
+        plans = list(CurriculumPlan.objects.filter(school=school, term=target).select_related('class_level', 'subject'))
+        plan_ids = [plan.pk for plan in plans]
+        topics = list(CurriculumTopic.objects.filter(
+            week__plan_id__in=plan_ids, archived=False
+        ).values('id', 'week__plan_id'))
+        topic_plan = {row['id']: row['week__plan_id'] for row in topics}
+        coverage_rows = TopicCoverage.objects.filter(
+            school=school, topic_id__in=topic_plan, active=True
+        ).values('topic_id', 'state')
+        covered_by_plan = defaultdict(set)
+        partial_by_plan = defaultdict(set)
+        for row in coverage_rows:
+            plan_id = topic_plan.get(row['topic_id'])
+            if row['state'] == 'covered':
+                covered_by_plan[plan_id].add(row['topic_id'])
+            elif row['topic_id'] not in covered_by_plan[plan_id]:
+                partial_by_plan[plan_id].add(row['topic_id'])
+
+        arm_levels = dict(ClassArm.objects.filter(school=school).values_list('id', 'class_level_id'))
+        lesson_rows = LessonRecord.objects.filter(school=school, term=target).values(
+            'class_arm_id_snapshot', 'subject_id_snapshot', 'outcome'
+        ).annotate(total=Count('id'))
+        lessons = defaultdict(lambda: defaultdict(int))
+        for row in lesson_rows:
+            level_id = arm_levels.get(row['class_arm_id_snapshot'])
+            if level_id:
+                lessons[(level_id, row['subject_id_snapshot'])][row['outcome']] += row['total']
+
+        score_rows = ScoreEntry.objects.filter(
+            school=school, term=target
+        ).filter(Q(is_published=True) | Q(review_state='approved')).values(
+            'class_arm__class_level_id', 'subject_id'
+        ).annotate(records=Count('id'), average=Avg('total_score'))
+        scores = {
+            (row['class_arm__class_level_id'], row['subject_id']): {
+                'records': row['records'],
+                'average': str(row['average'].quantize(__import__('decimal').Decimal('0.01'))) if row['average'] is not None else None,
+            }
+            for row in score_rows
+        }
+
+        approved_resources = dict(AcademicResource.objects.filter(
+            school=school, status=AcademicResource.Status.APPROVED
+        ).values('class_level_id', 'subject_id').annotate(total=Count('id')).values_list(
+            models_key := 'class_level_id', 'subject_id', 'total'
+        )) if False else None
+        resource_counts = {
+            (row['class_level_id'], row['subject_id']): row['total']
+            for row in AcademicResource.objects.filter(
+                school=school, status=AcademicResource.Status.APPROVED
+            ).values('class_level_id', 'subject_id').annotate(total=Count('id'))
+        }
+        applicability = {
+            (row['class_level_id'], row['subject_id']): {
+                'source': row['curriculum_version__source__name'],
+                'version': row['curriculum_version__label'],
+            }
+            for row in CurriculumApplicability.objects.filter(
+                school=school, session=target.session
+            ).values(
+                'class_level_id', 'subject_id',
+                'curriculum_version__source__name', 'curriculum_version__label'
+            )
+        }
+
+        groups = []
+        topics_per_plan = defaultdict(int)
+        for row in topics:
+            topics_per_plan[row['week__plan_id']] += 1
+        for plan in plans:
+            key = (plan.class_level_id, plan.subject_id)
+            covered = len(covered_by_plan[plan.pk])
+            partial = len(partial_by_plan[plan.pk] - covered_by_plan[plan.pk])
+            groups.append({
+                'class_level': plan.class_level_id,
+                'class_level_name': plan.class_level.name,
+                'subject': plan.subject_id,
+                'subject_name': plan.subject.name,
+                'planned_topics': topics_per_plan[plan.pk],
+                'covered_topics': covered,
+                'partial_topics': partial,
+                'lesson_outcomes': dict(lessons.get(key, {})),
+                'approved_resources': resource_counts.get(key, 0),
+                'result_records': scores.get(key, {}).get('records', 0),
+                'result_average': scores.get(key, {}).get('average'),
+                'curriculum': applicability.get(key),
+            })
+        return {
+            'term': target.pk,
+            'term_name': target.name,
+            'session': target.session_id,
+            'session_name': target.session.name,
+            'groups': groups,
+        }
+
+    current = term_summary(term)
+    prior = term_summary(previous)
+    if not previous:
+        return {
+            'state': 'no_previous_term',
+            'current': current,
+            'previous': None,
+            'note': 'No earlier matching term is available. Historical comparison uses recorded evidence only.',
+        }
+
+    current_map = {(row['class_level'], row['subject']): row for row in current['groups']}
+    previous_map = {(row['class_level'], row['subject']): row for row in prior['groups']}
+    keys = sorted(set(current_map) | set(previous_map))
+    comparison = []
+    for key in keys:
+        now, before = current_map.get(key), previous_map.get(key)
+        comparison.append({
+            'class_level': (now or before)['class_level'],
+            'class_level_name': (now or before)['class_level_name'],
+            'subject': (now or before)['subject'],
+            'subject_name': (now or before)['subject_name'],
+            'current': now,
+            'previous': before,
+        })
+    return {
+        'state': 'comparable',
+        'current': current,
+        'previous': prior,
+        'comparison': comparison,
+        'note': 'Counts and averages describe recorded evidence for each session; they are not teacher-quality or school-quality scores.',
+    }
+
 def results(school, term):
     if not term:
         return {'state': 'no_term'}
@@ -242,7 +384,7 @@ def finance(school, term):
 
 SECTIONS = {'snapshot': snapshot, 'attendance': attendance, 'teaching': teaching,
             'curriculum': curriculum, 'academic_management': academic_management,
-            'results': results, 'finance': finance}
+            'academic_history': academic_history, 'results': results, 'finance': finance}
 
 
 class PrincipalOperationsView(APIView):
