@@ -10,8 +10,6 @@ const labels = {
   opening_balances: 'Verified opening balances', timetable: 'Timetable entries',
   fee_schedules: 'Fee schedules', standard_topics: 'Academic-standard topics',
 };
-const aliases = {regno: 'student_ref', studentnumber: 'student_ref'};
-const normalized = value => value.toLowerCase().replace(/[^a-z0-9]/g, '');
 const csvCell = value => {
   const raw = String(value ?? '');
   const safe = /^[\s]*[=+@-]/.test(raw) ? `'${raw}` : raw;
