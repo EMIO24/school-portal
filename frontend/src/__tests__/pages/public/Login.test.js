@@ -6,7 +6,6 @@
  */
 
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { BrowserRouter } from "react-router-dom";
 import Login from "../../../pages/public/Login";
 import { AuthContext } from "../../../context/AuthContext";
@@ -157,8 +156,8 @@ describe("Login Page", () => {
       const passwordInput = screen.getByLabelText(/^password$/i);
       const loginButton = screen.getByRole("button", { name: /sign in/i });
 
-      await userEvent.type(emailInput, "admin@school.ng");
-      await userEvent.type(passwordInput, "password123");
+      fireEvent.change(emailInput, { target: { value: "admin@school.ng" } });
+      fireEvent.change(passwordInput, { target: { value: "password123" } });
       fireEvent.click(loginButton);
 
       await waitFor(() => {
@@ -187,8 +186,8 @@ describe("Login Page", () => {
       const passwordInput = screen.getByLabelText(/^password$/i);
       const loginButton = screen.getByRole("button", { name: /sign in/i });
 
-      await userEvent.type(emailInput, "  Admin@SCHOOL.NG  ");
-      await userEvent.type(passwordInput, "password123");
+      fireEvent.change(emailInput, { target: { value: "  Admin@SCHOOL.NG  " } });
+      fireEvent.change(passwordInput, { target: { value: "password123" } });
       fireEvent.click(loginButton);
 
       await waitFor(() => {
@@ -218,8 +217,8 @@ describe("Login Page", () => {
       const passwordInput = screen.getByLabelText(/^password$/i);
       const loginButton = screen.getByRole("button", { name: /sign in/i });
 
-      await userEvent.type(emailInput, "admin@school.ng");
-      await userEvent.type(passwordInput, "password123");
+      fireEvent.change(emailInput, { target: { value: "admin@school.ng" } });
+      fireEvent.change(passwordInput, { target: { value: "password123" } });
       fireEvent.click(loginButton);
 
       // Button should be disabled during submission
