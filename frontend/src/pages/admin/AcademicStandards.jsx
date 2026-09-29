@@ -9,12 +9,13 @@ const rows = data => data?.results || data || [];
 export default function AcademicStandards() {
   const [sources, setSources] = useState([]);
   const [standards, setStandards] = useState([]);
-  const [options, setOptions] = useState({ levels: [], subjects: [], sessions: [] });
+  const [options, setOptions] = useState({ levels: [], subjects: [], sessions: [], terms: [] });
   const [sourceForm, setSourceForm] = useState({ name: '', kind: 'government', jurisdiction: '', authority: '' });
   const [versionForm, setVersionForm] = useState({ source: '', label: '', reference: '' });
   const [standardForm, setStandardForm] = useState({ title: '', class_level: '', subject: '', curriculum_version: '' });
   const [topicForm, setTopicForm] = useState({ standard: '', term: 'first', title: '', position: 1, recommended_week: 1, requirement: 'required', objectives: '' });
   const [appForm, setAppForm] = useState({ session: '', class_level: '', subject: '', curriculum_version: '' });
+  const [generateForm, setGenerateForm] = useState({ standard: '', term: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -22,16 +23,17 @@ export default function AcademicStandards() {
   const load = useCallback(async () => {
     setError('');
     try {
-      const [sourceRes, standardRes, levels, subjects, sessions] = await Promise.all([
+      const [sourceRes, standardRes, levels, subjects, sessions, terms] = await Promise.all([
         api.get('/api/curriculum/standards/sources/'),
         api.get('/api/curriculum/standards/'),
         api.get('/api/class-levels/'),
         api.get('/api/subjects/'),
         api.get('/api/sessions/'),
+        api.get('/api/terms/'),
       ]);
       setSources(sourceRes.data.sources || []);
       setStandards(standardRes.data.standards || []);
-      setOptions({ levels: rows(levels.data), subjects: rows(subjects.data), sessions: rows(sessions.data) });
+      setOptions({ levels: rows(levels.data), subjects: rows(subjects.data), sessions: rows(sessions.data), terms: rows(terms.data) });
     } catch (err) { setError(classifyRequestFailure(err).message); }
   }, []);
 
@@ -121,7 +123,20 @@ export default function AcademicStandards() {
       </article>)}</div>}
     </section>
 
-    <section className="teaching-card"><h2>5. Add standard topic</h2>
+    <section className="teaching-card"><h2>5. Generate term scheme</h2>
+      <p>Create the term's Scheme of Work from an approved standard. Existing schemes are never overwritten.</p>
+      <div className="teaching-editor">
+        {choice('Approved standard', generateForm.standard, e => setGenerateForm({ ...generateForm, standard: e.target.value }), standards.filter(s => s.status === 'approved'), item => item.title + ' · r' + item.revision)}
+        {choice('Scheme term', generateForm.term, e => setGenerateForm({ ...generateForm, term: e.target.value }), options.terms, item => (item.session_name ? item.session_name + ' · ' : '') + item.name)}
+        <button disabled={busy || !generateForm.standard || !generateForm.term} onClick={() => mutate(async () => {
+          const response = await api.post('/api/curriculum/standards/' + generateForm.standard + '/generate-plan/', { term: Number(generateForm.term) });
+          setNotice('Scheme generated with ' + response.data.topics + ' topics.');
+          setGenerateForm({ standard: '', term: '' });
+        })}>Generate scheme</button>
+      </div>
+    </section>
+
+    <section className="teaching-card"><h2>6. Add standard topic</h2>
       <p>Required curriculum and school enrichment remain distinguishable.</p>
       <div className="teaching-editor">
         {choice('Draft standard', topicForm.standard, e => setTopicForm({ ...topicForm, standard: e.target.value }), standards.filter(s => s.status === 'draft'), item => item.title + ' · r' + item.revision)}
