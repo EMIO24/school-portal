@@ -5,9 +5,9 @@ import api from '../../services/api';
 import { classifyRequestFailure } from '../../services/requestState';
 import './AdminDashboard.css';
 
-const sections = ['attendance', 'teaching', 'curriculum', 'academic_management', 'results', 'finance'];
+const sections = ['attendance', 'teaching', 'curriculum', 'academic_management', 'academic_history', 'results', 'finance'];
 const titles = { attendance: 'Student attendance', teaching: 'Teaching operations',
-  curriculum: 'Curriculum coverage', academic_management: 'Academic management', results: 'Result workflow', finance: 'Recorded school fees' };
+  curriculum: 'Curriculum coverage', academic_management: 'Academic management', academic_history: 'Academic continuity', results: 'Result workflow', finance: 'Recorded school fees' };
 const today = () => {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Africa/Lagos', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -156,6 +156,24 @@ export default function AdminDashboard() {
           </li>)}</ul>}
           {item.lesson_plan_review_queue?.length > 0 && <p><Link to="/admin/academic-planning">Review submitted lesson plans</Link></p>}
           {item.resource_review_queue?.length > 0 && <p><Link to="/admin/academic-planning">Review academic resources</Link></p>}
+        </>}
+      </Section>
+      <Section name="academic_history" data={data.academic_history} error={errors.academic_history} loading={loading.academic_history} retry={retry}>{item =>
+        item.state === 'no_term' ? <p>Select a term first.</p> : item.state === 'no_previous_term' ? <>
+          <p>{item.note}</p>
+          <p>{item.current?.session_name} · {item.current?.term_name} term is the first matching term with recorded history.</p>
+        </> : <>
+          <p>{item.current?.session_name} compared with {item.previous?.session_name} · {item.current?.term_name} term.</p>
+          <p>{item.note}</p>
+          {item.comparison?.length ? <ul>{item.comparison.map(row => <li key={row.class_level + '-' + row.subject}>
+            <strong>{row.class_level_name} · {row.subject_name}</strong>
+            {row.current && <span>{' '}Current: {row.current.covered_topics}/{row.current.planned_topics} topics explicitly covered · {row.current.lesson_outcomes?.delivered || 0} delivered lessons · {row.current.approved_resources} approved resources{row.current.result_average !== null ? ' · result average ' + row.current.result_average : ''}</span>}
+            {row.previous && <span>{' '}Previous: {row.previous.covered_topics}/{row.previous.planned_topics} topics explicitly covered · {row.previous.lesson_outcomes?.delivered || 0} delivered lessons · {row.previous.approved_resources} approved resources{row.previous.result_average !== null ? ' · result average ' + row.previous.result_average : ''}</span>}
+            {row.current?.curriculum && <span>{' '}Current curriculum: {row.current.curriculum.source} · {row.current.curriculum.version}.</span>}
+            {row.previous?.curriculum && <span>{' '}Previous curriculum: {row.previous.curriculum.source} · {row.previous.curriculum.version}.</span>}
+            {row.current?.academic_standard && <span>{' '}Current approved standard: {row.current.academic_standard.title} r{row.current.academic_standard.revision}.</span>}
+            {row.previous?.academic_standard && <span>{' '}Previous approved standard: {row.previous.academic_standard.title} r{row.previous.academic_standard.revision}.</span>}
+          </li>)}</ul> : <p>No comparable class/subject scheme records were found.</p>}
         </>}
       </Section>
       <Section name="results" data={data.results} error={errors.results} loading={loading.results} retry={retry}>{item =>
