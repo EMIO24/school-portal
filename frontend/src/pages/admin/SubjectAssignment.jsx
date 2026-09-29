@@ -400,10 +400,11 @@ export default function SubjectAssignmentPage() {
 
       {/* ── Page header ── */}
       <div className="sa-page-header">
-        <h1 className="sa-page-title">Subject Assignments</h1>
-        <p className="sa-page-sub">
-          Assign teachers to subjects per class arm for each term.
-        </p>
+        <div>
+          <h1 className="sa-page-title">Subject Assignments</h1>
+          <p className="sa-page-sub">Assign teachers to subjects per class arm for each term.</p>
+        </div>
+        <Link className="btn btn-secondary" to="/admin/migration?type=assignments">↑ Import Assignments</Link>
       </div>
 
       <div className="sa-layout">
