@@ -10,11 +10,15 @@ from rest_framework.views import APIView
 
 from academics.models import Holiday, Term
 from attendance.models import AttendanceRecord, AttendanceSession
-from curriculum.models import CurriculumPlan, CurriculumTopic, TopicCoverage
+from curriculum.models import (
+    AcademicResource, CurriculumApplicability, CurriculumPlan, CurriculumTopic,
+    LessonPlan, SchoolAcademicStandard, TopicCoverage,
+)
 from enrollment.models import ClassArm, StaffProfile, Subject
 from fees.billing import active_students
 from fees.models import FeePayment, FeeSchedule
 from gradebook.models import ScoreEntry
+from cbt.models import OnlineAssignment, Question
 from timetable.models import LessonRecord
 from timetable.teaching import lesson_day_rows
 
@@ -119,6 +123,84 @@ def curriculum(school, term):
     return {'state': 'configured', 'groups': groups}
 
 
+
+def academic_management(school, term):
+    """Factual academic oversight: standards, planning, delivery evidence and assessment traceability."""
+    if not term:
+        return {'state': 'no_term'}
+
+    standards = SchoolAcademicStandard.objects.filter(school=school).values('status').annotate(total=Count('id'))
+    standard_counts = {row['status']: row['total'] for row in standards}
+    applicability = CurriculumApplicability.objects.filter(school=school, session=term.session).count()
+
+    plan_rows = LessonPlan.objects.filter(school=school, term=term)
+    plan_counts = {row['status']: row['total'] for row in plan_rows.values('status').annotate(total=Count('id'))}
+    plan_queue = list(plan_rows.filter(status__in=('submitted', 'reviewed')).select_related(
+        'class_arm__class_level', 'subject', 'teacher', 'curriculum_topic'
+    ).order_by('status', 'class_arm_id', 'subject_id').values(
+        'id', 'status', 'class_arm_id', 'class_arm__class_level__name', 'class_arm__name',
+        'subject_id', 'subject__name', 'teacher_id', 'teacher__first_name', 'teacher__last_name',
+        'curriculum_topic_id', 'curriculum_topic__title', 'title'
+    )[:20])
+
+    resource_rows = AcademicResource.objects.filter(school=school)
+    resource_counts = {row['status']: row['total'] for row in resource_rows.values('status').annotate(total=Count('id'))}
+    resource_queue = list(resource_rows.filter(status__in=('submitted', 'reviewed')).select_related(
+        'class_level', 'subject'
+    ).order_by('status', 'class_level__order_index', 'subject__name').values(
+        'id', 'status', 'class_level_id', 'class_level__name', 'subject_id', 'subject__name',
+        'title', 'kind', 'revision'
+    )[:20])
+
+    plans = list(CurriculumPlan.objects.filter(school=school, term=term).select_related('class_level', 'subject'))
+    topic_ids = list(CurriculumTopic.objects.filter(week__plan__in=plans, archived=False).values_list('id', flat=True))
+    coverage = TopicCoverage.objects.filter(
+        school=school, topic_id__in=topic_ids, active=True
+    ).values('lesson__class_arm_id_snapshot', 'topic__week__plan_id').annotate(
+        covered=Count('id', filter=Q(state='covered'), distinct=True),
+        partial=Count('id', filter=Q(state='partial'), distinct=True),
+    )
+    coverage_map = {(row['lesson__class_arm_id_snapshot'], row['topic__week__plan_id']): row for row in coverage}
+
+    groups = []
+    for plan in plans:
+        arms = ClassArm.objects.filter(school=school, class_level=plan.class_level).select_related('class_level')
+        planned = CurriculumTopic.objects.filter(week__plan=plan, archived=False).count()
+        question_count = Question.objects.filter(
+            school=school, term=term, curriculum_topic__week__plan=plan, is_active=True
+        ).count()
+        assignment_count = OnlineAssignment.objects.filter(
+            school=school, term=term, subject=plan.subject, curriculum_topic__week__plan=plan
+        ).count()
+        for arm in arms:
+            actual = LessonRecord.objects.filter(
+                school=school, term=term, class_arm_id_snapshot=arm.pk, subject_id_snapshot=plan.subject_id
+            )
+            outcomes = {row['outcome']: row['total'] for row in actual.values('outcome').annotate(total=Count('id'))}
+            cov = coverage_map.get((arm.pk, plan.pk), {})
+            groups.append({
+                'class_arm': arm.pk, 'class_name': arm.full_name,
+                'class_level': plan.class_level_id, 'subject': plan.subject_id, 'subject_name': plan.subject.name,
+                'planned_topics': planned,
+                'covered_evidence_rows': cov.get('covered', 0),
+                'partial_evidence_rows': cov.get('partial', 0),
+                'lesson_outcomes': outcomes,
+                'assessment_questions_linked': question_count,
+                'online_assignments_linked': assignment_count,
+            })
+
+    return {
+        'state': 'configured' if plans else 'unconfigured',
+        'applicable_curriculum_scopes': applicability,
+        'standard_counts': standard_counts,
+        'lesson_plan_counts': plan_counts,
+        'lesson_plan_review_queue': plan_queue,
+        'resource_counts': resource_counts,
+        'resource_review_queue': resource_queue,
+        'groups': groups,
+        'note': 'Lesson plans and approved resources are planning/review evidence; LessonRecord and TopicCoverage remain delivery evidence.',
+    }
+
 def results(school, term):
     if not term:
         return {'state': 'no_term'}
@@ -159,7 +241,8 @@ def finance(school, term):
 
 
 SECTIONS = {'snapshot': snapshot, 'attendance': attendance, 'teaching': teaching,
-            'curriculum': curriculum, 'results': results, 'finance': finance}
+            'curriculum': curriculum, 'academic_management': academic_management,
+            'results': results, 'finance': finance}
 
 
 class PrincipalOperationsView(APIView):
