@@ -115,6 +115,28 @@ def _charge_from_schedule(school, student, schedule, actor):
 
 
 @transaction.atomic
+def prepare_online_charge(school, student, schedule, actor):
+    """Freeze the payable obligation before creating an external checkout."""
+    lock_school(school)
+    if (student.school_id != school.pk or schedule.school_id != school.pk or
+            schedule.term.session.school_id != school.pk):
+        raise ValueError('Fee structure must belong to this student and school.')
+    account = account_for_write(school, student)
+    if account.state != 'active':
+        raise ValueError('Verify this student opening balance before online payment.')
+    balance = account_balance(school, student)
+    if (balance.get('credit') or ZERO) > ZERO:
+        raise ValueError('Apply the student account credit before starting online payment.')
+    opening = StudentLedgerEntry.objects.filter(
+        school=school, student=student, kind='opening').first()
+    if opening and schedule.term.start_date <= opening.effective_date:
+        raise ValueError('This older fee is covered by the verified opening balance; review it manually.')
+    charge, _ = _charge_from_schedule(school, student, schedule, actor)
+    applied = charge.charge_allocations.aggregate(total=Sum('amount'))['total'] or ZERO
+    return charge, max(charge.signed_amount - applied, ZERO)
+
+
+@transaction.atomic
 def generate_charges(school, term, actor, *, class_arm=None):
     lock_school(school)
     if term.session.school_id != school.pk or (class_arm and class_arm.school_id != school.pk):
