@@ -534,6 +534,7 @@ class MigrationCentre(APIView):
         school = request.tenant
         results, seen, seen_emails, seen_people = [], set(), set(), set()
         seen_phones, seen_assignment_slots = set(), set()
+        seen_timetable_teacher_slots = set()
         counts = {'CREATE': 0, 'REUSE': 0, 'REJECT': 0}
 
         def process():
@@ -560,6 +561,11 @@ class MigrationCentre(APIView):
                             if slot in seen_assignment_slots:
                                 raise ValueError('subject_code', 'Another teacher in this file already has this class and subject.')
                             seen_assignment_slots.add(slot)
+                        if domain == 'timetable' and action == 'CREATE':
+                            teacher_slot = (data['teacher'].pk, data['day'], data['period'].pk, data['term'].pk)
+                            if teacher_slot in seen_timetable_teacher_slots:
+                                raise ValueError('teacher_email', 'This teacher is assigned to more than one class in the same timetable slot in this file.')
+                            seen_timetable_teacher_slots.add(teacher_slot)
                         if domain == 'students' and action == 'CREATE':
                             student_email = data['email']
                             person = (row['first_name'].casefold(), row['last_name'].casefold(),
