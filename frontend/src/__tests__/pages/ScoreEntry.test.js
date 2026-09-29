@@ -77,3 +77,47 @@ test('unsaved score edits block changing the sheet when the teacher cancels',asy
   expect(screen.getByLabelText('1st Test')).toHaveValue(8);
   confirm.mockRestore();
 });
+
+
+test('teacher imports a CSV into the selected draft sheet before saving',async()=>{
+  const students=[
+    {id:1,user:101,full_name:'Ada Student',admission_number:'ADM001'},
+    {id:2,user:102,full_name:'Ben Student',admission_number:'ADM002'},
+  ];
+  api.get.mockImplementation(async url=>{
+    if(url.includes('/sheet/'))return {data:{students,entries:[],session:1,configuration:{components:[
+      {key:'test',name:'1st Test',maximum:'40'},{key:'exam',name:'Exam',maximum:'60'}]}}};
+    if(url==='/api/terms/')return {data:[{id:1,name:'First term',session:1,is_current:true}]};
+    if(url==='/api/sessions/')return {data:[{id:1,name:'2026/27'}]};
+    if(url==='/api/class-arms/')return {data:[{id:1,name:'JSS1A'}]};
+    return {data:[{id:1,name:'Math'}]};
+  });
+  api.post.mockResolvedValue({data:{errors:{},updated:[]}});
+  renderPage(<ScoreEntry/>,{auth:{user:{role:'teacher'}}});
+  await screen.findByRole('option',{name:'Math'});
+  fireEvent.change(screen.getByLabelText('Class'),{target:{value:'1'}});
+  fireEvent.change(screen.getByLabelText('Subject'),{target:{value:'1'}});
+  expect(await screen.findByText('Ben Student')).toBeVisible();
+
+  const file=new File(
+    ['admission_number,test,exam\nADM001,12,45\nADM002,20,50'],
+    'scores.csv',{type:'text/csv'}
+  );
+  Object.defineProperty(file,'text',{value:async()=> 'admission_number,test,exam\nADM001,12,45\nADM002,20,50'});
+  fireEvent.change(screen.getByLabelText('Score CSV file'),{target:{files:[file]}});
+  expect(await screen.findByText(/2 score rows imported into this draft/)).toBeVisible();
+  const tests=screen.getAllByLabelText('1st Test');
+  const exams=screen.getAllByLabelText('Exam');
+  expect(tests[0]).toHaveValue(12); expect(exams[0]).toHaveValue(45);
+  expect(tests[1]).toHaveValue(20); expect(exams[1]).toHaveValue(50);
+  expect(api.post).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole('button',{name:/Save Draft/}));
+  await waitFor(()=>expect(api.post).toHaveBeenCalledWith(
+    '/api/gradebook/entries/bulk-update/',
+    expect.objectContaining({scores:expect.arrayContaining([
+      expect.objectContaining({student_id:101,component_scores:{test:12,exam:45}}),
+      expect.objectContaining({student_id:102,component_scores:{test:20,exam:50}}),
+    ])})
+  ));
+});
