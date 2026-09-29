@@ -19,8 +19,8 @@ class Batch17AcademicStandardModelTests(TestCase):
     def setUp(self):
         self.school = School.objects.create(name='Continuity Academy', slug='continuity-academy')
         self.other_school = School.objects.create(name='Other Academy', slug='other-academy')
-        self.level = ClassLevel.objects.create(school=self.school, name='JSS 1', order=1)
-        self.other_level = ClassLevel.objects.create(school=self.other_school, name='JSS 1', order=1)
+        self.level = ClassLevel.objects.create(school=self.school, name='JSS1', order_index=1)
+        self.other_level = ClassLevel.objects.create(school=self.other_school, name='JSS1', order_index=1)
         self.subject = Subject.objects.create(school=self.school, name='Mathematics', code='MATH')
         self.other_subject = Subject.objects.create(school=self.other_school, name='Mathematics', code='MATH')
         self.session = AcademicSession.objects.create(
