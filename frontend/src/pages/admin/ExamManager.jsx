@@ -12,6 +12,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
+import { useTheme } from '../../context/ThemeContext';
 import '../../styles/ExamManager.css';
 
 const STATUS_META = {
@@ -73,13 +74,13 @@ function RandomRule({ rule, topics, onChange, onRemove }) {
 }
 
 // ── Exam form modal ────────────────────────────────────────────────────────────
-export function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved, onClose }) {
+export function ExamModal({ exam, subjects, classArms, terms, sessions, basic, onSaved, onClose }) {
   const isEdit = Boolean(exam?.id);
 
   const blank = {
     title: '', subject: '', class_arms: [], term: '', session: '',
     start_datetime: '', end_datetime: '', duration_minutes: 60,
-    instructions: '', selection_mode: 'random_from_bank',
+    instructions: '', selection_mode: basic ? 'manual' : 'random_from_bank', component_key: '',
     manual_questions: [], random_config: [],
     randomize_questions: true, randomize_options: true,
     allow_review: true, show_score_immediately: true,
@@ -94,6 +95,7 @@ export function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved,
   } : blank);
   const [topics,  setTopics]  = useState([]);
   const [questions, setQuestions] = useState([]);
+  const [components, setComponents] = useState([]);
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState('');
 
@@ -101,19 +103,27 @@ export function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved,
 
   // Load topics when subject changes
   useEffect(() => {
+    if (basic) return;
     if (!form.subject) { setTopics([]); return; }
     api.get(`/api/cbt/topics/?subject=${form.subject}`)
       .then(({ data }) => setTopics(data.results ?? data))
       .catch(() => setTopics([]));
-  }, [form.subject]);
+  }, [form.subject, basic]);
+
+  useEffect(() => {
+    if (!form.term) { setComponents([]); return; }
+    api.get(`/api/gradebook/configuration/?term=${form.term}`)
+      .then(({ data }) => setComponents(data.components || []))
+      .catch(() => setComponents([]));
+  }, [form.term]);
 
   // Load questions for manual picker
   useEffect(() => {
     if (form.selection_mode !== 'manual' || !form.subject) return;
-    api.get(`/api/cbt/questions/?subject=${form.subject}&is_active=true`)
+    api.get(`/api/cbt/questions/?subject=${form.subject}&is_active=true${form.term ? `&term=${form.term}` : ''}`)
       .then(({ data }) => setQuestions(data.results ?? data))
       .catch(() => setQuestions([]));
-  }, [form.selection_mode, form.subject]);
+  }, [form.selection_mode, form.subject, form.term]);
 
   const toggleArm = (id) => {
     set('class_arms', form.class_arms.includes(id)
@@ -260,6 +270,16 @@ export function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved,
 
           {/* Instructions */}
           <div className="em-field">
+            <label className="em-label">Gradebook component</label>
+            <select className="em-select" value={form.component_key || ''} onChange={e => set('component_key', e.target.value)}>
+              <option value="">No gradebook contribution</option>
+              {components.map(c => <option key={c.key} value={c.key}>{c.name} / {c.maximum}</option>)}
+            </select>
+            <p className="em-hint">Choose the component this CBT will fill after marks are reviewed.</p>
+          </div>
+
+          {/* Instructions */}
+          <div className="em-field">
             <label className="em-label">Instructions</label>
             <textarea className="em-textarea" value={form.instructions}
               onChange={e => set('instructions', e.target.value)}
@@ -271,7 +291,7 @@ export function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved,
             <label className="em-label">Question Selection</label>
             <div className="em-radio-group">
               {[
-                { val: 'random_from_bank', label: 'Random from Question Bank' },
+                ...(!basic ? [{ val: 'random_from_bank', label: 'Random from Question Bank' }] : []),
                 { val: 'manual',           label: 'Manual — pick questions' },
               ].map(opt => (
                 <label key={opt.val} className="em-radio-label">
@@ -370,6 +390,8 @@ export function ExamModal({ exam, subjects, classArms, terms, sessions, onSaved,
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ExamManager() {
+  const { school } = useTheme();
+  const basic = school?.entitlements?.plan === 'basic';
   const [exams,      setExams]      = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [subjects,   setSubjects]   = useState([]);
@@ -488,6 +510,7 @@ export default function ExamManager() {
           classArms={classArms}
           terms={terms}
           sessions={sessions}
+          basic={basic}
           onSaved={handleSaved}
           onClose={() => setModalOpen(false)}
         />

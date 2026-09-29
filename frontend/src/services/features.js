@@ -1,6 +1,7 @@
 export function featureForRoute(path) {
   if (/\/(students|staff)\/import(?:\/|$)/.test(path)) return 'bulk_import';
-  if (/\/(question-bank|exam-manager|exam-results|exams|exam)(?:\/|$)/.test(path)) return 'cbt';
+  if (/\/(question-bank|exam-papers|online-assignments)(?:\/|$)/.test(path)) return 'cbt';
+  if (/\/(term-questions|exam-manager|exam-results|exams|exam)(?:\/|$)/.test(path)) return 'term_cbt';
   if (/\/(results|scores|domains)(?:\/|$)/.test(path)) return 'results';
   if (/\/(fees|fee-setup|fee-collection)(?:\/|$)/.test(path)) return 'fees';
   if (/\/attendance(?:\/|$)/.test(path)) return 'attendance';

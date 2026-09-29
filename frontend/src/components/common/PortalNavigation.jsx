@@ -3,27 +3,32 @@ import { featureForRoute, hasFeature } from '../../services/features';
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import ConnectivityBanner from './ConnectivityBanner';
+import { knownDesign, designStructure, baseLayout } from '../../services/designPresets';
 import './PortalNavigation.css';
 
 export const ROLE_LINKS = {
   school_admin: [
-    ['setup-wizard', 'Academic setup'], ['dashboard', 'Dashboard'], ['calendar', 'Calendar'], ['students', 'Students'],
-    ['students/new', 'Add student'], ['students/import', 'Import students'],
-    ['staff', 'Staff'], ['staff/new', 'Add staff'], ['staff/import', 'Import staff'],
+    ['dashboard', 'Dashboard'], ['setup', 'School setup'], ['appearance', 'School appearance'], ['calendar', 'Calendar'], ['students', 'Students'],
+    ['students/new', 'Add student'], ['migration', 'Data migration'],
+    ['staff', 'Staff'], ['staff/new', 'Add staff'],
     ['subjects', 'Subjects'], ['subject-assignments', 'Subject assignments'],
-    ['attendance', 'Attendance'], ['timetable', 'Timetable'], ['results', 'Results'],
-    ['scratch-cards', 'Scratch cards'], ['question-bank', 'Question bank'],
+    ['attendance', 'Attendance'], ['timetable', 'Timetable'], ['teaching', 'Teaching records'], ['curriculum', 'Curriculum'], ['results', 'Results'],
+    ['scratch-cards', 'Scratch cards'], ['term-questions', 'Term CBT questions'], ['question-bank', 'Question bank'],
     ['exam-manager', 'Exams'], ['exam-results', 'Exam results'],
-    ['notifications', 'Notifications'], ['notification-templates', 'Notification templates'],
+    ['exam-papers', 'Exam papers'], ['online-assignments', 'Online assignments'],
+    ['communications', 'Communication Centre'], ['notices', 'My notices'], ['notifications', 'Email and SMS'], ['notification-templates', 'Notification templates'],
     ['subscription', 'Portal subscription'], ['fee-setup', 'Fee setup'], ['fee-collection', 'Fee collection'], ['promotion', 'Promotion'],
   ].map(([path, label]) => [`/admin/${path}`, label]),
   teacher: [['dashboard', 'Dashboard'], ['attendance', 'Take attendance'], ['scores', 'Scores'],
-    ['domains', 'Student development'], ['timetable', 'My timetable']].map(([path, label]) => [`/teacher/${path}`, label]),
+    ['domains', 'Student development'], ['timetable', 'My timetable'], ['teaching', "Today's lessons"], ['scheme', 'My scheme'],
+    ['term-questions', 'Term CBT questions'], ['question-bank', 'Question bank'], ['exam-manager', 'Exams'],
+    ['exam-papers', 'Exam papers'], ['online-assignments', 'Online assignments'], ['notices', 'Notices']].map(([path, label]) => [`/teacher/${path}`, label]),
   student: [['dashboard', 'Dashboard'], ['attendance', 'Attendance'], ['timetable', 'Timetable'],
-    ['results', 'Results'], ['exams', 'Exams'], ['fees', 'Fees'], ['performance', 'Performance']]
+    ['results', 'Results'], ['exams', 'Exams'], ['online-assignments', 'Assignments'], ['fees', 'Fees'], ['performance', 'Performance'], ['notices', 'Notices']]
     .map(([path, label]) => [`/student/${path}`, label]),
-  parent: [['/parent/dashboard', 'Dashboard']],
-  superadmin: [['/superadmin/appearance', 'Portal designs'], ['/superadmin/payments', 'Payments'], ['/superadmin/dashboard', 'Schools'], ['/superadmin/team', 'Platform staff and activity']],
+  parent: [['/parent/dashboard', 'Dashboard'], ['/parent/notices', 'Notices']],
+  superadmin: [['/superadmin/appearance', 'Portal designs'], ['/superadmin/payments', 'Payments'], ['/superadmin/demo-requests', 'Demo requests'], ['/superadmin/dashboard', 'Schools'], ['/superadmin/team', 'Platform staff and activity']],
 };
 
 export default function PortalNavigation({ children }) {
@@ -54,12 +59,15 @@ export default function PortalNavigation({ children }) {
   }, [open]);
   if (!isAuthenticated || !user || /\/(login|change-password)$/.test(location.pathname) || location.pathname.startsWith('/payments/return') || location.pathname === '/school-preview') return <>{children}</>;
   const platform = user.role === 'superadmin';
-  const layout = platform ? 'platform' : school?.theme?.layout || 'scholar';
-  const links = (ROLE_LINKS[user.role] || []).filter(([to]) => platform || hasFeature(school, featureForRoute(to)));
+  const layout = platform ? 'platform' : knownDesign(school?.theme?.layout) ? school.theme.layout : 'classic';
+  const structure = designStructure(layout);
+  const links = (ROLE_LINKS[user.role] || []).filter(([to]) => platform ||
+    (hasFeature(school, featureForRoute(to)) &&
+      (!to.endsWith('/term-questions') || school?.entitlements?.plan === 'basic')));
   const active = links.find(([to]) => location.pathname === to);
   const name = platform ? 'Platform administration' : school?.name || 'School portal';
   const displayName = user.fullName || user.full_name || user.firstName || user.email;
-  return <div className={'workspace layout-' + layout}>
+  return <div className={'workspace layout-' + layout + (platform ? '' : ' layout-' + baseLayout(layout) + ' structure-' + structure)}>
     <a className="workspace-skip" href="#workspace-content">Skip to content</a>
     {open && <button className="workspace-backdrop" aria-label="Close navigation" onClick={()=>setOpen(false)}/>}
     <aside className={'workspace-sidebar' + (open ? ' is-open' : '')}>
@@ -75,6 +83,7 @@ export default function PortalNavigation({ children }) {
     </aside>
     <div className="workspace-body">
       <header className="workspace-topbar"><div><span className="workspace-eyebrow">{platform ? 'Your platform, at a glance' : 'Welcome to your school portal'}</span><strong>{active?.[1] || 'School workspace'}</strong></div><div className="workspace-person"><span className="workspace-avatar">{displayName?.slice(0,1).toUpperCase()}</span><div><strong>{displayName}</strong><small>{user.role.replace('_',' ')}</small></div></div></header>
+      <ConnectivityBanner />
       <div id="workspace-content" tabIndex={-1} className="workspace-content">{children}</div>
       <footer className="workspace-footer"><span>{name}</span><span>{platform ? 'School management, made clear.' : school?.motto || 'A place for every learner.'}</span></footer>
     </div>

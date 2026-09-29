@@ -24,6 +24,7 @@ const Q_TYPES     = [
   { value: 'mcq',        label: 'Multiple Choice' },
   { value: 'true_false', label: 'True / False' },
   { value: 'fill_blank', label: 'Fill in the Blank' },
+  { value: 'theory', label: 'Theory / Essay' },
 ];
 
 function cap(str) { return str.charAt(0).toUpperCase() + str.slice(1); }
@@ -41,7 +42,7 @@ function defaultOptions(type) {
 
 // ── Live preview ──────────────────────────────────────────────────────────────
 function Preview({ form }) {
-  const showOptions = form.question_type !== 'fill_blank';
+  const showOptions = !['fill_blank', 'theory'].includes(form.question_type);
 
   return (
     <div className="qe-preview-card">
@@ -78,11 +79,13 @@ function Preview({ form }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function QuestionEditor({ question, subjects, classLevels, onSaved, onImported, onClose }) {
+export default function QuestionEditor({ question, subjects, classLevels, onSaved, onImported, onClose, termOnly = false }) {
   const [importBusy, setImportBusy] = useState(false);
   const isEdit = Boolean(question?.id);
 
   const [topics,  setTopics]  = useState([]);
+  const [terms, setTerms] = useState([]);
+  const [schemeTopics, setSchemeTopics] = useState([]);
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState(null);
 
@@ -92,6 +95,9 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
         subject:        question.subject       ?? '',
         class_level:    question.class_level   ?? '',
         topic:          question.topic         ?? '',
+        term: question.term ?? '',
+        curriculum_topic: question.curriculum_topic ?? '',
+        marks: question.marks ?? '1',
         question_text:  question.question_text ?? '',
         question_image: question.question_image?? '',
         question_type:  question.question_type ?? 'mcq',
@@ -104,7 +110,7 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
       };
     }
     return {
-      subject: '', class_level: '', topic: '',
+      subject: '', class_level: '', topic: '', term: '', curriculum_topic: '', marks: '1',
       question_text: '', question_image: '',
       question_type: 'mcq', difficulty: 'medium', cognitive_level: 'knowledge',
       options: defaultOptions('mcq'),
@@ -114,11 +120,23 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
 
   // Load topics when subject + class_level change
   useEffect(() => {
-    if (!form.subject || !form.class_level) { setTopics([]); return; }
+    if (termOnly || !form.subject || !form.class_level) { setTopics([]); return; }
     api.get(`/api/cbt/topics/?subject=${form.subject}&class_level=${form.class_level}`)
       .then(({ data }) => setTopics(data.results ?? data))
       .catch(() => setTopics([]));
-  }, [form.subject, form.class_level]);
+  }, [form.subject, form.class_level, termOnly]);
+
+  useEffect(() => {
+    if (termOnly) return;
+    api.get('/api/terms/').then(({ data }) => setTerms(data.results ?? data)).catch(() => setTerms([]));
+  }, [termOnly]);
+
+  useEffect(() => {
+    if (termOnly || !form.term || !form.subject || !form.class_level) { setSchemeTopics([]); return; }
+    api.get('/api/cbt/questions/curriculum-topics/', { params: {
+      term: form.term, subject: form.subject, class_level: form.class_level,
+    }}).then(({ data }) => setSchemeTopics(data)).catch(() => setSchemeTopics([]));
+  }, [form.term, form.subject, form.class_level, termOnly]);
 
   // Rebuild options when question_type changes
   const handleTypeChange = type => {
@@ -138,7 +156,7 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
     if (!form.question_text.trim()) { setError('Question text is required.'); return; }
     if (!form.subject)             { setError('Subject is required.');        return; }
     if (!form.class_level)         { setError('Class level is required.');     return; }
-    if (form.question_type !== 'fill_blank' && !form.correct_answer) {
+    if (!['fill_blank', 'theory'].includes(form.question_type) && !form.correct_answer) {
       setError('Select the correct answer.'); return;
     }
 
@@ -148,7 +166,10 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
     const payload = {
       ...form,
       topic: form.topic || null,
-      options: form.question_type === 'fill_blank' ? [] : form.options,
+      term: termOnly ? undefined : form.term || null,
+      curriculum_topic: termOnly ? undefined : form.curriculum_topic || null,
+      marks: form.marks,
+      options: ['fill_blank', 'theory'].includes(form.question_type) ? [] : form.options,
     };
 
     try {
@@ -164,7 +185,7 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
     }
   };
 
-  const showOptions = form.question_type !== 'fill_blank';
+  const showOptions = !['fill_blank', 'theory'].includes(form.question_type);
 
   return (
     <div className="qe-overlay" onClick={e => e.target === e.currentTarget && !importBusy && !saving && onClose()}>
@@ -199,15 +220,26 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
               </div>
             </div>
 
+            {!termOnly && <div className="qe-tags-row">
+              <div className="qe-field"><label className="qe-label">Academic term</label>
+                <select className="qe-select" value={form.term} onChange={e => setForm(f => ({ ...f, term: e.target.value, curriculum_topic: '' }))}>
+                  <option value="">Any term</option>{terms.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select></div>
+              <div className="qe-field"><label className="qe-label">Scheme topic</label>
+                <select className="qe-select" value={form.curriculum_topic} onChange={e => setField('curriculum_topic', e.target.value)}>
+                  <option value="">No scheme link</option>{schemeTopics.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                </select></div>
+            </div>}
+
             {/* Tags row 2: topic + difficulty */}
             <div className="qe-tags-row">
-              <div className="qe-field">
+              {!termOnly && <div className="qe-field">
                 <label className="qe-label">Topic</label>
                 <select className="qe-select" value={form.topic} onChange={e => setField('topic', e.target.value)}>
                   <option value="">— none —</option>
                   {topics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
-              </div>
+              </div>}
               <div className="qe-field">
                 <label className="qe-label">Difficulty</label>
                 <select className="qe-select" value={form.difficulty} onChange={e => setField('difficulty', e.target.value)}>
@@ -221,7 +253,7 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
               <div className="qe-field">
                 <label className="qe-label">Question Type</label>
                 <select className="qe-select" value={form.question_type} onChange={e => handleTypeChange(e.target.value)}>
-                  {Q_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  {Q_TYPES.filter(t => !termOnly || t.value !== 'theory').map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
               <div className="qe-field">
@@ -231,6 +263,10 @@ export default function QuestionEditor({ question, subjects, classLevels, onSave
                 </select>
               </div>
             </div>
+
+            <div className="qe-field"><label className="qe-label">Marks</label>
+              <input className="qe-input" type="number" min="0.01" max="9999" step="0.01" value={form.marks}
+                onChange={e => setField('marks', e.target.value)} /></div>
 
             {!isEdit && <DocxQuestionUpload defaults={form} onBusy={setImportBusy} onImported={onImported} />}
             {!isEdit && <h3>Or add a question manually</h3>}

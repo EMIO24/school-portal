@@ -142,6 +142,9 @@ export default function ExamRoom() {
 
   // ── Auto-save debounce ref ────────────────────────────────────────────────────
   const saveTimerRef = useRef(null);
+  const pendingAnswersRef = useRef(new Map());
+  const saveInFlightRef = useRef(null);
+  const [saveState, setSaveState] = useState('saved');
 
   // ── Start exam ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -157,7 +160,7 @@ export default function ExamRoom() {
           (st.saved_answers || []).forEach(a => {
             if (a.selected_option) saved[a.question] = a.selected_option;
           });
-          setAnswers(saved);
+          setAnswers(previous => ({...saved,...previous}));
           setTabSwitches(st.tab_switch_count || 0);
         }).catch(() => {});
       })
@@ -201,15 +204,34 @@ export default function ExamRoom() {
   }, [phase, examId]);
 
   // ── Auto-save ─────────────────────────────────────────────────────────────────
-  const saveAnswer = useCallback((questionId, option) => {
-    clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      api.post(`/api/cbt/exams/${examId}/save-answer/`, {
-        question_id:     questionId,
-        selected_option: option,
-      }).catch(() => {});
-    }, 400); // 400 ms debounce
+  const flushAnswers = useCallback(async () => {
+    if (saveInFlightRef.current) return saveInFlightRef.current;
+    const work = (async () => {
+      while (pendingAnswersRef.current.size) {
+        const [questionId, option] = pendingAnswersRef.current.entries().next().value;
+        try {
+          setSaveState('saving');
+          await api.post(`/api/cbt/exams/${examId}/save-answer/`, {
+            question_id:questionId, selected_option:option,
+          });
+          if (pendingAnswersRef.current.get(questionId) === option) pendingAnswersRef.current.delete(questionId);
+        } catch (error) {
+          setSaveState('failed');
+          throw error;
+        }
+      }
+      setSaveState('saved');
+    })();
+    saveInFlightRef.current = work;
+    try {return await work;} finally {saveInFlightRef.current = null;}
   }, [examId]);
+
+  const saveAnswer = useCallback((questionId, option) => {
+    pendingAnswersRef.current.set(questionId, option);
+    setSaveState('waiting');
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {flushAnswers().catch(() => {});}, 400);
+  }, [flushAnswers]);
 
   // ── Select option ─────────────────────────────────────────────────────────────
   const handleSelect = (questionId, option) => {
@@ -221,7 +243,9 @@ export default function ExamRoom() {
   const doSubmit = useCallback(async () => {
     setSubmitting(true);
     clearInterval(timerRef.current);
+    clearTimeout(saveTimerRef.current);
     try {
+      await flushAnswers();
       const { data } = await api.post(`/api/cbt/exams/${examId}/submit/`);
       let correct;
       if (data.answers) {
@@ -234,13 +258,13 @@ export default function ExamRoom() {
       });
       setPhase('result');
     } catch (err) {
-      const msg = err?.response?.data?.detail || 'Submission failed.';
+      const msg = err?.response?.data?.detail || 'Could not confirm the answer save or submission. Your answers remain on this page. Retry when connected.';
       setErrorMsg(msg);
     } finally {
       setSubmitting(false);
       setShowSubmitModal(false);
     }
-  }, [examId, questions.length]);
+  }, [examId, questions.length, flushAnswers]);
 
   const handleAutoSubmit = useCallback(() => {
     doSubmit();
@@ -308,11 +332,14 @@ export default function ExamRoom() {
         </div>
         <div className="er-topbar-right">
           <span className="er-answered">{answeredCount}/{questions.length} answered</span>
+          <span role="status" aria-live="polite">{saveState === 'saved' ? 'Answers saved' : saveState === 'failed' ? 'Save failed' : 'Saving answers'}</span>
+          {saveState === 'failed' && <button type="button" onClick={() => flushAnswers().catch(() => {})}>Retry save</button>}
           <button className="er-submit-btn" onClick={() => setShowSubmitModal(true)}>
             Submit
           </button>
         </div>
       </header>
+      {errorMsg && <p role="alert" className="assessment-error">{errorMsg}</p>}
 
       <div className="er-body">
 

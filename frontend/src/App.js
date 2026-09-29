@@ -20,14 +20,19 @@ import ProtectedRoute from "./components/common/ProtectedRoute";
 // ── Public ─────────────────────────────────────────────────────────────────
 import PlatformTeam from "./pages/platform/PlatformTeam";
 import PlatformDashboard from "./pages/platform/PlatformDashboard";
+import DemoRequests from "./pages/platform/DemoRequests";
 import SchoolSignup from "./pages/platform/SchoolSignup";
 import Login          from "./pages/public/Login";
 import ChangePassword from "./pages/public/ChangePassword";
 import CheckResult    from "./pages/public/CheckResult";
+import { MarketingPage } from "./pages/public/Marketing";
 
 // ── Admin pages ────────────────────────────────────────────────────────────
 import AdminDashboard   from "./pages/admin/AdminDashboard";
-import AcademicSetupWizard from "./pages/admin/AcademicSetupWizard";
+import SchoolSetup from "./pages/admin/SchoolSetup";
+import SchoolAppearance from "./pages/admin/SchoolAppearance";
+import ReportConfiguration from "./pages/admin/ReportConfiguration";
+import MigrationCentre from "./pages/admin/MigrationCentre";
 import CalendarSettings from "./pages/admin/CalendarSettings";
 import Students         from "./pages/admin/Students";
 import StudentForm      from "./pages/admin/StudentForm";
@@ -40,6 +45,9 @@ import ResultManagement from "./pages/admin/ResultManagement";
 import ScratchCards     from "./pages/admin/ScratchCards";
 import QuestionBank     from "./pages/admin/QuestionBank";
 import ExamManager     from "./pages/admin/ExamManager";
+import ExamPapers from './pages/admin/ExamPapers';
+import OnlineAssignments from './pages/admin/OnlineAssignments';
+import MyAssignments from './pages/student/MyAssignments';
 import ExamResults     from "./pages/admin/ExamResults";
 
 // ── Role dashboards (stubs) ────────────────────────────────────────────────
@@ -56,18 +64,18 @@ import StudentFees      from "./pages/student/Fees";
 
 // ── Phase 4 admin pages ────────────────────────────────────────────────────
 import Notifications          from "./pages/admin/Notifications";
+import CommunicationCentre from "./pages/admin/CommunicationCentre";
+import NoticeInbox from "./pages/common/NoticeInbox";
 import NotificationTemplates  from "./pages/admin/NotificationTemplates";
 import FeeSetup               from "./pages/admin/FeeSetup";
 import FeeCollection          from "./pages/admin/FeeCollection";
+import FinanceAccount         from "./pages/admin/FinanceAccount";
 
 // ── Phase 5 pages ──────────────────────────────────────────────────────────
 import Promotion        from "./pages/admin/Promotion";
 import MyPerformance    from "./pages/student/MyPerformance";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-import { useAuth } from "./hooks/useAuth";
-import { ROLE_DASHBOARDS } from "./utils/roles";
-import LoadingScreen from "./components/common/LoadingScreen";
 import PortalNavigation from "./components/common/PortalNavigation";
 import AttendanceOverview from './pages/admin/AttendanceOverview';
 import SubjectAssignment from './pages/admin/SubjectAssignment';
@@ -77,15 +85,11 @@ import MyAttendance from './pages/student/MyAttendance';
 import StudentTimetable from './pages/student/Timetable';
 import AffinityDomain from './pages/teacher/AffinityDomain';
 import MyTimetable from './pages/teacher/MyTimetable';
+import TeachingOperations from './pages/teacher/TeachingOperations';
+import TeacherScheme from './pages/teacher/TeacherScheme';
+import CurriculumManager from './pages/admin/CurriculumManager';
 import ScoreEntry from './pages/teacher/ScoreEntry';
 import TakeAttendance from './pages/teacher/TakeAttendance';
-
-function RootRedirect() {
-  const { isAuthenticated, isLoading, user } = useAuth();
-  if (isLoading) return <LoadingScreen />;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <Navigate to={ROLE_DASHBOARDS[user.role] || "/login"} replace />;
-}
 
 function AppRoutes() {
   return (
@@ -93,6 +97,14 @@ function AppRoutes() {
 
       {/* ── Public ───────────────────────────────────────────────────────── */}
       <Route path="/register-school" element={<SchoolSignup />} />
+      <Route path="/" element={<MarketingPage page="home" />} />
+      <Route path="/features" element={<MarketingPage page="features" />} />
+      <Route path="/pricing" element={<MarketingPage page="pricing" />} />
+      <Route path="/demo" element={<MarketingPage page="demo" />} />
+      <Route path="/contact" element={<MarketingPage page="contact" />} />
+      <Route path="/access" element={<MarketingPage page="access" />} />
+      <Route path="/privacy" element={<MarketingPage page="privacy" />} />
+      <Route path="/terms" element={<MarketingPage page="terms" />} />
       <Route path="/platform/change-password" element={<ProtectedRoute allowedRoles={["superadmin"]}><ChangePassword /></ProtectedRoute>} />
       <Route path="/platform/login" element={<Login platform />} />
       <Route path="/login"           element={<Login />} />
@@ -106,12 +118,13 @@ function AppRoutes() {
       <Route path="/admin/*" element={
         <ProtectedRoute allowedRoles={["school_admin"]}>
           <Routes>
-            <Route path="setup-wizard"        element={<AcademicSetupWizard />} />
             <Route path="dashboard"            element={<AdminDashboard />} />
             <Route path="attendance" element={<AttendanceOverview />} />
             <Route path="subjects" element={<SubjectManager />} />
             <Route path="subject-assignments" element={<SubjectAssignment />} />
             <Route path="timetable" element={<TimetableBuilder />} />
+            <Route path="teaching" element={<TeachingOperations admin />} />
+            <Route path="curriculum" element={<CurriculumManager />} />
 
             {/* Calendar */}
             <Route path="calendar"             element={<CalendarSettings />} />
@@ -119,6 +132,10 @@ function AppRoutes() {
             {/* Students */}
             <Route path="students"             element={<Students />} />
             <Route path="students/new"         element={<StudentForm />} />
+            <Route path="setup" element={<SchoolSetup />} />
+            <Route path="appearance" element={<SchoolAppearance />} />
+            <Route path="report-cards" element={<ReportConfiguration />} />
+            <Route path="migration" element={<MigrationCentre />} />
             <Route path="students/import"      element={
               <BulkImportPage type="students" />
             } />
@@ -139,18 +156,24 @@ function AppRoutes() {
             <Route path="scratch-cards" element={<ScratchCards />} />
 
             {/* CBT */}
+            <Route path="term-questions" element={<QuestionBank termOnly />} />
             <Route path="question-bank"  element={<QuestionBank />} />
             <Route path="exam-manager"   element={<ExamManager />} />
             <Route path="exam-results"   element={<ExamResults />} />
+            <Route path="exam-papers" element={<ExamPapers />} />
+            <Route path="online-assignments" element={<OnlineAssignments />} />
 
             {/* Notifications */}
             <Route path="notifications"           element={<Notifications />} />
+            <Route path="communications" element={<CommunicationCentre />} />
+            <Route path="notices" element={<NoticeInbox />} />
             <Route path="notification-templates"  element={<NotificationTemplates />} />
 
             {/* Fees */}
             <Route path="subscription" element={<Subscription />} />
             <Route path="fee-setup"      element={<FeeSetup />} />
             <Route path="fee-collection" element={<FeeCollection />} />
+            <Route path="finance/:studentId" element={<FinanceAccount />} />
 
             {/* Promotion */}
             <Route path="promotion" element={<Promotion />} />
@@ -169,6 +192,14 @@ function AppRoutes() {
             <Route path="scores" element={<ScoreEntry />} />
             <Route path="domains" element={<AffinityDomain />} />
             <Route path="timetable" element={<MyTimetable />} />
+            <Route path="teaching" element={<TeachingOperations />} />
+            <Route path="scheme" element={<TeacherScheme />} />
+            <Route path="term-questions" element={<QuestionBank termOnly />} />
+            <Route path="question-bank" element={<QuestionBank />} />
+            <Route path="exam-manager" element={<ExamManager />} />
+            <Route path="exam-papers" element={<ExamPapers />} />
+            <Route path="online-assignments" element={<OnlineAssignments />} />
+            <Route path="notices" element={<NoticeInbox />} />
             {/*
               Upcoming teacher routes:
               <Route path="classes"      element={<MyClasses />} />
@@ -196,12 +227,14 @@ function AppRoutes() {
             <Route path="exams"               element={<ExamList />} />
             <Route path="exam/:examId"        element={<ExamRoom />} />
             <Route path="exam/:examId/review" element={<ExamReview />} />
+            <Route path="online-assignments" element={<MyAssignments />} />
 
             {/* Fees */}
             <Route path="fees" element={<StudentFees />} />
 
             {/* Performance */}
             <Route path="performance" element={<MyPerformance />} />
+            <Route path="notices" element={<NoticeInbox />} />
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="*" element={<Navigate to="dashboard" replace />} />
           </Routes>
@@ -215,6 +248,7 @@ function AppRoutes() {
             <Route path="dashboard" element={<ParentDashboard />} />
             <Route path="results/:studentId" element={<ChildDetails mode="results" />} />
             <Route path="fees/:studentId" element={<ChildDetails mode="fees" />} />
+            <Route path="notices" element={<NoticeInbox />} />
             {/*
               Upcoming parent routes:
               <Route path="children"   element={<MyChildren />} />
@@ -235,12 +269,12 @@ function AppRoutes() {
       <Route path="/superadmin/appearance" element={<ProtectedRoute allowedRoles={["superadmin"]}><PortalDesigns /></ProtectedRoute>} />
       <Route path="/superadmin/payments" element={<ProtectedRoute allowedRoles={["superadmin"]}><PlatformPayments /></ProtectedRoute>} />
       <Route path="/superadmin/team" element={<ProtectedRoute allowedRoles={["superadmin"]}><PlatformTeam /></ProtectedRoute>} />
+      <Route path="/superadmin/demo-requests" element={<ProtectedRoute allowedRoles={["superadmin"]}><DemoRequests /></ProtectedRoute>} />
       <Route path="/superadmin/dashboard" element={
         <ProtectedRoute allowedRoles={["superadmin"]}>
           <PlatformDashboard />
         </ProtectedRoute>
       } />
-      <Route path="/"  element={<RootRedirect />} />
       <Route path="*"  element={<Navigate to="/" replace />} />
     </Routes>
   );

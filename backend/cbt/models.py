@@ -36,6 +36,7 @@ class Question(models.Model):
         ('mcq',        'Multiple Choice'),
         ('true_false', 'True / False'),
         ('fill_blank', 'Fill in the Blank'),
+        ('theory', 'Theory / Essay'),
     ]
 
     DIFFICULTIES = [
@@ -57,6 +58,10 @@ class Question(models.Model):
     subject      = models.ForeignKey('enrollment.Subject',   on_delete=models.CASCADE, related_name='questions')
     topic        = models.ForeignKey(Topic, on_delete=models.SET_NULL, null=True, blank=True, related_name='questions')
     class_level  = models.ForeignKey('enrollment.ClassLevel',on_delete=models.CASCADE, related_name='questions')
+    source = models.CharField(max_length=8, choices=[('bank', 'Question bank'), ('term', 'Term CBT')], default='bank')
+    term = models.ForeignKey('academics.Term', on_delete=models.PROTECT, null=True, blank=True, related_name='cbt_questions')
+    curriculum_topic = models.ForeignKey('curriculum.CurriculumTopic', on_delete=models.PROTECT, null=True, blank=True, related_name='bank_questions')
+    marks = models.DecimalField(max_digits=6, decimal_places=2, default=1)
 
     question_text  = models.TextField()
     question_image = models.URLField(blank=True, default='', help_text='Cloudinary URL (optional)')
@@ -67,7 +72,7 @@ class Question(models.Model):
     # [{id: 'A', text: '...', image_url: null}, ...]
     options        = models.JSONField(default=list, blank=True)
     correct_answer = models.CharField(
-        max_length=10, blank=True, default='',
+        max_length=1000, blank=True, default='',
         help_text="Option id for MCQ/true_false (e.g. 'A'), or answer text for fill_blank"
     )
     explanation    = models.TextField(blank=True, default='', help_text='Shown after submission')
@@ -108,6 +113,7 @@ class CBTExam(models.Model):
     class_arms  = models.ManyToManyField('enrollment.ClassArm', blank=True, related_name='cbt_exams')
     term        = models.ForeignKey('academics.Term',          on_delete=models.CASCADE, related_name='cbt_exams')
     session     = models.ForeignKey('academics.AcademicSession', on_delete=models.CASCADE, related_name='cbt_exams')
+    component_key = models.CharField(max_length=32, blank=True, default='')
     created_by  = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='created_exams'
@@ -147,14 +153,16 @@ class CBTExam(models.Model):
         Random mode: draw from the question bank per random_config rules.
         """
         if self.selection_mode == 'manual':
-            qs = list(self.manual_questions.filter(is_active=True))
+            qs = list(self.manual_questions.filter(is_active=True, school=self.school, subject=self.subject))
         else:
             qs = []
             for rule in self.random_config:
                 topic_id   = rule.get('topic_id')
                 count      = int(rule.get('count', 0))
                 difficulty = rule.get('difficulty')
-                pool = Question.objects.filter(school=self.school, subject=self.subject, is_active=True).exclude(pk__in=[question.pk for question in qs])
+                pool = Question.objects.filter(school=self.school, subject=self.subject, source='bank',
+                    class_level_id__in=self.class_arms.values_list('class_level_id', flat=True),
+                    is_active=True).exclude(question_type='theory').exclude(pk__in=[question.pk for question in qs])
                 if topic_id:
                     pool = pool.filter(topic_id=topic_id)
                 if difficulty:
@@ -197,6 +205,9 @@ class StudentExamSession(models.Model):
 
     status           = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_started')
     score            = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    raw_score = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    raw_maximum = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    class_arm = models.ForeignKey('enrollment.ClassArm', on_delete=models.PROTECT, null=True, blank=True)
     tab_switch_count = models.IntegerField(default=0)
     ip_address       = models.GenericIPAddressField(null=True, blank=True)
 
@@ -208,6 +219,71 @@ class StudentExamSession(models.Model):
 
 
 # ── Student Answer ────────────────────────────────────────────────────────────
+
+class SubjectAssessmentMode(models.Model):
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    term = models.ForeignKey('academics.Term', on_delete=models.PROTECT)
+    class_level = models.ForeignKey('enrollment.ClassLevel', on_delete=models.PROTECT)
+    subject = models.ForeignKey('enrollment.Subject', on_delete=models.PROTECT)
+    mode = models.CharField(max_length=5, choices=[('cbt', 'CBT'), ('paper', 'Paper')])
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['school', 'term', 'class_level', 'subject'], name='unique_subject_assessment_mode')]
+
+
+class ExamPaper(models.Model):
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    term = models.ForeignKey('academics.Term', on_delete=models.PROTECT)
+    class_level = models.ForeignKey('enrollment.ClassLevel', on_delete=models.PROTECT)
+    subject = models.ForeignKey('enrollment.Subject', on_delete=models.PROTECT)
+    title = models.CharField(max_length=200)
+    instructions = models.TextField(blank=True)
+    duration_minutes = models.PositiveSmallIntegerField(default=60)
+    blueprint = models.JSONField(default=list)
+    question_snapshot = models.JSONField(default=list)
+    status = models.CharField(max_length=10, choices=[('draft', 'Draft'), ('submitted', 'Submitted'), ('approved', 'Approved')], default='draft')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='created_exam_papers')
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='approved_exam_papers')
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class OnlineAssignment(models.Model):
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    term = models.ForeignKey('academics.Term', on_delete=models.PROTECT)
+    class_arm = models.ForeignKey('enrollment.ClassArm', on_delete=models.PROTECT)
+    subject = models.ForeignKey('enrollment.Subject', on_delete=models.PROTECT)
+    curriculum_topic = models.ForeignKey('curriculum.CurriculumTopic', on_delete=models.PROTECT, null=True, blank=True)
+    title = models.CharField(max_length=200)
+    instructions = models.TextField()
+    due_at = models.DateTimeField()
+    maximum = models.DecimalField(max_digits=6, decimal_places=2, default=10)
+    kind = models.CharField(max_length=8, choices=[('practice', 'Practice'), ('graded', 'Graded')], default='practice')
+    component_key = models.CharField(max_length=32, blank=True)
+    status = models.CharField(max_length=9, choices=[('draft', 'Draft'), ('published', 'Published'), ('closed', 'Closed')], default='draft')
+    question_snapshot = models.JSONField(default=list)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['school', 'term', 'class_arm', 'subject', 'component_key'],
+                          condition=models.Q(kind='graded'), name='unique_graded_assignment_component')]
+
+
+class AssignmentSubmission(models.Model):
+    assignment = models.ForeignKey(OnlineAssignment, on_delete=models.PROTECT, related_name='submissions')
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    text = models.TextField(blank=True)
+    answers = models.JSONField(default=dict)
+    status = models.CharField(max_length=9, choices=[('draft', 'Draft'), ('submitted', 'Submitted')], default='draft')
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    score = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    feedback = models.TextField(blank=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['assignment', 'student'], name='unique_assignment_submission')]
+
 
 class StudentAnswer(models.Model):
     exam_session    = models.ForeignKey(StudentExamSession, on_delete=models.CASCADE, related_name='answers')

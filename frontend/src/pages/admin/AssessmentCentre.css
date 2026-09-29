@@ -1,0 +1,19 @@
+.assessment-page { max-width: 1100px; margin: 0 auto; display: grid; gap: 1rem; color: var(--color-text, #14253d); }
+.assessment-page header h1 { margin-bottom: .25rem; }
+.assessment-card { background: var(--color-surface, #fff); border: 1px solid #d8e1e9; border-radius: .75rem; padding: 1.25rem; display: grid; gap: .8rem; min-width: 0; }
+.assessment-card h2, .assessment-card h3, .assessment-card p { margin: 0; }
+.assessment-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: .8rem; align-items: end; }
+.assessment-page label { display: grid; gap: .3rem; font-weight: 600; min-width: 0; }
+.assessment-page input:not([type=checkbox]):not([type=radio]), .assessment-page select, .assessment-page textarea { width: 100%; max-width: 100%; border: 1px solid #aebdca; border-radius: .4rem; padding: .6rem; font: inherit; color: inherit; background: #fff; box-sizing: border-box; }
+.assessment-page button { border: 1px solid #123b58; background: #123b58; color: #fff; border-radius: .4rem; padding: .55rem .8rem; cursor: pointer; font: inherit; }
+.assessment-page button:disabled { opacity: .55; cursor: not-allowed; }
+.assessment-page button:focus-visible, .assessment-page input:focus-visible, .assessment-page select:focus-visible, .assessment-page textarea:focus-visible { outline: 3px solid #d19a35; outline-offset: 2px; }
+.assessment-actions, .assessment-list { display: flex; flex-wrap: wrap; gap: .5rem; }
+.assessment-list button { text-align: left; background: #f5f8fa; color: #123b58; }
+.assessment-list button.selected { background: #123b58; color: #fff; }
+.assessment-error { padding: .8rem; border-left: 4px solid #ad342e; background: #fff1ef; }
+.assessment-question-list { max-height: 16rem; overflow: auto; display: grid; gap: .4rem; }
+.assessment-question-list label, .assessment-question fieldset label { display: flex; align-items: flex-start; gap: .5rem; font-weight: 400; }
+.assessment-question, .assessment-submission { border-top: 1px solid #d8e1e9; padding: .8rem 0; display: grid; gap: .5rem; min-width: 0; overflow-wrap: anywhere; }
+.assessment-submission { flex: 1 1 16rem; }
+@media (max-width: 600px) { .assessment-card { padding: .85rem; } .assessment-actions button { flex: 1 1 100%; } }
