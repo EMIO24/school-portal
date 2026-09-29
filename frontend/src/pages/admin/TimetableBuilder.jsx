@@ -14,6 +14,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import TimetableGrid, { TimetableLegend } from '../../components/timetable/TimetableGrid';
 import PeriodForm from '../../components/timetable/PeriodForm';
 import EntryModal from '../../components/timetable/EntryModal';
