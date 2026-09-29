@@ -105,7 +105,7 @@ class MigrationCentreTests(TestCase):
             'mapping': mapping,
         }, format='multipart')
         self.assertEqual(imported.data['counts']['CREATE'], 1)
-        self.assertEqual(ClassArm.objects.get(school=self.school).full_name, 'JSS1 A')
+        self.assertEqual(ClassArm.objects.get(school=self.school).full_name, 'JSS1A')
 
         formula = self.client.post('/api/migration/classes/validate/', {
             'file': workbook_file([
