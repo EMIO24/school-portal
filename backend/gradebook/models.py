@@ -190,6 +190,7 @@ class ScoreEntry(models.Model):
     is_published = models.BooleanField(default=False)
     policy = models.ForeignKey(TermScoring, null=True, blank=True, on_delete=models.PROTECT)
     component_scores = models.JSONField(default=dict, blank=True)
+    component_sources = models.JSONField(default=dict, blank=True)
     review_state = models.CharField(max_length=12, default='draft', choices=[('draft','Draft'), ('submitted','Submitted'), ('approved','Approved')])
 
     created_at   = models.DateTimeField(auto_now_add=True)

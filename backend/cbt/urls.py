@@ -19,10 +19,14 @@ Endpoint reference:
 """
 from rest_framework.routers import DefaultRouter
 from .views import TopicViewSet, QuestionViewSet, CBTExamViewSet
+from .assessment_views import SubjectAssessmentModeViewSet, ExamPaperViewSet, OnlineAssignmentViewSet
 
 router = DefaultRouter()
 router.register('topics',    TopicViewSet,    basename='topic')
 router.register('questions', QuestionViewSet, basename='question')
 router.register('exams',     CBTExamViewSet,  basename='exam')
+router.register('modes', SubjectAssessmentModeViewSet, basename='assessment-mode')
+router.register('papers', ExamPaperViewSet, basename='exam-paper')
+router.register('assignments', OnlineAssignmentViewSet, basename='online-assignment')
 
 urlpatterns = router.urls

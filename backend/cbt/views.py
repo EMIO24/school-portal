@@ -35,6 +35,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
+from rest_framework.exceptions import ValidationError
 
 from accounts.permissions import IsSchoolAdminOrTeacher
 from tenants.mixins import TenantMixin
@@ -78,6 +79,21 @@ class QuestionViewSet(TenantMixin, ModelViewSet):
         qs = Question.objects.filter(school=self.school).select_related(
             'subject', 'topic', 'class_level'
         )
+        if self.school.subscription_plan == 'basic':
+            from academics.models import Term
+            current = Term.objects.filter(session__school=self.school, is_current=True).first()
+            qs = qs.filter(source='term', term=current) if current else qs.none()
+        elif self.request.query_params.get('source', 'bank') == 'bank':
+            qs = qs.filter(source='bank')
+        if self.request.user.role == 'teacher':
+            from django.db.models import Exists, OuterRef
+            from enrollment.models import SubjectAssignment
+            assignments = SubjectAssignment.objects.filter(school=self.school, teacher__user=self.request.user,
+                teacher__employment_status='active', subject_id=OuterRef('subject_id'),
+                class_arm__class_level_id=OuterRef('class_level_id'))
+            if self.school.subscription_plan == 'basic':
+                assignments = assignments.filter(term_id=OuterRef('term_id'))
+            qs = qs.filter(Exists(assignments))
         # Filters
         subject     = self.request.query_params.get('subject')
         topic       = self.request.query_params.get('topic')
@@ -86,6 +102,9 @@ class QuestionViewSet(TenantMixin, ModelViewSet):
         q_type      = self.request.query_params.get('question_type')
         is_active   = self.request.query_params.get('is_active')
         search      = self.request.query_params.get('search')
+        term = self.request.query_params.get('term')
+        session = self.request.query_params.get('session')
+        curriculum_topic = self.request.query_params.get('curriculum_topic')
 
         if subject:
             qs = qs.filter(subject_id=subject)
@@ -101,14 +120,26 @@ class QuestionViewSet(TenantMixin, ModelViewSet):
             qs = qs.filter(is_active=(is_active.lower() == 'true'))
         if search:
             qs = qs.filter(question_text__icontains=search)
+        if term and term.isdigit():
+            qs = qs.filter(term_id=term)
+        if session and session.isdigit():
+            qs = qs.filter(term__session_id=session)
+        if curriculum_topic and curriculum_topic.isdigit():
+            qs = qs.filter(curriculum_topic_id=curriculum_topic)
 
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(school=self.school, created_by=self.request.user)
+        serializer.save(school=self.school, created_by=self.request.user,
+                        source='term' if self.school.subscription_plan == 'basic' else 'bank')
 
     def perform_update(self, serializer):
         serializer.save(school=self.school)
+
+    def perform_destroy(self, instance):
+        # Keep question rows for historical attempts and snapshots.
+        instance.is_active = False
+        instance.save(update_fields=['is_active'])
 
     @action(detail=False, methods=['post'], url_path='image', permission_classes=[IsSchoolAdminOrTeacher])
     def image(self, request):
@@ -127,7 +158,7 @@ class QuestionViewSet(TenantMixin, ModelViewSet):
             by_type: {mcq: N, true_false: N, fill_blank: N},
           }
         """
-        base_qs = Question.objects.filter(school=self.school, is_active=True)
+        base_qs = self.get_queryset().filter(is_active=True)
 
         by_subject = list(
             base_qs
@@ -155,6 +186,24 @@ class QuestionViewSet(TenantMixin, ModelViewSet):
             'by_difficulty': by_difficulty,
             'by_type':       by_type,
         })
+
+    @action(detail=False, methods=['get'], url_path='curriculum-topics')
+    def curriculum_topics(self, request):
+        if self.school.subscription_plan == 'basic':
+            return Response({'detail': 'The reusable Question Bank requires Premium.'}, status=403)
+        from curriculum.models import CurriculumTopic
+        values = [request.query_params.get(key, '') for key in ('term', 'subject', 'class_level')]
+        if any(not value.isdigit() for value in values):
+            return Response({'detail': 'Choose term, subject and class level.'}, status=400)
+        qs = CurriculumTopic.objects.filter(week__plan__school=self.school, week__plan__term_id=values[0],
+            week__plan__subject_id=values[1], week__plan__class_level_id=values[2], archived=False)
+        if request.user.role == 'teacher':
+            from enrollment.models import SubjectAssignment
+            if not SubjectAssignment.objects.filter(school=self.school, teacher__user=request.user,
+                    teacher__employment_status='active', term_id=values[0], subject_id=values[1],
+                    class_arm__class_level_id=values[2]).exists():
+                return Response({'detail': 'This subject and class are not assigned to you.'}, status=403)
+        return Response(list(qs.values('id', 'title')))
 
     @action(detail=False, methods=['get'], url_path='docx-template', permission_classes=[IsSchoolAdminOrTeacher])
     def docx_template(self, request):
@@ -192,7 +241,8 @@ class QuestionViewSet(TenantMixin, ModelViewSet):
         for i, item in enumerate(items):
             ser = QuestionWriteSerializer(data=item, context=self.get_serializer_context())
             if ser.is_valid():
-                ser.save(school=self.school, created_by=request.user)
+                ser.save(school=self.school, created_by=request.user,
+                         source='term' if self.school.subscription_plan == 'basic' else 'bank')
                 imported += 1
             else:
                 errors.append({'index': i, 'detail': ser.errors})
@@ -218,10 +268,23 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
         return CBTExamListSerializer
 
     def get_queryset(self):
-        return CBTExam.objects.filter(school=self.school).prefetch_related('class_arms')
+        qs = CBTExam.objects.filter(school=self.school).prefetch_related('class_arms')
+        if self.request.user.role == 'teacher':
+            from django.db.models import Exists, OuterRef
+            from enrollment.models import SubjectAssignment
+            assignments = SubjectAssignment.objects.filter(school=self.school, teacher__user=self.request.user,
+                teacher__employment_status='active', subject_id=OuterRef('subject_id'),
+                term_id=OuterRef('term_id'), class_arm__cbt_exams=OuterRef('pk'))
+            qs = qs.filter(Exists(assignments))
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(school=self.school, created_by=self.request.user)
+
+    def perform_destroy(self, instance):
+        if instance.sessions.exists():
+            raise ValidationError('An attempted exam must be retained for its historical record.')
+        instance.delete()
 
     # â”€â”€ /exams/available/ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -301,6 +364,7 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
             if not questions or len(questions) != requested_count:
                 return Response({'detail':'The exam does not have enough active questions. Contact your teacher.'}, status=400)
             session.question_snapshot = [QuestionSerializer(q).data for q in questions]
+            session.class_arm_id = user.student_profile.current_class_id
             session.deadline_at = min(exam.end_datetime, now + timedelta(minutes=exam.duration_minutes))
 
             option_maps = {}
@@ -410,6 +474,9 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
         """
         exam    = self.get_object()
         user    = request.user
+        session = StudentExamSession.objects.select_for_update().filter(exam=exam, student=user).first()
+        if session and session.status in ('submitted', 'timed_out'):
+            return Response({'score': float(session.score) if exam.show_score_immediately else None, 'status': session.status})
         session = _get_active_session(exam, user)
         if isinstance(session, Response):
             return session
@@ -442,51 +509,33 @@ class CBTExamViewSet(TenantMixin, ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='push-to-gradebook',
             permission_classes=[IsSchoolAdminOrTeacher])
+    @transaction.atomic
     def push_to_gradebook(self, request, pk=None):
-        """
-        Scale every completed session's CBT percentage to the subject's
-        max_exam_score and upsert a ScoreEntry.exam_score.
-
-        Returns {updated: N, skipped: N}.
-        """
-        from gradebook.models import ScoreEntry
-
+        """Normalize completed attempt marks into one configured draft component."""
+        from .gradebook import integrate_component
         exam = self.get_object()
+        if not exam.component_key:
+            return Response({'detail': 'Map this exam to a configured assessment component first.'}, status=400)
         sessions = StudentExamSession.objects.filter(
             exam=exam, status__in=['submitted', 'timed_out']
         ).select_related('student', 'student__student_profile')
-
-        max_exam = exam.subject.max_exam_score
         updated  = 0
         skipped  = 0
-
         for sess in sessions:
-            try:
-                profile   = sess.student.student_profile
-                class_arm = profile.current_class
-                if not class_arm:
-                    skipped += 1
-                    continue
-
-                scaled = (
-                    Decimal(str(sess.score)) / Decimal('100') * Decimal(str(max_exam))
-                ).quantize(Decimal('0.01'))
-
-                ScoreEntry.objects.update_or_create(
-                    student  = sess.student,
-                    subject  = exam.subject,
-                    term     = exam.term,
-                    session  = exam.session,
-                    school   = exam.school,
-                    defaults = {
-                        'class_arm':  class_arm,
-                        'exam_score': scaled,
-                    },
-                )
-                updated += 1
-            except Exception:
+            if not sess.class_arm_id or sess.raw_maximum is None:
                 skipped += 1
-
+                continue
+            if not exam.class_arms.filter(pk=sess.class_arm_id).exists():
+                raise ValidationError('An attempt has a class outside this exam.')
+            if request.user.role == 'teacher':
+                require_assignment(request, sess.class_arm_id, exam.term_id, exam.subject_id)
+            _, created, _ = integrate_component(
+                school=self.school, student=sess.student, subject=exam.subject,
+                term=exam.term, class_arm=sess.class_arm, key=exam.component_key,
+                source=f'cbt:{exam.pk}', raw_score=sess.raw_score,
+                raw_maximum=sess.raw_maximum, teacher=request.user if request.user.role == 'teacher' else None,
+            )
+            updated += int(created)
         return Response({'updated': updated, 'skipped': skipped})
 
     # â”€â”€ /exams/{id}/review/ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

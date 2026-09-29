@@ -1039,8 +1039,8 @@ introduces security.
 | 13 | Communication Centre | Basic | Manual/portal audiences and history | 12, notifications | Medium |
 | 14 | Student Finance Ledger | Basic | Auditable invoices, adjustments and opening balances | Fees/Migration Centre | High |
 | 15 | Controlled Reports and Basic Validation | Basic | Configured documents, reports and full-term simulation | 10–14 | Medium |
-| 16 | CBT Commercial Hardening | Premium | Concurrent exams and recovery through marking | 15, existing CBT | High |
-| 17 | Advanced Academics and Intelligence | Premium | Historical results and explainable cross-domain trends | 11–12, 15 | High |
+| 16 | Assessment & Learning Delivery | Basic + Premium | Basic term CBT; Premium question bank, configurable CBT, paper exams and assignments | 11, 15, existing CBT | High |
+| 17 | Academic Standards, Curriculum Intelligence & Continuity | Shared | Curriculum provenance/versioning, school standards, lesson plans/resources, approval, continuity and factual academic oversight | 11–12, 16 | High |
 | 18 | Online School-Fee Payments | Premium | Safe payment allocation/reconciliation | 14, existing settlement | High |
 | 19 | Communication Automation | Premium | Event triggers, delivery/retry and cost controls | 13, 18 | Medium |
 | 20 | Advanced Migration and Assistive Tools | Premium | Historical/bulk import and a bounded assistive pilot | 14, 17, privacy gates | High |
@@ -1060,9 +1060,11 @@ no general ledger. Batch 15 proves configurable PDF sections, broadsheets,
 core reports and a realistic full-term Basic journey; no drag-and-drop designer.
 These Basic batches use existing infrastructure unless measurement demands more.
 
-Batch 16 proves scheduling, autosave/timeout, marking, gradebook handoff and
-tenant-safe exam concurrency; no new exam product. Batch 17 proves historical
-academic workflows and explainable trends; no opaque classification. Batch 18
+Batch 16 proves Basic term CBT and Premium assessment delivery, including paper
+exams, online assignments, gradebook handoff and tenant-safe concurrency.
+Batch 17 establishes curriculum provenance, approved school standards, lesson
+plans/resources and year-to-year academic continuity; it uses factual evidence
+without invasive teacher monitoring. Batch 18
 proves fee allocation and repeated webhook/reconcile safety; no new provider.
 Batch 19 proves event delivery, retry/audit and spend limits; no free unlimited
 SMS. Batch 20 proves validated historical import and, only if gates pass, one
@@ -1556,3 +1558,65 @@ unrestricted report design, scheduled bulk PDF generation, formal instalment sch
 historical payment import, a separate Principal role, CBT commercial
 hardening, advanced academic intelligence, online school-fee expansion,
 automated communications, assistive AI and multi-campus workflows.
+
+### Batch 16 assessment and learning delivery — development evidence, 2026-09-29
+
+The existing CBT models, attempt timing, option randomization and gradebook
+policy remain the foundation. New schema adds a question source (`term` or
+reusable `bank`), optional academic term and curriculum topic, per-question
+marks, exam component mapping, immutable attempt class/score facts, school
+subject assessment mode, paper snapshot, assignment/submission records, and
+gradebook component source metadata. Migrations are additive; historical
+question rows default to the reusable bank source. Basic authors only in the
+current term and selects those questions manually. The previous term's Basic
+questions are excluded from new authoring and selection; completed attempts
+retain their question snapshots. Premium bank questions persist across terms
+and may reference the existing scheme topic. No official curriculum is
+fabricated. That topic relationship is an extension point for Batch 17's
+academic-standard continuity work, which is not implemented in Batch 16.
+
+A school administrator selects CBT or paper for a subject, class level and
+term. Published CBT and submitted paper artifacts prevent a conflicting mode
+change in that period. CBT remains server timed. Objective and short-answer
+questions have validated answer keys and positive marks; theory questions are
+reserved for human-marked paper/assignment work. Attempts snapshot questions,
+class and raw earned/maximum marks. A completed CBT may fill only an explicit
+configured gradebook component. The service normalizes raw marks to that
+component's maximum using decimal half-up rounding: 42/50 into a 30-mark
+component becomes 25.20. In the tested 100-mark policy, other components of
+8, 7 and 44 produce 84.20 total. A student row lock, component-source record,
+and draft/published guards make repeated writes idempotent and reject a
+different source or manual overwrite.
+
+Premium paper blueprints select objective/theory counts from exact active
+scheme topics for the selected term, subject and class. The server reports a
+topic-specific shortage, snapshots the chosen bank questions, permits a
+same-topic draft replacement, and locks the submitted/approved version.
+Only a school administrator approves; unapproved PDFs carry a DRAFT label.
+The school name, eligible Cloudinary logo, session, term, subject, class,
+duration, instructions, sections, question marks, pagination and separate
+authorized marking copy are rendered by the existing WeasyPrint dependency.
+External PDF image URLs are restricted to the configured Cloudinary cloud.
+
+Premium online assignments share the same tenant, term, class, subject and
+optional scheme-topic relationships. Students see only published/closed work
+for their current class and never receive answer keys. Responses are saved
+server-side before submission, with explicit failure and retry states in the
+browser. Deadline and repeat-submit rules are server enforced. Objective work
+can be scored from a snapshot; teachers release marks and feedback. Practice
+work never changes the gradebook. Graded work reserves one configured
+component for the class/subject/term and uses the same locked integration
+service. No new queue, worker, dependency or external service is required.
+Attachment uploads are deferred because this batch has no safe bounded
+assignment-file storage contract; answers and feedback use text and existing
+question images.
+
+The access boundary uses school-scoped querysets, school/term/subject/class
+validation, current teacher assignments, plan middleware and student-specific
+submission views. Attempted CBT exams cannot be deleted; questions are
+archived so historical answers remain intact. The regression suite covers
+Basic/Premium entitlement, cross-school records, answer-key secrecy, class
+visibility, paper shortage and draft label, assignment retries, gradebook
+source conflicts and PostgreSQL simultaneous integration. Frontend route and
+offline-save tests cover the added workspace. Browser validation uses only the
+disposable QA schools; no production school or credential is used.

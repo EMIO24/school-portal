@@ -4,7 +4,7 @@ backend/cbt/services.py
 CBT business logic extracted from views for reuse and testability.
 """
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from types import SimpleNamespace
 
 def session_questions(session):
@@ -41,8 +41,8 @@ def auto_mark(session: StudentExamSession, final_status: str = 'submitted') -> N
     questions = session_questions(session)
     answers   = {a.question_id: a for a in session.answers.all()}
 
-    correct = 0
-    total   = len(q_ids)
+    correct = Decimal('0')
+    total = sum((Decimal(str(getattr(questions[q_id], 'marks', 1))) for q_id in q_ids if q_id in questions), Decimal('0'))
 
     for q_id in q_ids:
         q   = questions.get(q_id)
@@ -65,9 +65,11 @@ def auto_mark(session: StudentExamSession, final_status: str = 'submitted') -> N
         ans.is_correct = is_correct
         ans.save(update_fields=['is_correct'])
         if is_correct:
-            correct += 1
+            correct += Decimal(str(getattr(q, 'marks', 1)))
 
-    session.score        = round(Decimal(correct) / Decimal(total) * 100, 2) if total else Decimal('0')
+    session.raw_score = correct
+    session.raw_maximum = total
+    session.score = (correct / total * 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if total else Decimal('0')
     session.status       = final_status
     session.submitted_at = timezone.now()
-    session.save(update_fields=['score', 'status', 'submitted_at'])
+    session.save(update_fields=['raw_score', 'raw_maximum', 'score', 'status', 'submitted_at'])

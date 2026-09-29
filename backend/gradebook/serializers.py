@@ -117,6 +117,10 @@ class ScoreEntryWriteSerializer(serializers.ModelSerializer):
         if values is None:
             values = {c['key']:attrs.get(c['key'],self.instance.component_scores.get(c['key']) if self.instance and self.instance.policy_id else getattr(self.instance,c['key'],None)) for c in policy.components}
         attrs['component_scores'] = checked_scores(policy,values)
+        if self.instance:
+            for key, source in self.instance.component_sources.items():
+                if attrs['component_scores'].get(key) != self.instance.component_scores.get(key):
+                    raise serializers.ValidationError({'component_scores': f'{key} is supplied by {source}; correct the source assessment first.'})
         attrs['policy'] = policy
         return attrs
 

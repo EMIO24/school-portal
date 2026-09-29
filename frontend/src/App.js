@@ -45,6 +45,9 @@ import ResultManagement from "./pages/admin/ResultManagement";
 import ScratchCards     from "./pages/admin/ScratchCards";
 import QuestionBank     from "./pages/admin/QuestionBank";
 import ExamManager     from "./pages/admin/ExamManager";
+import ExamPapers from './pages/admin/ExamPapers';
+import OnlineAssignments from './pages/admin/OnlineAssignments';
+import MyAssignments from './pages/student/MyAssignments';
 import ExamResults     from "./pages/admin/ExamResults";
 
 // ── Role dashboards (stubs) ────────────────────────────────────────────────
@@ -153,9 +156,12 @@ function AppRoutes() {
             <Route path="scratch-cards" element={<ScratchCards />} />
 
             {/* CBT */}
+            <Route path="term-questions" element={<QuestionBank termOnly />} />
             <Route path="question-bank"  element={<QuestionBank />} />
             <Route path="exam-manager"   element={<ExamManager />} />
             <Route path="exam-results"   element={<ExamResults />} />
+            <Route path="exam-papers" element={<ExamPapers />} />
+            <Route path="online-assignments" element={<OnlineAssignments />} />
 
             {/* Notifications */}
             <Route path="notifications"           element={<Notifications />} />
@@ -188,6 +194,11 @@ function AppRoutes() {
             <Route path="timetable" element={<MyTimetable />} />
             <Route path="teaching" element={<TeachingOperations />} />
             <Route path="scheme" element={<TeacherScheme />} />
+            <Route path="term-questions" element={<QuestionBank termOnly />} />
+            <Route path="question-bank" element={<QuestionBank />} />
+            <Route path="exam-manager" element={<ExamManager />} />
+            <Route path="exam-papers" element={<ExamPapers />} />
+            <Route path="online-assignments" element={<OnlineAssignments />} />
             <Route path="notices" element={<NoticeInbox />} />
             {/*
               Upcoming teacher routes:
@@ -216,6 +227,7 @@ function AppRoutes() {
             <Route path="exams"               element={<ExamList />} />
             <Route path="exam/:examId"        element={<ExamRoom />} />
             <Route path="exam/:examId/review" element={<ExamReview />} />
+            <Route path="online-assignments" element={<MyAssignments />} />
 
             {/* Fees */}
             <Route path="fees" element={<StudentFees />} />

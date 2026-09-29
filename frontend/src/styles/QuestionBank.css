@@ -108,6 +108,12 @@
   background: #f8fafc;
 }
 
+.qb-page-heading { padding: 12px 20px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+.qb-page-heading h1 { margin: 0; font-size: 1.25rem; color: #0c1c40; }
+.qb-page-heading p { margin: .35rem 0 0; font-size: .85rem; color: #374151; }
+.qb-filter-toggle { display: none; }
+.qb-filter-close { display: none; }
+
 .qb-toolbar {
   display: flex;
   align-items: center;
@@ -272,3 +278,15 @@
 }
 
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+@media (max-width: 700px) {
+  .qb-page { display: flex; flex-direction: column; height: auto; min-height: 70vh; overflow: visible; }
+  .qb-main { overflow: visible; min-width: 0; }
+  .qb-sidebar { display: none; position: fixed; z-index: 50; top: 4rem; right: 0; width: min(90vw, 360px); max-height: calc(100vh - 4rem); box-shadow: 0 8px 32px #14253d33; border: 1px solid #e5e7eb; }
+  .qb-sidebar.is-open { display: flex; }
+  .qb-sidebar-head { display: flex; align-items: center; justify-content: space-between; }
+  .qb-filter-close { display: inline-block; border: 1px solid #aebdca; border-radius: 6px; background: #fff; color: #0c1c40; padding: .35rem .55rem; }
+  .qb-filter-toggle { display: inline-block; margin-top: .65rem; padding: .45rem .7rem; border: 1px solid #aebdca; border-radius: 6px; background: #fff; color: #0c1c40; }
+  .qb-cards { overflow: visible; padding: 12px; grid-template-columns: minmax(0, 1fr); }
+  .qb-toolbar { padding: 12px; }
+}

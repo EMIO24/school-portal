@@ -16,7 +16,7 @@ import '../../styles/QuestionBank.css';
 const DIFFICULTY_LABELS = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 const TYPE_LABELS       = { mcq: 'MCQ', true_false: 'True/False', fill_blank: 'Fill Blank' };
 
-export default function QuestionBank() {
+export default function QuestionBank({ termOnly = false }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Reference data
   const [subjects,     setSubjects]    = useState([]);
@@ -54,9 +54,10 @@ export default function QuestionBank() {
   // Load topics when subject + class_level filters change
   useEffect(() => {
     if (!filters.subject || !filters.class_level) { setTopics([]); return; }
+    if (termOnly) { setTopics([]); return; }
     api.get(`/api/cbt/topics/?subject=${filters.subject}&class_level=${filters.class_level}`)
       .then(({ data }) => setTopics(data.results ?? data));
-  }, [filters.subject, filters.class_level]);
+  }, [filters.subject, filters.class_level, termOnly]);
 
   // ── Load questions ───────────────────────────────────────────────────────────
   const loadQuestions = useCallback(async () => {
@@ -97,7 +98,7 @@ export default function QuestionBank() {
 
   // ── Delete ───────────────────────────────────────────────────────────────────
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this question? This cannot be undone.')) return;
+    if (!window.confirm('Archive this question? Historical attempts will retain it.')) return;
     await api.delete(`/api/cbt/questions/${id}/`);
     setQuestions(qs => qs.filter(q => q.id !== id));
     refreshStats();
@@ -122,12 +123,9 @@ export default function QuestionBank() {
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="qb-page">
-
       {/* ── Sidebar ── */}
-      <button type="button" className="qb-filter-toggle" aria-expanded={filtersOpen} aria-controls="question-filters"
-        onClick={() => setFiltersOpen(value => !value)}>{filtersOpen ? 'Hide filters' : 'Show filters'}</button>
       <aside id="question-filters" className={'qb-sidebar' + (filtersOpen ? ' is-open' : '')}>
-        <div className="qb-sidebar-head"><h2>Filters</h2></div>
+        <div className="qb-sidebar-head"><h2>Filters</h2><button type="button" className="qb-filter-close" onClick={() => setFiltersOpen(false)}>Close</button></div>
 
         <div className="qb-filter-group">
           <label className="qb-filter-label">Subject</label>
@@ -145,14 +143,14 @@ export default function QuestionBank() {
           </select>
         </div>
 
-        <div className="qb-filter-group">
+        {!termOnly && <div className="qb-filter-group">
           <label className="qb-filter-label">Topic</label>
           <select className="qb-filter-select" value={filters.topic} onChange={e => setFilter('topic', e.target.value)}
             disabled={!topics.length}>
             <option value="">All topics</option>
             {topics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
-        </div>
+        </div>}
 
         <div className="qb-filter-group">
           <label className="qb-filter-label">Difficulty</label>
@@ -193,6 +191,12 @@ export default function QuestionBank() {
 
       {/* ── Main ── */}
       <div className="qb-main">
+        <div className="qb-page-heading">
+          <h1>{termOnly ? 'Term CBT questions' : 'Question bank'}</h1>
+          {termOnly && <p>Current-term CBT questions. Past term questions remain in completed attempts but cannot be reused in a new term.</p>}
+          <button type="button" className="qb-filter-toggle" aria-expanded={filtersOpen} aria-controls="question-filters"
+            onClick={() => setFiltersOpen(value => !value)}>{filtersOpen ? 'Hide filters' : 'Show filters'}</button>
+        </div>
         <div className="qb-toolbar">
           <input
             className="qb-search"
@@ -235,6 +239,7 @@ export default function QuestionBank() {
       {/* ── Editor modal ── */}
       {editorOpen && (
         <QuestionEditor
+          termOnly={termOnly}
           question={editingQuestion}
           subjects={subjects}
           classLevels={classLevels}

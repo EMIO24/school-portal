@@ -7,6 +7,7 @@ FEATURES = {
     'timetable': 'Timetable builder',
     'notifications': 'Email and SMS tools (provider usage charged separately)',
     'cbt': 'Computer-based exams and DOCX question import',
+    'term_cbt': 'Current-term computer-based exams',
     'analytics': 'Advanced performance analytics',
     'bulk_import': 'Bulk student and staff imports',
     'promotion': 'Student promotion workflows',
@@ -14,7 +15,7 @@ FEATURES = {
 }
 PLAN_FEATURES = {
     'free': ['core'],
-    'basic': ['core', 'attendance', 'results', 'fees', 'timetable', 'notifications', 'bulk_import'],
+    'basic': ['core', 'attendance', 'results', 'fees', 'timetable', 'notifications', 'bulk_import', 'term_cbt'],
     'premium': list(FEATURES),
     # Enterprise inherits shipped capabilities; institutional modules are separate slices.
     'enterprise': list(FEATURES),
@@ -32,6 +33,10 @@ def required_feature(path):
         return None
     if path.startswith('/api/parent/dashboard/'):
         return 'results'
+    if path.startswith('/api/cbt/exams/') or path == '/api/cbt/exams':
+        return 'term_cbt'
+    if path.startswith('/api/cbt/questions/'):
+        return 'term_cbt'
     if path.startswith(('/api/students/bulk-import/', '/api/staff/bulk-import/')):
         return 'bulk_import'
     for prefix, feature in [('attendance', 'attendance'), ('results', 'results'), ('gradebook', 'results'),

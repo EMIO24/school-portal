@@ -14,15 +14,18 @@ export const ROLE_LINKS = {
     ['staff', 'Staff'], ['staff/new', 'Add staff'],
     ['subjects', 'Subjects'], ['subject-assignments', 'Subject assignments'],
     ['attendance', 'Attendance'], ['timetable', 'Timetable'], ['teaching', 'Teaching records'], ['curriculum', 'Curriculum'], ['results', 'Results'],
-    ['scratch-cards', 'Scratch cards'], ['question-bank', 'Question bank'],
+    ['scratch-cards', 'Scratch cards'], ['term-questions', 'Term CBT questions'], ['question-bank', 'Question bank'],
     ['exam-manager', 'Exams'], ['exam-results', 'Exam results'],
+    ['exam-papers', 'Exam papers'], ['online-assignments', 'Online assignments'],
     ['communications', 'Communication Centre'], ['notices', 'My notices'], ['notifications', 'Email and SMS'], ['notification-templates', 'Notification templates'],
     ['subscription', 'Portal subscription'], ['fee-setup', 'Fee setup'], ['fee-collection', 'Fee collection'], ['promotion', 'Promotion'],
   ].map(([path, label]) => [`/admin/${path}`, label]),
   teacher: [['dashboard', 'Dashboard'], ['attendance', 'Take attendance'], ['scores', 'Scores'],
-    ['domains', 'Student development'], ['timetable', 'My timetable'], ['teaching', "Today's lessons"], ['scheme', 'My scheme'], ['notices', 'Notices']].map(([path, label]) => [`/teacher/${path}`, label]),
+    ['domains', 'Student development'], ['timetable', 'My timetable'], ['teaching', "Today's lessons"], ['scheme', 'My scheme'],
+    ['term-questions', 'Term CBT questions'], ['question-bank', 'Question bank'], ['exam-manager', 'Exams'],
+    ['exam-papers', 'Exam papers'], ['online-assignments', 'Online assignments'], ['notices', 'Notices']].map(([path, label]) => [`/teacher/${path}`, label]),
   student: [['dashboard', 'Dashboard'], ['attendance', 'Attendance'], ['timetable', 'Timetable'],
-    ['results', 'Results'], ['exams', 'Exams'], ['fees', 'Fees'], ['performance', 'Performance'], ['notices', 'Notices']]
+    ['results', 'Results'], ['exams', 'Exams'], ['online-assignments', 'Assignments'], ['fees', 'Fees'], ['performance', 'Performance'], ['notices', 'Notices']]
     .map(([path, label]) => [`/student/${path}`, label]),
   parent: [['/parent/dashboard', 'Dashboard'], ['/parent/notices', 'Notices']],
   superadmin: [['/superadmin/appearance', 'Portal designs'], ['/superadmin/payments', 'Payments'], ['/superadmin/demo-requests', 'Demo requests'], ['/superadmin/dashboard', 'Schools'], ['/superadmin/team', 'Platform staff and activity']],
@@ -58,7 +61,9 @@ export default function PortalNavigation({ children }) {
   const platform = user.role === 'superadmin';
   const layout = platform ? 'platform' : knownDesign(school?.theme?.layout) ? school.theme.layout : 'classic';
   const structure = designStructure(layout);
-  const links = (ROLE_LINKS[user.role] || []).filter(([to]) => platform || hasFeature(school, featureForRoute(to)));
+  const links = (ROLE_LINKS[user.role] || []).filter(([to]) => platform ||
+    (hasFeature(school, featureForRoute(to)) &&
+      (!to.endsWith('/term-questions') || school?.entitlements?.plan === 'basic')));
   const active = links.find(([to]) => location.pathname === to);
   const name = platform ? 'Platform administration' : school?.name || 'School portal';
   const displayName = user.fullName || user.full_name || user.firstName || user.email;

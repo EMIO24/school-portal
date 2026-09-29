@@ -60,7 +60,7 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         from rest_framework.exceptions import ValidationError
-        if instance.is_published or instance.review_state != 'draft':
+        if instance.is_published or instance.review_state != 'draft' or instance.component_sources:
             raise ValidationError('Published grades are locked. Reopen through an audited correction first.')
         instance.delete()
 
