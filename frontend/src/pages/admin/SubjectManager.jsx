@@ -330,9 +330,10 @@ export default function SubjectManager() {
             {subjects.length} subject{subjects.length !== 1 ? "s" : ""} configured
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => setModal("create")}>
-          + New Subject
-        </button>
+        <div>
+          <Link className="btn btn-secondary" to="/admin/migration?type=subjects">↑ Import Subjects</Link>{' '}
+          <button className="btn btn-primary" onClick={() => setModal("create")}>+ New Subject</button>
+        </div>
       </div>
 
       {/* ── Filters ── */}
