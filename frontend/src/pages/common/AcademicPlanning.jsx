@@ -21,16 +21,15 @@ export default function AcademicPlanning() {
   const load = useCallback(async () => {
     setError('');
     try {
-      const [assignmentRes, planRes, resourceRes] = await Promise.all([
-        api.get('/api/curriculum/assignments/'),
-        api.get('/api/curriculum/lesson-plans/'),
-        api.get('/api/curriculum/resources/'),
-      ]);
+      const requests = admin
+        ? [Promise.resolve({ data: { assignments: [] } }), api.get('/api/curriculum/lesson-plans/'), api.get('/api/curriculum/resources/')]
+        : [api.get('/api/curriculum/assignments/'), api.get('/api/curriculum/lesson-plans/'), api.get('/api/curriculum/resources/')];
+      const [assignmentRes, planRes, resourceRes] = await Promise.all(requests);
       setAssignments(assignmentRes.data.assignments || []);
       setPlans(planRes.data.lesson_plans || []);
       setResources(resourceRes.data.resources || []);
     } catch (err) { setError(classifyRequestFailure(err).message); }
-  }, []);
+  }, [admin]);
 
   useEffect(() => { load(); }, [load]);
 
