@@ -123,7 +123,7 @@ test('Fees only offers payment for selected unpaid schedules and handles gateway
   expect(pay).toBeEnabled();
   fireEvent.click(pay);
   await waitFor(() => expect(window.alert).toHaveBeenCalledWith('Payment initiation failed. Please try again.'));
-  expect(api.post).toHaveBeenCalledWith('/api/fees/pay/initiate/', { student_id: 3, fee_schedule_ids: [2] });
+  expect(api.post).toHaveBeenCalledWith('/api/fees/pay/initiate/', { student_id: 3, allocations: [{ schedule_id: 2, amount: '1000' }] });
   expect(pay).toBeEnabled();
 });
 
