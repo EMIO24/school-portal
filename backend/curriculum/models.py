@@ -92,7 +92,7 @@ class CurriculumSource(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['school', 'name'], name='unique_curriculum_source_name_per_school'),
         ]
-        indexes = [models.Index(fields=['school', 'kind'])]
+        indexes = [models.Index(fields=['school', 'kind'], name='curriculum_c_school__ad1c0d_idx')]
 
 
 class CurriculumVersion(models.Model):
@@ -141,7 +141,7 @@ class CurriculumApplicability(models.Model):
                 name='unique_curriculum_applicability_scope',
             ),
         ]
-        indexes = [models.Index(fields=['school', 'session', 'class_level', 'subject'])]
+        indexes = [models.Index(fields=['school', 'session', 'class_level', 'subject'], name='curriculum_c_school__65dcb4_idx')]
 
     def clean(self):
         from django.core.exceptions import ValidationError
@@ -196,7 +196,7 @@ class SchoolAcademicStandard(models.Model):
                 name='unique_academic_standard_revision',
             ),
         ]
-        indexes = [models.Index(fields=['school', 'class_level', 'subject', 'status'])]
+        indexes = [models.Index(fields=['school', 'class_level', 'subject', 'status'], name='curriculum_s_school__e2f410_idx')]
 
     def clean(self):
         from django.core.exceptions import ValidationError
