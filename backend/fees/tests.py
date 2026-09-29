@@ -418,8 +418,18 @@ class PaystackTests(TestCase):
         payload.update(method='cash', amount_paid=20000)
         self.assertEqual(self.client.post('/api/fees/pay/manual/', payload, format='json', **self.headers).status_code, 400)
     def test_balance_change_requires_review_instead_of_double_credit(self):
-        self.start(); order = PaymentOrder.objects.get()
-        FeePayment.objects.create(school=self.school, student=self.student, fee_schedule=self.fee, amount_paid=10000, payment_date=date.today(), method='cash')
+        self.start()
+        order = PaymentOrder.objects.get()
+        self.client.force_authenticate(self.admin)
+        manual = self.client.post('/api/fees/pay/manual/', {
+            'student_id': self.student.pk,
+            'fee_schedule_id': self.fee.pk,
+            'amount_paid': '10000.00',
+            'payment_date': str(date.today()),
+            'method': 'cash',
+            'idempotency_key': 'paystack-race-manual-0001',
+        }, format='json', **self.headers)
+        self.assertEqual(manual.status_code, 201, manual.data)
         settled = settle(order.reference, self.data(order))
         self.assertEqual(settled.status, 'review')
         self.assertEqual(FeePayment.objects.count(), 1)
