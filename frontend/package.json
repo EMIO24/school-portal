@@ -13,7 +13,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "test": "react-scripts test",
+    "test": "node scripts/test-with-log.cjs",
     "eject": "react-scripts eject",
     "audit:api": "node scripts/audit-api.cjs",
     "test:coverage": "react-scripts test --watchAll=false --runInBand --silent --coverage --collectCoverageFrom=src/pages/**/*.jsx --collectCoverageFrom=src/components/**/*.jsx --collectCoverageFrom=src/App.js --coverageReporters=json-summary --coverageReporters=lcov --coverageReporters=text-summary --json --outputFile=test-results.json",
