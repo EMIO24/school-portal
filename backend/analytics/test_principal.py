@@ -154,6 +154,64 @@ class PrincipalOperationsTests(TestCase):
         self.assertIn('LessonRecord', data['note'])
         self.assertIn('TopicCoverage', data['note'])
 
+
+    def test_academic_history_compares_same_term_across_sessions_from_recorded_evidence(self):
+        current_plan = CurriculumPlan.objects.create(
+            school=self.school, term=self.term, class_level=self.level, subject=self.subject
+        )
+        current_week = CurriculumWeek.objects.create(plan=current_plan, number=1)
+        current_topic = CurriculumTopic.objects.create(week=current_week, title='Current topic', position=1)
+
+        previous_session = AcademicSession.objects.create(
+            school=self.school, name='2025/26',
+            start_date=date(2025, 9, 1), end_date=date(2026, 7, 31)
+        )
+        previous_term = Term.objects.create(
+            session=previous_session, name=self.term.name,
+            start_date=date(2025, 9, 1), end_date=date(2025, 12, 18)
+        )
+        previous_plan = CurriculumPlan.objects.create(
+            school=self.school, term=previous_term, class_level=self.level, subject=self.subject
+        )
+        previous_week = CurriculumWeek.objects.create(plan=previous_plan, number=1)
+        previous_topic = CurriculumTopic.objects.create(week=previous_week, title='Previous topic', position=1)
+        CurriculumTopic.objects.create(week=previous_week, title='Previous extra topic', position=2)
+
+        current_lesson = LessonRecord.objects.create(
+            school=self.school, slot_id=1001, date=self.day, term=self.term,
+            term_name=str(self.term), class_arm_id_snapshot=self.arm.pk, class_name=self.arm.full_name,
+            subject_id_snapshot=self.subject.pk, subject_name=self.subject.name, period_name='First',
+            period_start=time(8), period_end=time(9), scheduled_teacher_id=self.teacher.pk,
+            actual_teacher=self.teacher, outcome='delivered', recorded_by=self.admin
+        )
+        TopicCoverage.objects.create(
+            school=self.school, lesson=current_lesson, topic=current_topic,
+            state='covered', recorded_by=self.admin
+        )
+        previous_lesson = LessonRecord.objects.create(
+            school=self.school, slot_id=1002, date=date(2025, 9, 22), term=previous_term,
+            term_name=str(previous_term), class_arm_id_snapshot=self.arm.pk, class_name=self.arm.full_name,
+            subject_id_snapshot=self.subject.pk, subject_name=self.subject.name, period_name='First',
+            period_start=time(8), period_end=time(9), scheduled_teacher_id=self.teacher.pk,
+            actual_teacher=self.teacher, outcome='missed', recorded_by=self.admin
+        )
+        TopicCoverage.objects.create(
+            school=self.school, lesson=previous_lesson, topic=previous_topic,
+            state='partial', recorded_by=self.admin
+        )
+
+        data = self.read('academic_history').data
+        self.assertEqual(data['state'], 'comparable')
+        self.assertEqual(data['previous']['session_name'], '2025/26')
+        row = data['comparison'][0]
+        self.assertEqual(row['current']['planned_topics'], 1)
+        self.assertEqual(row['current']['covered_topics'], 1)
+        self.assertEqual(row['current']['lesson_outcomes']['delivered'], 1)
+        self.assertEqual(row['previous']['planned_topics'], 2)
+        self.assertEqual(row['previous']['partial_topics'], 1)
+        self.assertEqual(row['previous']['lesson_outcomes']['missed'], 1)
+        self.assertIn('not teacher-quality', data['note'])
+
     def test_curriculum_query_count_does_not_grow_per_topic(self):
         plan = CurriculumPlan.objects.create(school=self.school, term=self.term, class_level=self.level, subject=self.subject)
         week = CurriculumWeek.objects.create(plan=plan, number=1)
