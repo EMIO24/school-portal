@@ -5,6 +5,10 @@ from .standards import (
     AcademicStandardListView, AcademicStandardDetailView, AcademicStandardTopicCreateView,
     AcademicStandardTransitionView, AcademicStandardReviseView, AcademicStandardGeneratePlanView,
 )
+from .learning import (
+    LessonPlanListView, LessonPlanTransitionView,
+    AcademicResourceListView, AcademicResourceTransitionView, AcademicResourceReviseView,
+)
 
 urlpatterns = [
     path('standards/sources/', CurriculumSourceListView.as_view()),
@@ -16,6 +20,11 @@ urlpatterns = [
     path('standards/<int:standard_id>/transition/', AcademicStandardTransitionView.as_view()),
     path('standards/<int:standard_id>/revise/', AcademicStandardReviseView.as_view()),
     path('standards/<int:standard_id>/generate-plan/', AcademicStandardGeneratePlanView.as_view()),
+    path('lesson-plans/', LessonPlanListView.as_view()),
+    path('lesson-plans/<int:plan_id>/transition/', LessonPlanTransitionView.as_view()),
+    path('resources/', AcademicResourceListView.as_view()),
+    path('resources/<int:resource_id>/transition/', AcademicResourceTransitionView.as_view()),
+    path('resources/<int:resource_id>/revise/', AcademicResourceReviseView.as_view()),
     path('assignments/', AssignedPlansView.as_view()),
     path('plans/', PlanView.as_view()),
     path('topics/<int:topic_id>/', TopicView.as_view()),
