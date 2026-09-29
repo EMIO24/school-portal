@@ -23,6 +23,13 @@ const sections = {
     groups: [{ class_arm: 2, class_name: 'JSS1 A', class_level: 4, subject: 5, subject_name: 'Math',
       planned_topics: 3, covered_evidence_rows: 1, partial_evidence_rows: 0, lesson_outcomes: { delivered: 1 },
       assessment_questions_linked: 2, online_assignments_linked: 1 }] },
+  academic_history: { state: 'comparable', note: 'Counts describe recorded evidence; they are not teacher-quality or school-quality scores.',
+    current: { session_name: '2026/27', term_name: 'first' }, previous: { session_name: '2025/26', term_name: 'first' },
+    comparison: [{ class_level: 4, class_level_name: 'JSS1', subject: 5, subject_name: 'Math',
+      current: { planned_topics: 3, covered_topics: 1, lesson_outcomes: { delivered: 2 }, approved_resources: 1, result_average: '68.00',
+        curriculum: { source: 'Recorded curriculum', version: '2026' }, academic_standard: { title: 'Math standard', revision: 2 } },
+      previous: { planned_topics: 2, covered_topics: 1, lesson_outcomes: { delivered: 1 }, approved_resources: 0, result_average: '65.00',
+        curriculum: { source: 'Recorded curriculum', version: '2025' }, academic_standard: { title: 'Math standard', revision: 1 } } }] },
   results: { state: 'recorded', counts: { submitted: 1, approved: 0, published: 0 },
     groups: [{ class_arm: 2, class_name: 'JSS1 A', subject: 5, subject_name: 'Math', submitted: 1, approved: 0, published: 0 }] },
   finance: { state: 'unconfigured' },
@@ -47,10 +54,12 @@ test('shows source linked operational facts without analytics refresh', async ()
   expect(screen.getByText(/1 score entries submitted/)).toBeVisible();
   expect(screen.getByText(/Approved standards: 1/)).toBeVisible();
   expect(screen.getByText(/2 linked questions/)).toBeVisible();
+  expect(screen.getByText(/2026\/27 compared with 2025\/26/)).toBeVisible();
+  expect(screen.getByText(/Current: 1\/3 topics explicitly covered/)).toBeVisible();
   expect(screen.getByText(/No fee schedules configured/)).toBeVisible();
   expect(screen.queryByText(/School Average|Top 5 Students|Refresh Analytics/)).not.toBeInTheDocument();
   expect(screen.getByText('Outcome not recorded: 1').closest('a')).toHaveAttribute('href', expect.stringContaining('outcome=unresolved'));
-  expect(api.get).toHaveBeenCalledTimes(7);
+  expect(api.get).toHaveBeenCalledTimes(8);
 });
 
 test('one failed section can be retried while the others remain visible', async () => {
