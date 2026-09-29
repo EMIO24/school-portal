@@ -36,6 +36,89 @@ export default function ScoreEntry() {
   const loadVersion = useRef(0);
   const actionInFlight = useRef(false);
   const cellRefs = useRef({});   // { `${studentId}_${field}` : ref }
+  const scoreImportRef = useRef(null);
+
+  const downloadScoreTemplate = () => {
+    if (!students.length || !components.length) return;
+    const headers = ['admission_number', ...components.map(component => component.key)];
+    const lines = [headers.join(','), ...students.map(student =>
+      [student.admission_number || '', ...components.map(() => '')]
+        .map(value => '"' + String(value ?? '').replace(/"/g, '""') + '"')
+        .join(',')
+    )];
+    const url = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/csv' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'paideia_score_sheet.csv';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importScoreCSV = async file => {
+    if (!file) return;
+    setAlert(null);
+    if (!canRender || !students.length || !components.length) {
+      setAlert({ type: 'error', msg: 'Select a complete score sheet before importing scores.' });
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith('.csv') || file.size > 2 * 1024 * 1024) {
+      setAlert({ type: 'error', msg: 'Choose a CSV file of at most 2 MB.' });
+      return;
+    }
+    try {
+      const preview = parseCSVPreview(await file.text(), 2000);
+      const required = ['admission_number', ...components.map(component => component.key)];
+      const missing = required.filter(header => !preview.headers.includes(header));
+      if (missing.length) throw new Error('Missing columns: ' + missing.join(', '));
+
+      const byAdmission = new Map(
+        students.map(student => [String(student.admission_number || '').trim().toLowerCase(), student])
+      );
+      const seen = new Set();
+      const imported = {};
+
+      for (const row of preview.rows) {
+        const admission = String(row.admission_number || '').trim().toLowerCase();
+        if (!admission) throw new Error('Every row needs an admission_number.');
+        if (seen.has(admission)) throw new Error('Duplicate admission_number in the CSV: ' + row.admission_number);
+        seen.add(admission);
+
+        const student = byAdmission.get(admission);
+        if (!student) throw new Error('Student not found in this selected class: ' + row.admission_number);
+
+        const current = rows[student.id] || {};
+        if (current.is_published || current.review_state !== 'draft') {
+          throw new Error(student.full_name + ' has locked scores and cannot be changed by CSV import.');
+        }
+
+        const next = { ...current };
+        for (const component of components) {
+          const raw = String(row[component.key] ?? '').trim();
+          if (raw === '') {
+            next[component.key] = '';
+            continue;
+          }
+          const value = Number(raw);
+          const maximum = Number(component.maximum);
+          if (!Number.isFinite(value) || value < 0 || value > maximum) {
+            throw new Error(component.name + ' for ' + student.full_name + ' must be between 0 and ' + maximum + '.');
+          }
+          next[component.key] = value;
+        }
+        next.grade = '';
+        next.remark = 'Save to calculate grade';
+        imported[student.id] = next;
+      }
+
+      setRows(previous => ({ ...previous, ...imported }));
+      setDirty(true);
+      setAlert({ type: 'success', msg: preview.totalRows + ' score rows imported into this draft. Review them, then click Save Draft.' });
+    } catch (error) {
+      setAlert({ type: 'error', msg: error.message || 'Could not read this score CSV.' });
+    } finally {
+      if (scoreImportRef.current) scoreImportRef.current.value = '';
+    }
+  };
 
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
