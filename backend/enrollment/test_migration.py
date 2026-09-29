@@ -2,7 +2,7 @@ import time
 from datetime import date
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import CustomUser, ParentStudentLink
@@ -279,6 +279,7 @@ class MigrationCentreTests(TestCase):
         self.assertEqual(response.data['counts'], {'CREATE': 1, 'REUSE': 0, 'REJECT': 1})
         self.assertEqual(TimetableEntry.objects.count(), 0)
 
+    @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
     def test_400_student_simulation_is_retry_safe(self):
         session = AcademicSession.objects.create(school=self.school, name='2026/27',
             start_date=date(2026, 9, 1), end_date=date(2027, 7, 1), is_current=True)
