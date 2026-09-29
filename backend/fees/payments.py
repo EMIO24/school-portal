@@ -184,79 +184,114 @@ def result(order):
 
 class PaystackInitiateView(APIView):
     permission_classes = [IsAuthenticatedTenantUser]
+
     @transaction.atomic
     def post(self, request):
         School.objects.select_for_update().get(pk=request.tenant.pk)
         student = payment_student(request, request.data.get('student_id'))
-        ids = request.data.get('fee_schedule_ids')
-        if not isinstance(ids, list) or not 1 <= len(ids) <= 100 or any(type(i) is not int for i in ids) or len(set(ids)) != len(ids):
-            raise ValidationError('Select valid, distinct fee schedules.')
+        requested = request.data.get('allocations')
+        desired = {}
+
+        if requested is not None:
+            if (not isinstance(requested, list) or not 1 <= len(requested) <= 100 or
+                    any(not isinstance(item, dict) for item in requested)):
+                raise ValidationError('Choose one or more valid fee payment amounts.')
+            from .ledger import money
+            for item in requested:
+                schedule_id = item.get('schedule_id')
+                if type(schedule_id) is not int or schedule_id in desired:
+                    raise ValidationError('Choose valid, distinct fee schedules.')
+                try:
+                    desired[schedule_id] = money(item.get('amount'))
+                except ValueError as exc:
+                    raise ValidationError(str(exc))
+            ids = list(desired)
+        else:
+            ids = request.data.get('fee_schedule_ids')
+            if (not isinstance(ids, list) or not 1 <= len(ids) <= 100 or
+                    any(type(i) is not int for i in ids) or len(set(ids)) != len(ids)):
+                raise ValidationError('Select valid, distinct fee schedules.')
+
         if not student.current_class:
             raise ValidationError('Assign the student to a class first.')
-        schedules = list(FeeSchedule.objects.filter(school=request.tenant, pk__in=ids, class_level=student.current_class.class_level))
+        schedules = list(FeeSchedule.objects.filter(
+            school=request.tenant, pk__in=ids,
+            class_level=student.current_class.class_level
+        ).select_related('term__session', 'class_level', 'fee_category'))
         if len(schedules) != len(ids):
             raise ValidationError('One or more fees do not belong to this student.')
-        account = SchoolPaymentAccount.objects.filter(school=request.tenant, mode=settings.PAYSTACK_MODE).first()
+
+        account = SchoolPaymentAccount.objects.filter(
+            school=request.tenant, mode=settings.PAYSTACK_MODE).first()
         if not account:
-            return Response({'error': 'Your school has not connected its Paystack settlement account. Contact your school administrator.'}, status=409)
+            return Response({
+                'error': 'Your school has not connected its Paystack settlement account. Contact your school administrator.'
+            }, status=409)
+
         pending = PaymentOrder.objects.filter(
             student=student,
             kind='fees',
             mode=settings.PAYSTACK_MODE,
             status__in=['initializing', 'pending', 'review']
         )
-
         for previous in pending:
             previous_schedule_ids = {
                 allocation['schedule_id']
                 for allocation in previous.allocations
             }
-
             if not (set(ids) & previous_schedule_ids):
                 continue
-
-            # A Paystack checkout may have failed while the local order
-            # remained pending because no verify request/webhook followed.
             if previous.status == 'pending':
                 try:
                     service = PaystackService()
                     data = service.verify(previous.reference)
                     previous = settle(previous.reference, data)
                 except (RequestException, ValueError):
-                    # If Paystack cannot be reached or verification is invalid,
-                    # fail closed: do not risk creating a duplicate checkout.
                     return Response({
                         'error': 'The previous payment could not be verified. Check it before paying again.',
                         'reference': previous.reference
                     }, status=409)
-
-                # Failed/abandoned transactions are now reconciled and should
-                # no longer prevent the user from starting another checkout.
                 if previous.status == 'failed':
                     continue
-
-                # If verification discovered a successful payment, don't create
-                # another checkout. The outstanding balance will be recalculated
-                # below.
                 if previous.status == 'success':
                     continue
-
             return Response({
                 'error': 'A payment for these fees is awaiting verification. Check it before paying again.',
                 'reference': previous.reference
             }, status=409)
+
+        from .ledger import prepare_online_charge
         allocations = []
         for schedule in schedules:
-            remaining = payable_fee_amount(request.tenant, student, schedule)
-            if remaining is None:
-                return Response({'error': 'This fee account needs school review before online payment.'}, status=409)
-            outstanding = int(remaining * 100)
-            if outstanding:
-                allocations.append({'schedule_id': schedule.pk, 'amount_kobo': outstanding})
+            try:
+                _, remaining = prepare_online_charge(
+                    request.tenant, student, schedule, request.user)
+            except ValueError as exc:
+                return Response({'error': str(exc)}, status=409)
+            if remaining <= 0:
+                if schedule.pk in desired:
+                    raise ValidationError('One of the selected fees is already paid.')
+                continue
+            amount = desired.get(schedule.pk, remaining)
+            if amount > remaining:
+                raise ValidationError(
+                    f'{schedule.fee_category.name} payment cannot exceed its outstanding balance.')
+            allocations.append({
+                'schedule_id': schedule.pk,
+                'amount_kobo': int(amount * 100),
+            })
+
         if not allocations:
             raise ValidationError('The selected fees are already paid.')
-        return checkout(request, kind='fees', student=student, subaccount_code=account.subaccount_code,
-            amount_kobo=sum(a['amount_kobo'] for a in allocations), allocations=allocations)
+
+        return checkout(
+            request,
+            kind='fees',
+            student=student,
+            subaccount_code=account.subaccount_code,
+            amount_kobo=sum(item['amount_kobo'] for item in allocations),
+            allocations=allocations,
+        )
 
 
 class PaystackVerifyView(APIView):
