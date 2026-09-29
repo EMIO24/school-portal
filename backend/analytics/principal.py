@@ -1,6 +1,7 @@
 """Live, school-scoped operational read model for the Basic command centre."""
 from collections import defaultdict
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
@@ -252,34 +253,40 @@ def academic_history(school, term):
         scores = {
             (row['class_arm__class_level_id'], row['subject_id']): {
                 'records': row['records'],
-                'average': str(row['average'].quantize(__import__('decimal').Decimal('0.01'))) if row['average'] is not None else None,
+                'average': str(row['average'].quantize(Decimal('0.01'))) if row['average'] is not None else None,
             }
             for row in score_rows
         }
 
-        approved_resources = dict(AcademicResource.objects.filter(
-            school=school, status=AcademicResource.Status.APPROVED
-        ).values('class_level_id', 'subject_id').annotate(total=Count('id')).values_list(
-            models_key := 'class_level_id', 'subject_id', 'total'
-        )) if False else None
         resource_counts = {
             (row['class_level_id'], row['subject_id']): row['total']
             for row in AcademicResource.objects.filter(
-                school=school, status=AcademicResource.Status.APPROVED
+                school=school, status=AcademicResource.Status.APPROVED,
+                approved_at__date__lte=target.end_date
             ).values('class_level_id', 'subject_id').annotate(total=Count('id'))
         }
         applicability = {
             (row['class_level_id'], row['subject_id']): {
+                'version_id': row['curriculum_version_id'],
                 'source': row['curriculum_version__source__name'],
                 'version': row['curriculum_version__label'],
             }
             for row in CurriculumApplicability.objects.filter(
                 school=school, session=target.session
             ).values(
-                'class_level_id', 'subject_id',
+                'class_level_id', 'subject_id', 'curriculum_version_id',
                 'curriculum_version__source__name', 'curriculum_version__label'
             )
         }
+        approved_standards = {}
+        for row in SchoolAcademicStandard.objects.filter(
+            school=school, status=SchoolAcademicStandard.Status.APPROVED,
+            approved_at__date__lte=target.end_date,
+        ).order_by('class_level_id', 'subject_id', 'curriculum_version_id', '-revision').values(
+            'class_level_id', 'subject_id', 'curriculum_version_id', 'title', 'revision'
+        ):
+            key = (row['class_level_id'], row['subject_id'], row['curriculum_version_id'])
+            approved_standards.setdefault(key, {'title': row['title'], 'revision': row['revision']})
 
         groups = []
         topics_per_plan = defaultdict(int)
@@ -302,6 +309,9 @@ def academic_history(school, term):
                 'result_records': scores.get(key, {}).get('records', 0),
                 'result_average': scores.get(key, {}).get('average'),
                 'curriculum': applicability.get(key),
+                'academic_standard': approved_standards.get(
+                    (plan.class_level_id, plan.subject_id, (applicability.get(key) or {}).get('version_id'))
+                ),
             })
         return {
             'term': target.pk,
