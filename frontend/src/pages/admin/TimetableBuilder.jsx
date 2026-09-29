@@ -144,8 +144,9 @@ export default function TimetableBuilder() {
       <div className="tt-toolbar">
         <h1 className="tt-toolbar__title">
           Timetable Builder
-          <small>Add periods, then click an empty slot to assign a lesson</small>
+          <small>Add periods, import many entries, or click an empty slot to assign a lesson</small>
         </h1>
+        <Link className="btn btn-secondary" to="/admin/migration?type=timetable">↑ Import Timetable</Link>
 
         <div className="tt-selector-group">
           <label htmlFor="timetable-term">Term</label>
