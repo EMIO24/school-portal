@@ -98,13 +98,17 @@ class BasicOperationsTests(TestCase):
         SubjectAssignment.objects.filter(pk=self.assignment.pk).delete()
         self.assertEqual(self.client.get(url).status_code,403)
 
-    def test_basic_import_is_available_but_cbt_is_not(self):
+    def test_basic_import_and_current_term_cbt_are_available_but_premium_assessments_are_not(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
         content = b'first_name,last_name,gender,dob,class_level,guardian_name,guardian_phone\nAda,Okafor,female,2012-01-01,JSS1,Parent,08000000000'
         response = self.client.post('/api/students/bulk-import/', {'file':SimpleUploadedFile('students.csv',content)}, format='multipart')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['success_count'], 1, response.data)
-        self.assertEqual(self.client.get('/api/cbt/exams/').status_code, 403)
+        self.assertEqual(self.client.get('/api/cbt/exams/').status_code, 200)
+        for endpoint in ('/api/cbt/topics/', '/api/cbt/modes/', '/api/cbt/papers/',
+                         '/api/cbt/assignments/', '/api/cbt/questions/curriculum-topics/'):
+            with self.subTest(endpoint=endpoint):
+                self.assertEqual(self.client.get(endpoint).status_code, 403)
 
     def test_setup_uses_only_current_school_data_and_protects_platform_fields(self):
         self.client.post(f'/api/sessions/{self.session.pk}/set-current/')
