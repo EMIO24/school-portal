@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
         ('academics', '0002_alter_term_next_term_begins'),
         ('curriculum', '0001_initial'),
         ('enrollment', '0006_migrationstudentreference_and_more'),
-        ('tenants', '0006_school_onboarding_completed_at_school_onboarding_step_and_more'),
+        ('tenants', '0005_alter_school_subscription_plan'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
