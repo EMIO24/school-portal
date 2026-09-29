@@ -6,6 +6,8 @@ import re
 from datetime import datetime
 from decimal import Decimal
 
+from openpyxl import load_workbook
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
@@ -493,26 +495,111 @@ def create(domain, row, school, data):
             subject=data['subject'], class_arm=data['arm'], term=data['term'], session=data['term'].session)
 
 
-def parse_upload(request, domain):
-    if domain not in DOMAINS: raise ValidationError({'error': 'Unsupported migration type.'})
-    upload = request.FILES.get('file')
-    if not upload or not upload.name.lower().endswith('.csv') or upload.size > MAX_BYTES:
-        raise ValidationError({'error': 'Upload a UTF-8 CSV file of at most 2 MB.'})
+def _tabular_value(cell):
+    value = cell.value if hasattr(cell, 'value') else cell
+    if value is None:
+        return ''
+    if hasattr(cell, 'data_type') and cell.data_type == 'f':
+        return '=' + str(value)
+    if isinstance(value, datetime):
+        return value.isoformat(sep=' ')
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _read_tabular_upload(upload):
+    name = (upload.name or '').lower()
+    if not name.endswith(('.csv', '.xlsx')) or upload.size > MAX_BYTES:
+        raise ValidationError({'error': 'Upload a CSV or Excel .xlsx file of at most 2 MB.'})
+    blob = upload.read(MAX_BYTES + 1)
+    if len(blob) > MAX_BYTES:
+        raise ValidationError({'error': 'Spreadsheet is larger than 2 MB.'})
+
+    if name.endswith('.csv'):
+        try:
+            content = blob.decode('utf-8-sig')
+        except UnicodeDecodeError:
+            raise ValidationError({'error': 'Save CSV files as UTF-8, or upload an Excel .xlsx file.'})
+        if '\x00' in content:
+            raise ValidationError({'error': 'CSV contains invalid characters.'})
+        try:
+            reader = csv.DictReader(io.StringIO(content, newline=''), strict=True)
+            headers = reader.fieldnames or []
+            indexed_rows = [(number, raw) for number, raw in enumerate(reader, 2)]
+        except csv.Error:
+            raise ValidationError({'error': 'CSV structure is malformed.'})
+        if len(indexed_rows) > MAX_ROWS:
+            raise ValidationError({'error': 'Import at most 2,000 rows per file.'})
+        return headers, indexed_rows, 'csv'
+
     try:
-        content = upload.read(MAX_BYTES + 1).decode('utf-8-sig')
-    except UnicodeDecodeError:
-        raise ValidationError({'error': 'Save the file as UTF-8 CSV.'})
-    if len(content.encode('utf-8')) > MAX_BYTES or '\x00' in content:
-        raise ValidationError({'error': 'CSV is too large or contains invalid characters.'})
-    try:
-        reader = csv.DictReader(io.StringIO(content, newline=''), strict=True)
-        headers = reader.fieldnames or []
-    except csv.Error:
-        raise ValidationError({'error': 'CSV structure is malformed.'})
+        workbook = load_workbook(io.BytesIO(blob), read_only=True, data_only=False)
+        sheet = workbook.active
+        iterator = sheet.iter_rows()
+        header_cells = next(iterator, None)
+        headers = [_tabular_value(cell).strip() for cell in (header_cells or [])]
+        indexed_rows = []
+        for worksheet_row, cells in enumerate(iterator, 2):
+            values = [_tabular_value(cell) for cell in cells[:len(headers)]]
+            if not any(value.strip() for value in values):
+                continue
+            if len(indexed_rows) >= MAX_ROWS:
+                raise ValidationError({'error': 'Import at most 2,000 rows per file.'})
+            indexed_rows.append((worksheet_row, dict(zip(headers, values))))
+        workbook.close()
+    except ValidationError:
+        raise
+    except Exception:
+        raise ValidationError({'error': 'Excel workbook could not be read. Upload a valid .xlsx file.'})
+    return headers, indexed_rows, 'xlsx'
+
+
+def _validate_headers(headers):
     if not headers or any(not h.strip() for h in headers) or len(headers) != len(set(headers)) or len(headers) != len(set(map(normalized, headers))):
-        raise ValidationError({'error': 'CSV headers must be present and unique.'})
+        raise ValidationError({'error': 'Spreadsheet headers must be present and unique.'})
     if any(normalized(h) in PROTECTED or any(word in normalized(h) for word in ('password', 'secret', 'token')) for h in headers):
         raise ValidationError({'error': 'Remove system-controlled columns such as IDs, roles, passwords or school.'})
+
+
+def _suggest_mapping(domain, headers):
+    allowed = set(DOMAINS[domain][1])
+    mapping = {}
+    for header in headers:
+        normalized_header = normalized(header)
+        candidate = next((field for field in allowed if normalized(field) == normalized_header), None)
+        candidate = candidate or ALIASES.get(normalized_header)
+        if candidate in allowed and candidate not in mapping.values():
+            mapping[header] = candidate
+    return mapping
+
+
+def inspect_upload(request, domain):
+    if domain not in DOMAINS:
+        raise ValidationError({'error': 'Unsupported migration type.'})
+    upload = request.FILES.get('file')
+    if not upload:
+        raise ValidationError({'error': 'Choose a CSV or Excel .xlsx file.'})
+    headers, indexed_rows, file_format = _read_tabular_upload(upload)
+    _validate_headers(headers)
+    return {
+        'headers': headers,
+        'rows': [raw for _, raw in indexed_rows],
+        'row_numbers': [number for number, _ in indexed_rows],
+        'total_rows': len(indexed_rows),
+        'suggested_mapping': _suggest_mapping(domain, headers),
+        'format': file_format,
+    }
+
+
+def parse_upload(request, domain):
+    if domain not in DOMAINS:
+        raise ValidationError({'error': 'Unsupported migration type.'})
+    upload = request.FILES.get('file')
+    if not upload:
+        raise ValidationError({'error': 'Choose a CSV or Excel .xlsx file.'})
+    headers, indexed_rows, _ = _read_tabular_upload(upload)
+    _validate_headers(headers)
     try:
         supplied = json.loads(request.data.get('mapping', '{}'))
     except (TypeError, ValueError):
@@ -524,26 +611,18 @@ def parse_upload(request, domain):
     if any(not isinstance(dest, str) or dest not in allowed for dest in chosen) or len(set(chosen)) != len(chosen):
         raise ValidationError({'error': 'Mapping has an unsupported or duplicate destination.'})
     mapping = {source: dest for source, dest in supplied.items() if dest not in ('', None)}
-    for header in headers:
-        if header in supplied: continue
-        normalized_header = normalized(header)
-        candidate = next((field for field in allowed if normalized(field) == normalized_header), None)
-        candidate = candidate or ALIASES.get(normalized_header)
-        if candidate in allowed and candidate not in mapping.values(): mapping[header] = candidate
+    for source, dest in _suggest_mapping(domain, headers).items():
+        if source not in supplied and dest not in mapping.values():
+            mapping[source] = dest
     if set(DOMAINS[domain][0]) - set(mapping.values()):
         raise ValidationError({'error': 'Map required columns: ' + ', '.join(sorted(set(DOMAINS[domain][0]) - set(mapping.values())))})
-    try:
-        raw_rows = list(reader)
-    except csv.Error:
-        raise ValidationError({'error': 'CSV structure is malformed.'})
-    if len(raw_rows) > MAX_ROWS: raise ValidationError({'error': 'Import at most 2,000 rows per file.'})
     rows = []
-    for number, raw in enumerate(raw_rows, 2):
+    for number, raw in indexed_rows:
         if None in raw or any(value is None for value in raw.values()):
             rows.append((number, None, ('file', 'Column count does not match the header.')))
             continue
-        row = {dest: raw[source].strip() for source, dest in mapping.items()}
-        if any(value.lstrip().startswith(('=', '@')) for value in row.values()):
+        row = {dest: str(raw[source]).strip() for source, dest in mapping.items()}
+        if any(value.lstrip().startswith(('=', '+', '@')) for value in row.values()):
             rows.append((number, None, ('file', 'Formula-like content is not accepted in migration fields.')))
         else:
             rows.append((number, row, None))
@@ -569,8 +648,10 @@ class MigrationCentre(APIView):
             for key, (required, columns) in DOMAINS.items()]})
 
     def post(self, request, domain, operation):
-        if operation not in ('validate', 'import'):
-            raise ValidationError({'error': 'Choose validate or import.'})
+        if operation not in ('inspect', 'validate', 'import'):
+            raise ValidationError({'error': 'Choose inspect, validate or import.'})
+        if operation == 'inspect':
+            return Response(inspect_upload(request, domain))
         rows, ignored, mapping = parse_upload(request, domain)
         school = request.tenant
         results, seen, seen_emails, seen_people = [], set(), set(), set()
