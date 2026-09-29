@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { classifyRequestFailure } from '../../services/requestState';
 import '../teacher/TeachingOperations.css';
@@ -52,7 +53,8 @@ export default function AcademicStandards() {
 
   return <main className="teaching-page">
     <header className="teaching-header"><div><h1>Academic Standards</h1>
-      <p>Record curriculum provenance, approve the school academic standard, and preserve each revision across sessions.</p></div></header>
+      <p>Record curriculum provenance, approve the school academic standard, and preserve each revision across sessions.</p></div>
+      <Link to="/admin/migration?type=standard_topics">↑ Import Standard Topics</Link></header>
     {error && <p role="alert" className="teaching-error">{error}</p>}
     {notice && <p role="status" className="teaching-notice">{notice}</p>}
 
