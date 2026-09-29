@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import api from "../../services/api";
 import "./FeeSetup.css";
 
@@ -125,7 +126,7 @@ export default function FeeSetup() {
 
   return (
     <main className="page-shell fee-setup">
-      <h1 className="page-title">Fee Setup</h1>
+      <div className="section-header-row"><h1 className="page-title">Fee Setup</h1><Link className="btn-secondary btn-sm" to="/admin/migration?type=fee_schedules">↑ Import Fee Schedule</Link></div>
       {toast && <div className="fee-toast">{toast}</div>}
 
       <div className="fee-setup-layout">
