@@ -1,4 +1,4 @@
-"""Bounded CSV migration of a school's current operational records."""
+"""Bounded CSV/Excel migration of a school's current operational records."""
 import csv
 import io
 import json
@@ -622,7 +622,7 @@ def parse_upload(request, domain):
             rows.append((number, None, ('file', 'Column count does not match the header.')))
             continue
         row = {dest: str(raw[source]).strip() for source, dest in mapping.items()}
-        if any(value.lstrip().startswith(('=', '+', '@')) for value in row.values()):
+        if any(value.lstrip().startswith(('=', '@')) for value in row.values()):
             rows.append((number, None, ('file', 'Formula-like content is not accepted in migration fields.')))
         else:
             rows.append((number, row, None))
