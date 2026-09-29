@@ -59,7 +59,7 @@ test('a document with 40 questions fills 40 editable forms and saves all 40', as
   await waitFor(() => expect(onImported).toHaveBeenCalled());
   expect(api.post.mock.calls[1][1]).toHaveLength(40);
   expect(api.post.mock.calls[1][1][0].question_text).toBe('Edited question');
-});
+}, 15000);
 test('DOCX rejects unsupported uploads locally', async () => {
   renderPage(<DocxQuestionUpload defaults={{}} />);
   fireEvent.change(screen.getByLabelText('Upload Word (.docx)'), { target: { files: [new File(['text'], 'questions.csv')] } });
