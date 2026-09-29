@@ -3,6 +3,7 @@ import {referenceOptions} from '../../services/referenceOptions';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import GradeCell, { GradeBadge, ComputedCell, rowClass } from '../../components/teacher/GradeCell';
 import api from '../../services/api';
+import { parseCSVPreview } from '../../components/admin/BulkImport';
 import {scoringError} from '../admin/ScoringConfiguration';
 import '../../styles/ScoreEntry.css';
 
@@ -258,6 +259,9 @@ export default function ScoreEntry() {
               {saving ? 'Saving…' : '💾 Save Draft'}
             </button>
             <button className="gb-btn gb-btn--draft" disabled={saving || dirty || !students.length || students.some(s=>rows[s.id]?.review_state !== 'draft' || rows[s.id]?.is_published)} onClick={submit}>Submit for review</button>
+            <button type="button" className="gb-btn gb-btn--draft" disabled={saving || !canRender || !students.length} onClick={downloadScoreTemplate}>Download CSV Template</button>
+            <button type="button" className="gb-btn gb-btn--draft" disabled={saving || !canRender || !students.length} onClick={() => scoreImportRef.current?.click()}>Import CSV</button>
+            <input ref={scoreImportRef} aria-label="Score CSV file" type="file" accept=".csv,text/csv" hidden onChange={event => importScoreCSV(event.target.files[0])} />
           </div>
         </div>
       </div>
