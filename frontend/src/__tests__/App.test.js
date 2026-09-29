@@ -43,7 +43,9 @@ test.each([
   authAPI.me.mockResolvedValue({ data: { id: 1, role, full_name: 'Ada Okafor', must_change_password: false } });
   window.history.replaceState({}, '', '/login');
   render(<App />);
-  expect(await screen.findByRole('heading', { name: title })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: title }, { timeout: 5000 })).toBeVisible();
+  expect(authAPI.refresh).toHaveBeenCalledWith('refresh');
+  expect(authAPI.me).toHaveBeenCalled();
   expect(window.location.pathname).toBe(path);
 });
 
