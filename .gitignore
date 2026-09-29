@@ -38,3 +38,6 @@ frontend/.env.production.local
 .restores/
 
 .venv-release/
+
+# Automatic local test output
+/test-logs/
