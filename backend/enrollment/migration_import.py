@@ -122,109 +122,23 @@ def arm_for(school, level, value):
 def identify(domain, row):
     if domain == 'opening_balances': return row['student_ref'].casefold()
     if domain == 'timetable':
-        return (row['class_level'].casefold(), row['class_arm'].casefold(), row['day'].casefold(), row['period'].casefold())
+        return (row['class_level'].casefold(), row['class_arm'].casefold(),
+                row['day'].casefold(), row['period'].casefold())
     if domain == 'fee_schedules':
         return (row['class_level'].casefold(), row['fee_category'].casefold())
     if domain == 'standard_topics':
-        return (row['standard_title'].casefold(), row['class_level'].casefold(), row['subject_code'].casefold(),
-                row['term'].casefold(), row['position'])
+        return (row['standard_title'].casefold(), row['class_level'].casefold(),
+                row['subject_code'].casefold(), row['term'].casefold(), row['position'])
     if domain == 'students': return row['student_ref'].casefold()
     if domain in ('staff', 'parents'): return row['email'].casefold()
-    if domain == 'parent_links': return (row['parent_email'].casefold(), row['student_ref'].casefold())
-    if domain == 'timetable':
-        term = Term.objects.filter(session__school=school, is_current=True).select_related('session').first()
-        if not term: raise ValueError('term', 'Set the current academic session and term before importing timetable entries.')
-        _, level = level_for(school, row['class_level'])
-        arm = arm_for(school, level, row['class_arm'])
-        subject = Subject.objects.filter(school=school, code__iexact=row['subject_code']).first()
-        if not subject: raise ValueError('subject_code', 'Import this subject in this school first.')
-        teacher_email = email(row['teacher_email'], 'teacher_email')
-        teacher_profile = StaffProfile.objects.filter(
-            school=school, user__school=school, user__role='teacher', user__is_active=True,
-            employment_status='active', user__email__iexact=teacher_email
-        ).select_related('user').first()
-        if not teacher_profile: raise ValueError('teacher_email', 'Choose an active teacher in this school.')
-        day = row['day'].strip().upper()[:3]
-        aliases = {'MONDAY':'MON','TUESDAY':'TUE','WEDNESDAY':'WED','THURSDAY':'THU','FRIDAY':'FRI'}
-        day = aliases.get(row['day'].strip().upper(), day)
-        if day not in dict(TimetableEntry.Day.choices): raise ValueError('day', 'Use Monday-Friday or MON-FRI.')
-        period_text = row['period'].strip()
-        periods = list(Period.objects.filter(school=school, is_break=False))
-        period = next((p for p in periods if p.name.casefold() == period_text.casefold() or str(p.order_index) == period_text), None)
-        if not period: raise ValueError('period', 'Choose an existing non-break period by exact name or order number.')
-        assignment = SubjectAssignment.objects.filter(
-            school=school, teacher=teacher_profile, class_arm=arm, subject=subject, term=term
-        ).exists()
-        if not assignment: raise ValueError('teacher_email', 'Assign this teacher to the class and subject before importing the timetable.')
-        existing = TimetableEntry.objects.filter(school=school, term=term, class_arm=arm, day_of_week=day, period=period).first()
-        if existing:
-            if existing.subject_id != subject.pk or existing.teacher_id != teacher_profile.user_id:
-                raise ValueError('period', 'This class already has a different timetable entry in this slot.')
-            return 'REUSE', {}
-        conflict = TimetableEntry.objects.filter(
-            school=school, term=term, teacher=teacher_profile.user, day_of_week=day, period=period
-        ).first()
-        if conflict: raise ValueError('teacher_email', f'Teacher is already scheduled for {conflict.class_arm} in this slot.')
-        return 'CREATE', {'term': term, 'arm': arm, 'subject': subject, 'teacher': teacher_profile.user,
-                          'day': day, 'period': period}
-    if domain == 'fee_schedules':
-        term = Term.objects.filter(session__school=school, is_current=True).first()
-        if not term: raise ValueError('term', 'Set the current academic term before importing fee schedules.')
-        _, level = level_for(school, row['class_level'])
-        category = FeeCategory.objects.filter(school=school, name__iexact=row['fee_category'].strip()).first()
-        if not category: raise ValueError('fee_category', 'Create this fee category before importing schedules.')
-        try:
-            amount = Decimal(row['amount'])
-            if not amount.is_finite() or amount <= 0 or amount != amount.quantize(Decimal('0.01')):
-                raise ValueError()
-        except Exception:
-            raise ValueError('amount', 'Enter a positive fee amount with at most two decimal places.')
-        due = date(row.get('due_date', ''), 'due_date')
-        existing = FeeSchedule.objects.filter(school=school, term=term, class_level=level, fee_category=category).first()
-        if existing:
-            if existing.amount != amount or existing.due_date != due:
-                raise ValueError('amount', 'A fee schedule already exists with different details; review it manually.')
-            return 'REUSE', {}
-        return 'CREATE', {'term': term, 'level': level, 'category': category, 'amount': amount, 'due_date': due}
-    if domain == 'standard_topics':
-        _, level = level_for(school, row['class_level'])
-        subject = Subject.objects.filter(school=school, code__iexact=row['subject_code']).first()
-        if not subject: raise ValueError('subject_code', 'Import this subject in this school first.')
-        standard = SchoolAcademicStandard.objects.filter(
-            school=school, class_level=level, subject=subject, title__iexact=row['standard_title'].strip(),
-            status=SchoolAcademicStandard.Status.DRAFT
-        ).order_by('-revision').first()
-        if not standard: raise ValueError('standard_title', 'Choose an existing draft academic standard with this title/class/subject.')
-        term_name = row['term'].strip().casefold()
-        if term_name not in ('first','second','third'): raise ValueError('term', 'Use first, second or third.')
-        try:
-            position = int(row['position']); week = int(row['recommended_week'])
-            if position < 1 or position > 200 or week < 1 or week > 52: raise ValueError()
-        except Exception:
-            raise ValueError('position', 'Position must be 1-200 and recommended_week must be 1-52.')
-        requirement = row.get('requirement', 'required').strip().casefold() or 'required'
-        if requirement not in dict(AcademicStandardTopic.Requirement.choices):
-            raise ValueError('requirement', 'Use required or enrichment.')
-        title = row['title'].strip()
-        if not title or len(title) > 180: raise ValueError('title', 'Provide a topic title of at most 180 characters.')
-        objectives = [item.strip() for item in row.get('objectives', '').split(';') if item.strip()]
-        if len(objectives) > 30 or any(len(item) > 300 for item in objectives):
-            raise ValueError('objectives', 'Use up to 30 semicolon-separated objectives, each at most 300 characters.')
-        if len({item.casefold() for item in objectives}) != len(objectives):
-            raise ValueError('objectives', 'Duplicate objectives are not allowed.')
-        existing = AcademicStandardTopic.objects.filter(standard=standard, term=term_name, position=position).first()
-        if existing:
-            if existing.title.casefold() != title.casefold():
-                raise ValueError('position', 'This standard/term position already has a different topic.')
-            return 'REUSE', {}
-        return 'CREATE', {'standard': standard, 'term': term_name, 'position': position, 'week': week,
-                          'title': title, 'requirement': requirement, 'objectives': objectives}
-    if domain == 'classes': return (row['class_level'].casefold(), row['class_arm'].casefold())
-    if domain == 'subjects': return row['code'].casefold()
+    if domain == 'parent_links':
+        return (row['parent_email'].casefold(), row['student_ref'].casefold())
+    if domain == 'classes':
+        return (row['class_level'].casefold(), row['class_arm'].casefold())
+    if domain == 'subjects':
+        return row['code'].casefold()
     return (row['teacher_email'].casefold(), row['class_level'].casefold(),
             row['class_arm'].casefold(), row['subject_code'].casefold())
-
-
 def assess(domain, row, school):
     """Return (action, resolved data); perform no writes."""
     if domain == 'opening_balances':
@@ -260,6 +174,133 @@ def assess(domain, row, school):
             raise ValueError('student_ref', 'This account already has activity; review its opening manually.')
         return 'CREATE', {'student': student, 'signed': signed, 'effective': effective,
                           'reason': reason, 'reference': reference}
+    if domain == 'timetable':
+        term = Term.objects.filter(session__school=school, is_current=True).select_related('session').first()
+        if not term:
+            raise ValueError('term', 'Set the current academic session and term before importing timetable entries.')
+        _, level = level_for(school, row['class_level'])
+        arm = arm_for(school, level, row['class_arm'])
+        subject = Subject.objects.filter(school=school, code__iexact=row['subject_code']).first()
+        if not subject:
+            raise ValueError('subject_code', 'Import this subject in this school first.')
+        teacher_email = email(row['teacher_email'], 'teacher_email')
+        teacher_profile = StaffProfile.objects.filter(
+            school=school, user__school=school, user__role='teacher', user__is_active=True,
+            employment_status='active', user__email__iexact=teacher_email
+        ).select_related('user').first()
+        if not teacher_profile:
+            raise ValueError('teacher_email', 'Choose an active teacher in this school.')
+        day_text = row['day'].strip().upper()
+        aliases = {
+            'MONDAY': 'MON', 'TUESDAY': 'TUE', 'WEDNESDAY': 'WED',
+            'THURSDAY': 'THU', 'FRIDAY': 'FRI',
+        }
+        day = aliases.get(day_text, day_text[:3])
+        if day not in dict(TimetableEntry.Day.choices):
+            raise ValueError('day', 'Use Monday-Friday or MON-FRI.')
+        period_text = row['period'].strip()
+        periods = list(Period.objects.filter(school=school, is_break=False))
+        period = next((
+            p for p in periods
+            if p.name.casefold() == period_text.casefold() or str(p.order_index) == period_text
+        ), None)
+        if not period:
+            raise ValueError('period', 'Choose an existing non-break period by exact name or order number.')
+        if not SubjectAssignment.objects.filter(
+            school=school, teacher=teacher_profile, class_arm=arm, subject=subject, term=term
+        ).exists():
+            raise ValueError('teacher_email', 'Assign this teacher to the class and subject before importing the timetable.')
+        existing = TimetableEntry.objects.filter(
+            school=school, term=term, class_arm=arm, day_of_week=day, period=period
+        ).first()
+        if existing:
+            if existing.subject_id != subject.pk or existing.teacher_id != teacher_profile.user_id:
+                raise ValueError('period', 'This class already has a different timetable entry in this slot.')
+            return 'REUSE', {}
+        conflict = TimetableEntry.objects.filter(
+            school=school, term=term, teacher=teacher_profile.user, day_of_week=day, period=period
+        ).first()
+        if conflict:
+            raise ValueError('teacher_email', f'Teacher is already scheduled for {conflict.class_arm} in this slot.')
+        return 'CREATE', {
+            'term': term, 'arm': arm, 'subject': subject, 'teacher': teacher_profile.user,
+            'day': day, 'period': period,
+        }
+
+    if domain == 'fee_schedules':
+        term = Term.objects.filter(session__school=school, is_current=True).first()
+        if not term:
+            raise ValueError('term', 'Set the current academic term before importing fee schedules.')
+        _, level = level_for(school, row['class_level'])
+        category = FeeCategory.objects.filter(
+            school=school, name__iexact=row['fee_category'].strip()
+        ).first()
+        if not category:
+            raise ValueError('fee_category', 'Create this fee category before importing schedules.')
+        try:
+            amount = Decimal(row['amount'])
+            if not amount.is_finite() or amount <= 0 or amount != amount.quantize(Decimal('0.01')):
+                raise ValueError()
+        except Exception:
+            raise ValueError('amount', 'Enter a positive fee amount with at most two decimal places.')
+        due = date(row.get('due_date', ''), 'due_date')
+        existing = FeeSchedule.objects.filter(
+            school=school, term=term, class_level=level, fee_category=category
+        ).first()
+        if existing:
+            if existing.amount != amount or existing.due_date != due:
+                raise ValueError('amount', 'A fee schedule already exists with different details; review it manually.')
+            return 'REUSE', {}
+        return 'CREATE', {
+            'term': term, 'level': level, 'category': category,
+            'amount': amount, 'due_date': due,
+        }
+
+    if domain == 'standard_topics':
+        _, level = level_for(school, row['class_level'])
+        subject = Subject.objects.filter(school=school, code__iexact=row['subject_code']).first()
+        if not subject:
+            raise ValueError('subject_code', 'Import this subject in this school first.')
+        standard = SchoolAcademicStandard.objects.filter(
+            school=school, class_level=level, subject=subject,
+            title__iexact=row['standard_title'].strip(),
+            status=SchoolAcademicStandard.Status.DRAFT,
+        ).order_by('-revision').first()
+        if not standard:
+            raise ValueError('standard_title', 'Choose an existing draft academic standard with this title/class/subject.')
+        term_name = row['term'].strip().casefold()
+        if term_name not in ('first', 'second', 'third'):
+            raise ValueError('term', 'Use first, second or third.')
+        try:
+            position = int(row['position'])
+            week = int(row['recommended_week'])
+            if position < 1 or position > 200 or week < 1 or week > 52:
+                raise ValueError()
+        except Exception:
+            raise ValueError('position', 'Position must be 1-200 and recommended_week must be 1-52.')
+        requirement = row.get('requirement', 'required').strip().casefold() or 'required'
+        if requirement not in dict(AcademicStandardTopic.Requirement.choices):
+            raise ValueError('requirement', 'Use required or enrichment.')
+        title = row['title'].strip()
+        if not title or len(title) > 180:
+            raise ValueError('title', 'Provide a topic title of at most 180 characters.')
+        objectives = [item.strip() for item in row.get('objectives', '').split(';') if item.strip()]
+        if len(objectives) > 30 or any(len(item) > 300 for item in objectives):
+            raise ValueError('objectives', 'Use up to 30 semicolon-separated objectives, each at most 300 characters.')
+        if len({item.casefold() for item in objectives}) != len(objectives):
+            raise ValueError('objectives', 'Duplicate objectives are not allowed.')
+        existing = AcademicStandardTopic.objects.filter(
+            standard=standard, term=term_name, position=position
+        ).first()
+        if existing:
+            if existing.title.casefold() != title.casefold():
+                raise ValueError('position', 'This standard/term position already has a different topic.')
+            return 'REUSE', {}
+        return 'CREATE', {
+            'standard': standard, 'term': term_name, 'position': position, 'week': week,
+            'title': title, 'requirement': requirement, 'objectives': objectives,
+        }
+
     if domain == 'classes':
         name, level = level_for(school, row['class_level'], allow_new=True)
         arm_name = row['class_arm'].strip()
