@@ -11,6 +11,7 @@ import ExamRoom from '../../pages/student/ExamRoom';
 import ExamReview from '../../pages/student/ExamReview';
 import Notifications from '../../pages/admin/Notifications';
 import FeeCollection from '../../pages/admin/FeeCollection';
+import MigrationCentre from '../../pages/admin/MigrationCentre';
 import { downloadReport } from '../../services/pdf';
 import api, { authAPI, tokenStore } from '../../services/api';
 import axios from 'axios';
@@ -108,6 +109,33 @@ test('BulkImportPage sends staff CSV to the staff endpoint', async () => {
   await waitFor(() => expect(api.post).toHaveBeenCalled());
   expect(api.post.mock.calls[0][0]).toBe('/api/staff/bulk-import/');
   expect(screen.getByRole('heading', { name: 'Bulk Staff Import' })).toBeVisible();
+});
+
+test('MigrationCentre inspects Excel files on the server before validation', async () => {
+  api.get.mockImplementation(async url => {
+    if (url === '/api/migration/') return { data: { domains: [
+      { key: 'classes', required: ['class_level', 'class_arm'], columns: ['class_level', 'class_arm'] },
+    ] } };
+    if (url === '/api/school/setup/') return { data: { steps: [], missing_assignments: 0 } };
+    return { data: [] };
+  });
+  api.post.mockResolvedValue({ data: {
+    headers: ['Class Level', 'Class Arm'],
+    rows: [{ 'Class Level': 'JSS1', 'Class Arm': 'A' }],
+    row_numbers: [2],
+    total_rows: 1,
+    suggested_mapping: { 'Class Level': 'class_level', 'Class Arm': 'class_arm' },
+    format: 'xlsx',
+  } });
+  const {container} = renderPage(<MigrationCentre />);
+  await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/migration/'));
+  const input = container.querySelector('input[type=file]');
+  fireEvent.change(input, { target: { files: [new File(['xlsx'], 'classes.xlsx', {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })] } });
+  expect(await screen.findByText('1 rows found. Review each suggested mapping.')).toBeVisible();
+  expect(api.post.mock.calls[0][0]).toBe('/api/migration/classes/inspect/');
+  expect(screen.getByRole('button', {name: 'Validate file'})).toBeEnabled();
 });
 
 test('Fees only offers payment for selected unpaid schedules and handles gateway failure', async () => {
