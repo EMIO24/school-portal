@@ -22,7 +22,7 @@ export function rowClass(grade) {
   if (!grade) return '';
   if (GRADE_PASS_BANDS.has(grade)) return 'row-pass';
   if (GRADE_WARN_BANDS.has(grade)) return 'row-warn';
-  return 'row-fail';
+  return grade === 'F9' ? 'row-fail' : '';
 }
 
 // ─── GradeBadge ───────────────────────────────────────────────────────────────

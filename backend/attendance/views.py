@@ -84,6 +84,20 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
     permission_classes = [SchoolModulePermission]
     http_method_names  = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
+    def create(self, request, *args, **kwargs):
+        return self.start(request)
+
+    def update(self, request, *args, **kwargs):
+        from rest_framework.exceptions import ValidationError
+        self.get_object()
+        raise ValidationError('Use attendance marking to edit records. The class, term and date of an existing register cannot be moved.')
+
+    def get_object(self):
+        from accounts.school_access import require_assignment
+        session = super().get_object()
+        require_assignment(self.request, session.class_arm_id, session.term_id)
+        return session
+
     def get_serializer_class(self):
         if self.action == 'start':
             return AttendanceSessionCreateSerializer
@@ -190,8 +204,9 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': 'Session is already finalized.'})
 
         # Guard: ensure every enrolled student has a record
-        total_enrolled = session.class_arm.students.filter(school=self.school).count()
-        total_marked   = session.records.count()
+        enrolled = session.class_arm.students.filter(school=self.school, status='active').values_list('user_id', flat=True)
+        total_enrolled = enrolled.count()
+        total_marked = session.records.filter(student_id__in=enrolled).count()
 
         if total_marked < total_enrolled:
             return Response(
@@ -230,6 +245,48 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': 'Student not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         return Response(summary)
+
+    # ── GET sessions/student-report/?student=&term= ──────────────────────────
+
+    @action(detail=False, methods=['get'], url_path='student-report')
+    def student_report(self, request):
+        """
+        Return only the attendance records belonging to one student
+        for a specific term.
+
+        Access is protected by SchoolModulePermission, which verifies
+        that a student is requesting their own data or a parent is
+        requesting data for a linked child.
+        """
+        student_id = request.query_params.get('student')
+        term_id = request.query_params.get('term')
+
+        if not (student_id and term_id):
+            return Response(
+                {'detail': 'Both student and term parameters are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        records = (
+            AttendanceRecord.objects
+            .filter(
+                attendance_session__school=self.school,
+                student_id=student_id,
+                attendance_session__term_id=term_id,
+            )
+            .select_related('attendance_session')
+            .order_by('attendance_session__date')
+        )
+
+        return Response([
+            {
+                'date': record.attendance_session.date,
+                'status': record.status,
+                'remark': record.remark,
+                'session_id': record.attendance_session_id,
+            }
+            for record in records
+        ])
 
     # ── GET sessions/class-report/?class_arm=&term= ───────────────────────────
 
@@ -301,21 +358,36 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
         from django.contrib.auth import get_user_model
         User = get_user_model()
 
-        # Get all students in this school
-        students = User.objects.filter(school=self.school, role='student').select_related(
-            'student_profile__current_class'
+        attendance = Q(attendance_records__attendance_session__school=self.school,
+                       attendance_records__attendance_session__term_id=term_id)
+        students = User.objects.filter(
+            school=self.school, role='student', student_profile__status='active'
+        ).select_related(
+            'student_profile__current_class__class_level', 'student_profile__current_class__school'
+        ).annotate(
+            attendance_total=Count('attendance_records', filter=attendance),
+            attendance_present=Count('attendance_records', filter=attendance & Q(attendance_records__status='present')),
+            attendance_absent=Count('attendance_records', filter=attendance & Q(attendance_records__status='absent')),
+            attendance_late=Count('attendance_records', filter=attendance & Q(attendance_records__status='late')),
+            attendance_excused=Count('attendance_records', filter=attendance & Q(attendance_records__status='excused')),
         )
 
         flagged = []
         for student in students:
-            summary = AttendanceRecord.objects.summary(student.id, term_id)
-            if summary['total'] > 0 and summary['percentage'] < threshold:
+            denominator = max(student.attendance_total - student.attendance_excused, 0)
+            percentage = round((student.attendance_present + student.attendance_late) / denominator * 100, 1) if denominator else 0.0
+            if student.attendance_total > 0 and percentage < threshold:
                 flagged.append({
                     'student_id':   student.id,
                     'student_name': student.get_full_name() or student.username,
                     'admission_no': getattr(getattr(student, 'student_profile', None), 'admission_number', ''),
                     'class_arm':    str(getattr(getattr(student, 'student_profile', None), 'current_class', '')),
-                    **summary,
+                    'total': student.attendance_total,
+                    'present': student.attendance_present,
+                    'absent': student.attendance_absent,
+                    'late': student.attendance_late,
+                    'excused': student.attendance_excused,
+                    'percentage': percentage,
                 })
 
         # Sort by percentage ascending (worst first)

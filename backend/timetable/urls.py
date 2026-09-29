@@ -11,12 +11,15 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from .views import PeriodViewSet, TimetableEntryViewSet
+from .teaching import LessonDayView, LessonOutcomeView
 
 router = DefaultRouter()
 router.register(r'periods', PeriodViewSet,        basename='period')
 router.register(r'entries', TimetableEntryViewSet, basename='timetable-entry')
 
 urlpatterns = [
+    path('lessons/', LessonDayView.as_view(), name='lesson-day'),
+    path('lessons/<int:slot_id>/<str:lesson_date>/', LessonOutcomeView.as_view(), name='lesson-outcome'),
     path('', include(router.urls)),
 ]
 

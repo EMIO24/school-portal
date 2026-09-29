@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../services/api";
+import { classifyRequestFailure } from "../../services/requestState";
 import "./Staff.css";
 
 const STATUS_COLORS = {
@@ -54,8 +55,8 @@ export default function Staff() {
       const { data } = await api.get(`/api/staff/?${params}`);
       setStaff(data.results || data);
       setTotalCount(data.count || data.length);
-    } catch {
-      setError("Failed to load staff.");
+    } catch (err) {
+      setError(classifyRequestFailure(err).message);
     } finally {
       setLoading(false);
     }
@@ -130,9 +131,9 @@ export default function Staff() {
 
       {/* ── Table ── */}
       {error ? (
-        <div className="staff-error">{error}</div>
+        <div className="staff-error" role="alert">{error} <button type="button" onClick={loadStaff}>Retry</button></div>
       ) : loading ? (
-        <div className="staff-loading"><div className="staff-spinner" /></div>
+        <div className="staff-loading" role="status"><div className="staff-spinner" /> Loading staff…</div>
       ) : staff.length === 0 ? (
         <div className="staff-empty">
           <div className="staff-empty-icon">👩‍🏫</div>
@@ -156,7 +157,7 @@ export default function Staff() {
               <tbody>
                 {staff.map(s => (
                   <tr key={s.id}>
-                    <td>
+                    <td data-label="Staff member">
                       <div className="staff-name-cell">
                         <Avatar photo={s.profile_photo} name={s.full_name} />
                         <div>
@@ -165,19 +166,19 @@ export default function Staff() {
                         </div>
                       </div>
                     </td>
-                    <td><code className="staff-id-badge">{s.staff_id}</code></td>
-                    <td>
+                    <td data-label="Staff ID"><code className="staff-id-badge">{s.staff_id}</code></td>
+                    <td data-label="Role">
                       <span className={`badge ${ROLE_COLORS[s.role] || ""}`}>
                         {ROLE_LABELS[s.role] || s.role}
                       </span>
                     </td>
-                    <td className="text-muted">{s.specialization || "—"}</td>
-                    <td>
+                    <td data-label="Specialization" className="text-muted">{s.specialization || "—"}</td>
+                    <td data-label="Status">
                       <span className={`badge ${STATUS_COLORS[s.employment_status] || ""}`}>
                         {s.employment_status?.replace("_", " ")}
                       </span>
                     </td>
-                    <td>
+                    <td data-label="Actions">
                       <div className="staff-row-actions">
                         <Link to={`/admin/staff/${s.id}`} className="btn btn-sm btn-ghost">View</Link>
                         <Link to={`/admin/staff/${s.id}/edit`} className="btn btn-sm btn-secondary">Edit</Link>

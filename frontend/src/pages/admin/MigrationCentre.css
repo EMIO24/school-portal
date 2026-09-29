@@ -1,0 +1,10 @@
+.migration-centre{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.migration-centre section{background:var(--surface,#fff);border:1px solid var(--border,#d8dee5);border-radius:12px;padding:20px}
+.migration-centre section h2{margin-top:0}
+.migration-centre label{display:grid;gap:6px;margin:12px 0}
+.migration-centre select,.migration-centre input{max-width:100%;padding:9px;border:1px solid #b8c3cf;border-radius:6px}
+.migration-centre button{margin:8px 8px 8px 0;padding:9px 14px;cursor:pointer}
+.migration-centre button:disabled{cursor:not-allowed;opacity:.6}
+.migration-mapping{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px}
+.migration-centre [role="alert"]{color:#9b1c1c}
+@media(max-width:600px){.migration-centre{padding:12px}.migration-centre section{padding:14px}}

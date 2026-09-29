@@ -5,7 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { hasFeature, featureForRoute } from '../../services/features';
 const destinations = {
   student:[['/student/timetable','Your timetable','Know where your next lesson takes you.'],['/student/results','Your results','See your progress, one term at a time.'],['/student/exams','Exams','Prepare for and take your scheduled exams.'],['/student/fees','School fees','View balances, pay securely and save receipts.']],
-  teacher:[['/teacher/attendance','Take attendance','Start the day with your class register.'],['/teacher/scores','Enter scores','Keep every learner up to date.'],['/teacher/timetable','Your timetable','Plan your teaching week.'],['/teacher/domains','Student development','Record the skills beyond the classroom.']],
+  teacher:[['/teacher/teaching',"Today's lessons",'Record what happened in each lesson.'],['/teacher/attendance','Take attendance','Start the day with your class register.'],['/teacher/scores','Enter scores','Keep every learner up to date.'],['/teacher/timetable','Your timetable','Plan your teaching week.'],['/teacher/domains','Student development','Record the skills beyond the classroom.']],
   school_admin:[['/admin/students','Student directory','Every learner, in one place.'],['/admin/calendar','Academic calendar','Build a well-organised school year.'],['/admin/fee-collection','Fee collection','Stay on top of payments and balances.'],['/admin/question-bank','Question bank','Create richer assessments for your learners.']],
 };
 export default function WorkspaceHome({compact=false}) {

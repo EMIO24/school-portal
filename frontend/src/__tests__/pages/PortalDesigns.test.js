@@ -3,18 +3,31 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderPage } from '../../testSupport/renderPage';
 import PortalDesigns from '../../pages/platform/PortalDesigns';
 import ProtectedRoute from '../../components/common/ProtectedRoute';
+import PortalNavigation from '../../components/common/PortalNavigation';
 import { ThemeContext, applyThemeToDom } from '../../context/ThemeContext';
 import api from '../../services/api';
-jest.mock('../../services/api',()=>({__esModule:true,default:{get:jest.fn(),patch:jest.fn()}}));
+jest.mock('../../services/api',()=>({__esModule:true,default:{get:jest.fn(),post:jest.fn(),patch:jest.fn(),delete:jest.fn()}}));
 const school={id:1,name:'Example School',subdomain:'example',subscription_plan:'basic',theme:{layout:'scholar',primary_color:'#173B56',secondary_color:'#256D85',accent_color:'#D8A548',font_family:"'Segoe UI', sans-serif"}};
 beforeEach(()=>{jest.resetAllMocks();api.get.mockImplementation(url=>Promise.resolve({data:url.endsWith('/appearance/')?{schools:[school],plans:{free:['core'],basic:['core','attendance'],premium:['core','cbt']},features:{core:'School setup',attendance:'Attendance',cbt:'Computer-based exams'}}:school}));api.patch.mockResolvedValue({data:school});});
-test('shows five designs and saves the selected layout, colours and plan to the chosen school',async()=>{
+test('uploads a selected image and previews the stored logo without a URL field',async()=>{
+  api.post.mockResolvedValue({data:{logo:'https://images.example.test/logo.png'}});
+  renderPage(<PortalDesigns/>,{auth:{user:{role:'superadmin',platformAccess:'owner'}}});
+  fireEvent.change(await screen.findByLabelText('Choose a school'),{target:{value:'1'}});
+  const input=await screen.findByLabelText('Choose school logo');
+  const file=new File(['image-bytes'],'crest.png',{type:'image/png'});
+  fireEvent.change(input,{target:{files:[file]}});
+  await waitFor(()=>expect(api.post).toHaveBeenCalledWith('/api/platform/schools/1/logo/',expect.any(FormData),expect.any(Object)));
+  expect(screen.queryByRole('textbox',{name:/Logo URL/})).not.toBeInTheDocument();
+  expect(await screen.findByText('crest.png')).toBeVisible();
+  expect(screen.getAllByLabelText('scholar layout preview').some(node=>node.querySelector('img')?.getAttribute('src')==='https://images.example.test/logo.png')).toBe(true);
+});
+test('shows ten designs and saves the selected layout, colours and plan to the chosen school',async()=>{
   renderPage(<PortalDesigns/>,{auth:{user:{role:'superadmin',platformAccess:'owner'}}});
   await screen.findByRole('option',{name:'Example School'});
-  expect(screen.getAllByRole('button',{pressed:false}).length + screen.getAllByRole('button',{pressed:true}).length).toBe(5);
+  expect(screen.getAllByRole('button',{pressed:false}).length + screen.getAllByRole('button',{pressed:true}).length).toBe(10);
   fireEvent.change(screen.getByLabelText('Choose a school'),{target:{value:'1'}});
   await screen.findByText('The right tools for this school.');
-  fireEvent.click(screen.getByRole('button',{name:/Executive Distinctive/}));
+  fireEvent.click(screen.getByRole('button',{name:/Executive Leadership focused/}));
   fireEvent.change(screen.getByLabelText('Primary'),{target:{value:'#115533'}});
   fireEvent.click(screen.getByRole('radio',{name:/premium/}));
   fireEvent.click(screen.getByRole('button',{name:'Save design and activate plan'}));
@@ -33,4 +46,9 @@ test('brand colours update legacy variables and use readable text on light colou
   applyThemeToDom({theme:{layout:'heritage',primary_color:'#FFFFFF',secondary_color:'#123456',accent_color:'#000000'}});
   const root=document.documentElement;
   expect(root.style.getPropertyValue('--primary')).toBe('#FFFFFF');expect(root.style.getPropertyValue('--color-primary')).toBe('#FFFFFF');expect(root.style.getPropertyValue('--on-primary')).toBe('#10202B');expect(root.style.getPropertyValue('--on-accent')).toBe('#FFFFFF');expect(root.dataset.portalLayout).toBe('heritage');
+});
+test('platform owner shell does not inherit a school layout family',()=>{
+  const {container}=renderPage(<PortalNavigation><p>Owner workspace</p></PortalNavigation>,{auth:{user:{role:'superadmin',platformAccess:'owner',email:'owner@example.test'}}});
+  expect(container.querySelector('.workspace')).toHaveClass('layout-platform');
+  expect(container.querySelector('.workspace')).not.toHaveClass('layout-scholar');
 });

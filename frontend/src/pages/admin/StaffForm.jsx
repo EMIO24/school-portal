@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 /**
  * pages/admin/StaffForm.jsx
  *
@@ -65,6 +66,8 @@ export default function StaffForm() {
   const navigate = useNavigate();
   const isEdit   = Boolean(id);
 
+  const [loadFailed,setLoadFailed] = useState(false), [optionsReady,setOptionsReady] = useState(false);
+  const [originalStatus,setOriginalStatus] = useState("active");
   const [subjects,    setSubjects]    = useState([]);
   const [classArms,   setClassArms]   = useState([]);
   const [loading,     setLoading]     = useState(isEdit);
@@ -114,18 +117,19 @@ export default function StaffForm() {
   // Load reference data
   useEffect(() => {
     Promise.all([
-      api.get("/api/subjects/"),
-      api.get("/api/class-arms/"),
+      referenceOptions("/api/subjects/"),
+      referenceOptions("/api/class-arms/"),
     ]).then(([sub, arms]) => {
       setSubjects(sub.data.results   || sub.data);
-      setClassArms(arms.data.results || arms.data);
-    });
+      setClassArms(arms.data.results || arms.data);setOptionsReady(true);
+    }).catch(() => {setLoadFailed(true);setApiError("Could not load assignment options. Reload to retry.");});
   }, []);
 
   // Load staff for edit
   useEffect(() => {
     if (!isEdit) return;
     api.get(`/api/staff/${id}/`).then(({ data }) => {
+      setOriginalStatus(data.employment_status);
       setForm({
         new_email:        data.email         || "",
         new_first_name:   data.first_name    || "",
@@ -144,7 +148,7 @@ export default function StaffForm() {
         subjects_taught:  (data.subjects_taught  || []).map(s => s.id || s),
         assigned_classes: (data.assigned_classes || []).map(a => a.id || a),
       });
-    }).catch(() => setApiError("Failed to load staff member."))
+    }).catch(() => {setLoadFailed(true);setApiError("Could not load this staff member. Reload to retry.");})
       .finally(() => setLoading(false));
   }, [id, isEdit]);
 
@@ -167,11 +171,9 @@ export default function StaffForm() {
     setSaving(true);
 
     try {
+      if (isEdit && form.employment_status !== originalStatus && ["suspended", "terminated", "resigned"].includes(form.employment_status) && !window.confirm("Deactivate this account? Login will be disabled; historical records will remain.")) return;
       const payload = { ...form, dob: form.dob || null, date_employed: form.date_employed || null };
       if (isEdit) {
-        delete payload.new_email;
-        delete payload.new_first_name;
-        delete payload.new_last_name;
         delete payload.new_role;
       }
       let staffId = id;
@@ -197,7 +199,8 @@ export default function StaffForm() {
     }
   }
 
-  if (loading) return <div className="stf-loading"><div className="stf-spinner" /></div>;
+  if (loadFailed) return <p role="alert">{apiError} <button onClick={()=>window.location.reload()}>Reload</button></p>;
+  if (loading || !optionsReady) return <div className="stf-loading"><div className="stf-spinner" /></div>;
 
   return (
     <div className="stf-root">
@@ -217,31 +220,31 @@ export default function StaffForm() {
       <form className="stf-form" onSubmit={handleSubmit} noValidate>
 
         {/* ── Account Details ── */}
-        {!isEdit && (
+        {(
           <section className="stf-section">
             <h2 className="stf-section-title">Account Details</h2>
-            <p className="stf-section-sub">Default password will be set to the staff ID.</p>
+            <p className="stf-section-sub">Names and email can be corrected here. Existing passwords and staff IDs are preserved.</p>
             <div className="stf-grid stf-grid--3">
               <Field label="First Name" error={errors.new_first_name}>
-                <input type="text" value={form.new_first_name}
+                <input aria-label="First Name" disabled={saving} type="text" value={form.new_first_name}
                   onChange={e => set("new_first_name", e.target.value)}
                   className={errors.new_first_name ? "input--error" : ""}
                   placeholder="Ngozi" />
               </Field>
               <Field label="Last Name" error={errors.new_last_name}>
-                <input type="text" value={form.new_last_name}
+                <input aria-label="Last Name" disabled={saving} type="text" value={form.new_last_name}
                   onChange={e => set("new_last_name", e.target.value)}
                   className={errors.new_last_name ? "input--error" : ""}
                   placeholder="Adeyemi" />
               </Field>
               <Field label="Email" error={errors.new_email}>
-                <input type="email" value={form.new_email}
+                <input aria-label="Email" disabled={saving} type="email" value={form.new_email}
                   onChange={e => set("new_email", e.target.value)}
                   className={errors.new_email ? "input--error" : ""}
                   placeholder="ngozi@school.edu.ng" />
               </Field>
               <Field label="Role" error={errors.new_role}>
-                <select value={form.new_role} onChange={e => set("new_role", e.target.value)}>
+                <select disabled={isEdit || saving} value={form.new_role} onChange={e => set("new_role", e.target.value)}>
                   <option value="teacher">Teacher</option>
                   <option value="school_admin">School Admin</option>
                 </select>

@@ -88,29 +88,15 @@ class School(models.Model):
         super().save(*args, **kwargs)
 
     def get_theme(self) -> dict:
-        """Return theme_config with sensible school defaults for portal + results."""
+        """Return theme_config with sensible Nigerian-school defaults."""
         defaults = {
-            "layout": "scholar",
+            "layout": "classic",
             "primary_color": "#173B56",
             "secondary_color": "#256D85",
             "accent_color": "#D8A548",
-            "font_family": "Roboto, sans-serif",
-            "result_layout": "classic",
-            "result_sections": [
-                "summary",
-                "scores",
-                "attendance",
-                "remarks",
-                "affective",
-                "psychomotor",
-            ],
+            "font_family": "Georgia, serif",
         }
-        merged = {**defaults, **self.theme_config}
-        if isinstance(merged.get("result_sections"), list):
-            merged["result_sections"] = merged["result_sections"]
-        else:
-            merged["result_sections"] = defaults["result_sections"]
-        return merged
+        return {**defaults, **self.theme_config}
 
     def __str__(self):
         return f"{self.name} ({self.subdomain})"
@@ -149,3 +135,18 @@ class PlatformEvent(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-id"]
+
+
+class DemoRequest(models.Model):
+    school_name = models.CharField(max_length=255)
+    contact_name = models.CharField(max_length=150)
+    email = models.EmailField()
+    phone = models.CharField(max_length=30)
+    student_population = models.PositiveIntegerField()
+    location = models.CharField(max_length=255)
+    message = models.TextField(max_length=2000, blank=True)
+    status = models.CharField(max_length=20, default='new', choices=[('new', 'New'), ('contacted', 'Contacted')])
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']

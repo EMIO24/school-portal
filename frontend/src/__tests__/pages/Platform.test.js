@@ -36,6 +36,18 @@ test('failed school list can be retried and filtered', async () => {
   await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('search=green')));
 });
 
+test('owner can filter and assign Enterprise using existing school controls', async () => {
+  renderPage(<PlatformDashboard />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Manage Greenfield' }));
+  fireEvent.change(await screen.findByLabelText('Subscription plan'), { target: { value: 'enterprise' } });
+  api.patch.mockResolvedValue({ data: { ...school, subscription_plan: 'enterprise' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save school details' }));
+  await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/api/platform/schools/1/',
+    expect.objectContaining({ subscription_plan: 'enterprise' })));
+  fireEvent.change(screen.getByLabelText('Plan', { exact: true }), { target: { value: 'enterprise' } });
+  await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('plan=enterprise')));
+});
+
 function fillSignup() {
   const fields = { 'School name': 'New School', 'School identifier': 'new-school', 'School contact email': 'office@new.test',
     'Administrator first name': 'New', 'Administrator last name': 'Admin', 'Administrator email': 'admin@new.test',

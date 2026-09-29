@@ -6,11 +6,12 @@ Kept separate from staff_serializers.py for clean imports.
 """
 
 from rest_framework import serializers
+from accounts.school_access import TenantRelationsMixin
 from .models import ClassArm, StaffProfile, Subject, SubjectAssignment
 from academics.models import AcademicSession, Term
 
 
-class SubjectAssignmentSerializer(serializers.ModelSerializer):
+class SubjectAssignmentSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     """Full read/write serializer for a single assignment row."""
 
     # Computed display fields
@@ -46,6 +47,10 @@ class SubjectAssignmentSerializer(serializers.ModelSerializer):
         - subject must be offered to the class_arm's level
         - teacher must belong to the same school as the request tenant
         """
+        attrs = super().validate(attrs)
+        teacher = attrs.get('teacher', getattr(self.instance, 'teacher', None))
+        if teacher and (teacher.user.role != 'teacher' or not teacher.user.is_active or teacher.employment_status != 'active'):
+            raise serializers.ValidationError({'teacher': 'Select an active teacher.'})
         term    = attrs.get("term")
         session = attrs.get("session")
         subject = attrs.get("subject")

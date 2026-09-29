@@ -8,13 +8,14 @@ for clarity and independent import.
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
+from accounts.school_access import TenantRelationsMixin
 
 from .models import ClassArm, StaffProfile, Subject
 
 User = get_user_model()
 
 
-class StaffProfileSerializer(serializers.ModelSerializer):
+class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     """Full serializer — create, retrieve, update."""
 
     # Read-only user fields
@@ -65,6 +66,16 @@ class StaffProfileSerializer(serializers.ModelSerializer):
             "subjects_taught_detail", "assigned_classes_detail",
         ]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not (user and user.is_authenticated and user.school_id == instance.school_id
+                and (user.role == "school_admin" or user.pk == instance.user_id)):
+            for field in ("religion", "dob", "address", "phone", "state_of_origin"):
+                data.pop(field, None)
+        return data
+
     def get_subjects_taught_detail(self, obj):
         return [{"id": s.id, "name": s.name, "code": s.code}
                 for s in obj.subjects_taught.all()]
@@ -74,9 +85,27 @@ class StaffProfileSerializer(serializers.ModelSerializer):
                 for a in obj.assigned_classes.all()]
 
     @transaction.atomic
+    def update(self, instance, validated_data):
+        state = validated_data.get('employment_status')
+        if state in ('suspended', 'terminated', 'resigned') and instance.user_id == self.context['request'].user.pk:
+            raise serializers.ValidationError('Ask another administrator to deactivate your account.')
+        from .account_editing import account_changes, edit_account
+        edit_account(self.context['request'], instance.user, account_changes(validated_data))
+        validated_data.pop('new_role', None)
+        instance = super().update(instance, validated_data)
+        if state in ('active', 'suspended', 'terminated', 'resigned'):
+            instance.user.is_active = state == 'active'
+            instance.user.save(update_fields=['is_active'])
+            from tenants.models import PlatformEvent
+            actor = self.context['request'].user
+            PlatformEvent.objects.create(actor=actor, actor_email=actor.email, action='school.staff_access_changed',
+                target=str(instance.pk), details={'school_id':instance.school_id, 'active':instance.user.is_active})
+        return instance
+
+    @transaction.atomic
     def create(self, validated_data):
         school      = validated_data.pop("school")
-        email       = validated_data.pop("new_email",      None)
+        email       = (validated_data.pop("new_email", None) or "").strip().lower()
         first_name  = validated_data.pop("new_first_name", "")
         last_name   = validated_data.pop("new_last_name",  "")
         role        = validated_data.pop("new_role",       "teacher")
@@ -87,9 +116,9 @@ class StaffProfileSerializer(serializers.ModelSerializer):
         if not email:
             raise serializers.ValidationError({"new_email": "Email is required."})
 
-        if User.objects.filter(email=email).exists():
+        if User.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError(
-                {"new_email": f"A user with email '{email}' already exists."}
+                {"new_email": "This email cannot be used. Check the account details."}
             )
 
         user = User.objects.create_user(
@@ -100,6 +129,7 @@ class StaffProfileSerializer(serializers.ModelSerializer):
             role=role,
             school=school,
             must_change_password=True,
+            is_active=validated_data.get("employment_status", "active") not in ("suspended", "terminated", "resigned"),
         )
 
         profile = StaffProfile.objects.create(

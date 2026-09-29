@@ -1,8 +1,7 @@
-﻿from decimal import Decimal
-
-from django.conf import settings
+﻿from django.conf import settings
 from django.db import models
-from django.utils import timezone
+
+from .invoice_models import TermInvoice  # Register the invoice model with this app.
 
 
 class FeeCategory(models.Model):
@@ -72,6 +71,65 @@ class FeePayment(models.Model):
         return f"{self.receipt_number} â€” {self.student} â‚¦{self.amount_paid}"
 
 
+class StudentFinanceAccount(models.Model):
+    """Cutover state; balances are derived from entries, never cached here."""
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    student = models.OneToOneField('enrollment.StudentProfile', on_delete=models.PROTECT, related_name='finance_account')
+    state = models.CharField(max_length=20, choices=[('active', 'Active'), ('legacy_review', 'Legacy balance needs review')])
+    cutover_at = models.DateTimeField(auto_now_add=True)
+    opened_at = models.DateTimeField(null=True, blank=True)
+    opened_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+
+
+class StudentLedgerEntry(models.Model):
+    KIND_CHOICES = [
+        ('charge', 'Charge'), ('opening', 'Opening balance'), ('payment', 'Payment'),
+        ('discount', 'Discount'), ('scholarship', 'Scholarship'),
+        ('adjustment', 'Adjustment'), ('reversal', 'Reversal'),
+    ]
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    student = models.ForeignKey('enrollment.StudentProfile', on_delete=models.PROTECT, related_name='ledger_entries')
+    term = models.ForeignKey('academics.Term', on_delete=models.PROTECT, null=True, blank=True)
+    fee_schedule = models.ForeignKey(FeeSchedule, on_delete=models.PROTECT, null=True, blank=True)
+    fee_payment = models.OneToOneField(FeePayment, on_delete=models.PROTECT, null=True, blank=True, related_name='ledger_entry')
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    signed_amount = models.DecimalField(max_digits=14, decimal_places=2)
+    description = models.CharField(max_length=200)
+    class_name_snapshot = models.CharField(max_length=100, blank=True)
+    due_date_snapshot = models.DateField(null=True, blank=True)
+    reason = models.CharField(max_length=500, blank=True)
+    reference = models.CharField(max_length=100, blank=True)
+    effective_date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    actor_name = models.CharField(max_length=300, blank=True)
+    idempotency_key = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['school', 'student', 'id']), models.Index(fields=['school', 'term', 'student'])]
+        constraints = [
+            models.UniqueConstraint(fields=['school', 'student', 'fee_schedule'],
+                condition=models.Q(kind='charge', fee_schedule__isnull=False), name='unique_student_schedule_charge'),
+            models.UniqueConstraint(fields=['school', 'idempotency_key'],
+                condition=~models.Q(idempotency_key=''), name='unique_student_ledger_retry_key'),
+            models.CheckConstraint(check=~models.Q(signed_amount=0) | models.Q(kind='opening'), name='student_ledger_nonzero'),
+        ]
+
+
+class StudentPaymentAllocation(models.Model):
+    """Explicit amount of one credit applied to one frozen charge."""
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    credit = models.ForeignKey(StudentLedgerEntry, on_delete=models.PROTECT, related_name='credit_allocations')
+    charge = models.ForeignKey(StudentLedgerEntry, on_delete=models.PROTECT, related_name='charge_allocations')
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['credit', 'charge'], name='unique_credit_charge_allocation'),
+            models.CheckConstraint(check=models.Q(amount__gt=0), name='student_allocation_positive'),
+        ]
+
+
 class SchoolPaymentAccount(models.Model):
     school = models.ForeignKey('tenants.School', on_delete=models.CASCADE, related_name='payment_accounts')
     mode = models.CharField(max_length=4, choices=[('test', 'Test'), ('live', 'Live')])
@@ -92,57 +150,11 @@ class SubscriptionOffer(models.Model):
     enabled = models.BooleanField(default=False)
 
 
-class TermInvoice(models.Model):
-    INVOICE_STATUS_CHOICES = [
-        ('draft', 'Draft'),
-        ('issued', 'Issued'),
-        ('pending', 'Pending Payment'),
-        ('paid', 'Paid'),
-        ('overdue', 'Overdue'),
-        ('cancelled', 'Cancelled'),
-    ]
-
-    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT, related_name='term_invoices')
-    plan = models.CharField(max_length=20, choices=[('free', 'Free'), ('basic', 'Basic'), ('premium', 'Premium'), ('enterprise', 'Enterprise')], default='premium')
-    academic_session = models.ForeignKey('academics.AcademicSession', on_delete=models.PROTECT, related_name='term_invoices')
-    term = models.ForeignKey('academics.Term', on_delete=models.PROTECT, related_name='term_invoices')
-    active_student_count = models.PositiveIntegerField(default=0)
-    snapshot_date = models.DateField()
-    standard_rate = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
-    discount_eligible = models.BooleanField(default=False)
-    discount_percentage = models.PositiveSmallIntegerField(default=0)
-    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
-    effective_rate = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
-    subtotal = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
-    final_amount = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
-    invoice_number = models.CharField(max_length=60, unique=True, blank=True)
-    issue_date = models.DateField(default=timezone.localdate)
-    due_date = models.DateField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=INVOICE_STATUS_CHOICES, default='issued')
-    paid_date = models.DateTimeField(null=True, blank=True)
-    grace_period_days = models.PositiveSmallIntegerField(default=14)
-    notes = models.TextField(blank=True)
-    audit_snapshot = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['-issue_date', '-id']
-        constraints = [
-            models.UniqueConstraint(fields=['school', 'academic_session', 'term'], name='unique_term_invoice_per_school_term'),
-        ]
-
-    def save(self, *args, **kwargs):
-        if not self.invoice_number:
-            prefix = 'INV'
-            self.invoice_number = f'{prefix}-{self.issue_date.year}-{self.pk or "NEW"}'
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.invoice_number} — {self.school.name} ({self.term})"
-
-
 class PaymentOrder(models.Model):
+    invoice = models.ForeignKey('fees.TermInvoice', on_delete=models.PROTECT, null=True, blank=True, related_name='payment_attempts')
+    received_amount_kobo = models.PositiveBigIntegerField(null=True, blank=True)
+    received_currency = models.CharField(max_length=3, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
     school = models.ForeignKey('tenants.School', on_delete=models.PROTECT, related_name='payment_orders')
     payer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     student = models.ForeignKey('enrollment.StudentProfile', on_delete=models.PROTECT, null=True, blank=True)
@@ -162,4 +174,35 @@ class PaymentOrder(models.Model):
     note = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['invoice'], condition=models.Q(invoice__isnull=False, status__in=['initializing', 'pending']), name='one_open_invoice_checkout'),
+            models.CheckConstraint(check=models.Q(invoice__isnull=True) | models.Q(kind='subscription'), name='invoice_subscription_only'),
+        ]
+
+
+class PaymentException(models.Model):
+    TYPES = [('refund', 'Refund request'), ('duplicate', 'Suspected duplicate'),
+             ('incorrect', 'Incorrect payment'), ('provider', 'Provider discrepancy'),
+             ('manual', 'Manual review')]
+    STATES = [(value, value.replace('_', ' ').title()) for value in
+              ('requested', 'under_review', 'approved', 'rejected', 'provider_pending',
+               'provider_failed', 'resolved')]
+    order = models.ForeignKey(PaymentOrder, on_delete=models.PROTECT, related_name='exceptions')
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    kind = models.CharField(max_length=20, choices=TYPES)
+    status = models.CharField(max_length=20, choices=STATES, default='requested')
+    reason = models.TextField(max_length=2000)
+    admin_notes = models.TextField(max_length=2000, blank=True)
+    provider_ref = models.CharField(max_length=100, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+')
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+', null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    resolved_at = models.DateTimeField(null=True)
+
+    class Meta:
+        ordering = ['-id']
+        constraints = [models.UniqueConstraint(fields=['order', 'kind'], name='unique_order_exception_kind')]
 

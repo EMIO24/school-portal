@@ -630,6 +630,14 @@
 @media (max-width: 760px) {
   .att-page { padding: 16px 14px 60px; }
   .att-header__title { font-size: 1.45rem; }
-  .att-student-row { grid-template-columns: 22px 1fr auto; }
+  .att-student-row { grid-template-columns: 22px minmax(0,1fr);gap:8px;padding:12px 10px; }
+  .att-student-row__name{overflow-wrap:anywhere}
+  .att-status-group{grid-column:2;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%}
+  .att-status-btn{width:100%;height:44px}
+  .att-remark-input{grid-column:2;min-height:44px;min-width:0;width:100%}
+  .att-card__head{flex-wrap:wrap;padding:12px}
+  .att-card__title{overflow-wrap:anywhere}
+  .att-controls{min-width:0}
+  .att-field-group,.att-select,.att-input{min-width:0;max-width:100%}
   .att-student-row__adm { display: none; }
 }

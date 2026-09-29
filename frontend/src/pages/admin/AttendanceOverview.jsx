@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 /**
  * frontend/src/pages/admin/AttendanceOverview.jsx
  *
@@ -83,8 +84,9 @@ export default function AttendanceOverview() {
   const [terms,     setTerms]     = useState([]);
   const [classArms, setClassArms] = useState([]);
 
-  const [selectedTerm,     setSelectedTerm]     = useState('');
-  const [selectedClassArm, setSelectedClassArm] = useState('');
+  const query = new URLSearchParams(window.location.search);
+  const [selectedTerm,     setSelectedTerm]     = useState(query.get('term') || '');
+  const [selectedClassArm, setSelectedClassArm] = useState(query.get('class_arm') || '');
   const [threshold,        setThreshold]        = useState(THRESHOLD_DEFAULT);
 
   const [heatmapRows,   setHeatmapRows]   = useState([]);
@@ -98,14 +100,14 @@ export default function AttendanceOverview() {
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/api/terms/'),
-      api.get('/api/class-arms/'),
+      referenceOptions('/api/terms/'),
+      referenceOptions('/api/class-arms/'),
     ]).then(([t, c]) => {
       const termList = t.data.results ?? t.data;
       setTerms(termList);
       setClassArms(c.data.results ?? c.data);
       const active = termList.find(x => x.is_current);
-      if (active) setSelectedTerm(String(active.id));
+      if (active) setSelectedTerm(previous => previous || String(active.id));
     });
   }, []);
 
@@ -192,7 +194,7 @@ export default function AttendanceOverview() {
           <select className="att-select" value={selectedTerm}
             onChange={e => setSelectedTerm(e.target.value)}>
             <option value="">— Select term —</option>
-            {terms.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {terms.map(t => <option key={t.id} value={t.id}>{t.name_display || t.name}{t.session_name ? ` / ${t.session_name}` : ""}</option>)}
           </select>
         </div>
 

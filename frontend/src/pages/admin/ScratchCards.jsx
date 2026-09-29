@@ -38,6 +38,8 @@ function pct(used, total) {
 export default function ScratchCards() {
   const [terms,      setTerms]      = useState([]);
   const [batches,    setBatches]    = useState([]);
+  const [cards, setCards] = useState([]);
+  const [selectedBatch, setSelectedBatch] = useState('');
   const [loading,    setLoading]    = useState(false);
   const [generating, setGenerating] = useState(false);
   const [alert,      setAlert]      = useState(null);
@@ -63,6 +65,23 @@ export default function ScratchCards() {
       setLoading(false);
     }
   }, []);
+
+  async function openBatch(batch) {
+    setSelectedBatch(batch);
+    try {
+      const { data } = await api.get(`/api/scratch-cards/?batch=${encodeURIComponent(batch)}`);
+      setCards(data);
+    } catch { setAlert({ type: 'error', msg: 'Could not load this batch.' }); }
+  }
+
+  async function revoke(card) {
+    if (!window.confirm(`Revoke unused card ${card.serial_number}? It will no longer open a result.`)) return;
+    try {
+      await api.post(`/api/scratch-cards/${card.id}/revoke/`);
+      await openBatch(selectedBatch);
+      await loadBatches();
+    } catch { setAlert({ type: 'error', msg: 'Could not revoke this card. Refresh and retry.' }); }
+  }
 
   useEffect(() => {
     api.get('/api/terms/').then(({ data }) => {
@@ -245,7 +264,7 @@ export default function ScratchCards() {
             <table style={S.table}>
               <thead>
                 <tr>
-                  {['Batch Name', 'Total', 'Used', 'Unused', 'Usage %', 'Generated', 'Actions'].map(h => (
+                  {['Batch Name', 'Total', 'Used', 'Unused', 'Revoked', 'Usage %', 'Generated', 'Actions'].map(h => (
                     <th key={h} style={S.th}>{h}</th>
                   ))}
                 </tr>
@@ -257,6 +276,7 @@ export default function ScratchCards() {
                     <td style={S.td}>{b.total}</td>
                     <td style={{ ...S.td, color: '#991b1b' }}>{b.used}</td>
                     <td style={{ ...S.td, color: '#166534' }}>{b.unused}</td>
+                    <td style={S.td}>{b.revoked}</td>
                     <td style={S.td}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ flex: 1, height: 6, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden' }}>
@@ -279,6 +299,7 @@ export default function ScratchCards() {
                       >
                         📥 Unused Serials PDF
                       </button>
+                      {' '}<button type="button" onClick={() => openBatch(b.batch_name)}>View cards</button>
                     </td>
                   </tr>
                 ))}
@@ -287,6 +308,14 @@ export default function ScratchCards() {
           )}
         </div>
       </div>
+      {selectedBatch && <section style={S.card} aria-label="Batch cards">
+        <div style={S.cardHead}><strong>{selectedBatch}</strong><button type="button" onClick={() => setSelectedBatch('')}>Close</button></div>
+        <div style={{ overflowX: 'auto' }}><table style={S.table}><thead><tr><th>Serial</th><th>Term</th><th>Status</th><th>Action</th></tr></thead><tbody>
+          {cards.map(card => <tr key={card.id}><td style={S.td}>{card.serial_number}</td><td style={S.td}>{card.term_name || 'Current term at use'}</td>
+            <td style={S.td}>{card.revoked_at ? 'Revoked' : card.is_used ? 'Used' : 'Unused'}</td>
+            <td style={S.td}>{!card.is_used && !card.revoked_at && <button type="button" onClick={() => revoke(card)}>Revoke</button>}</td></tr>)}
+        </tbody></table></div>
+      </section>}
     </div>
   );
 }

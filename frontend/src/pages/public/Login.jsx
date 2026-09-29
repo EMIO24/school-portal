@@ -44,6 +44,7 @@ export default function Login({ platform = false, preview = false }) {
   const [mfa, setMfa] = useState(null);
   const [email,       setEmail]       = useState("");
   const [password,    setPassword]    = useState("");
+  const [admissionNumber, setAdmissionNumber] = useState("");
   const [showPass,    setShowPass]    = useState(false);
   const [submitting,  setSubmitting]  = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -71,8 +72,8 @@ export default function Login({ platform = false, preview = false }) {
 
   function validate() {
     const errs = {};
-    if (!email.trim())       errs.email    = "Email address is required.";
-    else if (!/\S+@\S+\.\S+/.test(email)) errs.email = "Enter a valid email.";
+    if (!email.trim())       errs.email = platform ? "Email address is required." : "Email or student name is required.";
+    else if ((platform || email.includes("@")) && !/\S+@\S+\.\S+/.test(email)) errs.email = "Enter a valid email.";
     if (!password)           errs.password = "Password is required.";
     return errs;
   }
@@ -97,7 +98,10 @@ export default function Login({ platform = false, preview = false }) {
     setFieldErrors({});
     setSubmitting(true);
 
-    const result = await login(email.trim().toLowerCase(), password);
+    const identifier = email.trim().toLowerCase();
+    const result = admissionNumber.trim() && !platform
+      ? await login(identifier, password, admissionNumber.trim())
+      : await login(identifier, password);
     if (result?.mfa) { setMfa(result.mfa); setPassword(""); }
     // Navigation is handled inside AuthContext.login()
     setSubmitting(false);
@@ -150,15 +154,15 @@ export default function Login({ platform = false, preview = false }) {
         <form className="login-form" onSubmit={handleSubmit} noValidate>
 
           <div className="login-field">
-            <label htmlFor="login-email">Email Address</label>
+            <label htmlFor="login-email">{platform ? "Email Address" : "Email or student name"}</label>
             <input
               id="login-email"
               ref={emailRef}
-              type="email"
-              autoComplete="email"
+              type={platform ? "email" : "text"}
+              autoComplete="username"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="you@school.edu.ng"
+              placeholder={platform ? "you@school.edu.ng" : "Your email or full student name"}
               className={fieldErrors.email ? "input--error" : ""}
               disabled={submitting || preview}
               aria-describedby={fieldErrors.email ? "email-err" : undefined}
@@ -170,6 +174,13 @@ export default function Login({ platform = false, preview = false }) {
             )}
           </div>
 
+          {!platform && <div className="login-field">
+            <label htmlFor="login-admission">Admission number (if needed)</label>
+            <input id="login-admission" value={admissionNumber}
+              onChange={e => setAdmissionNumber(e.target.value)} disabled={submitting || preview}
+              aria-describedby="admission-help" autoComplete="off" />
+            <small id="admission-help">Students who share a name should also enter their admission number. Contact your school administrator if you need help.</small>
+          </div>}
           <div className="login-field">
             <label htmlFor="login-password">Password</label>
             <div className="login-password-wrap">

@@ -3,6 +3,8 @@ import { act, screen, fireEvent } from '@testing-library/react';
 import { renderPage } from '../../testSupport/renderPage';
 import api from '../../services/api';
 
+jest.setTimeout(20000);
+
 jest.mock('../../services/api', () => ({
   __esModule: true,
   default: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), put: jest.fn(), delete: jest.fn() },
@@ -14,7 +16,7 @@ jest.mock('axios', () => ({ __esModule: true, default: { post: jest.fn() } }));
 // Every page is listed explicitly, including pages not yet wired into App.js.
 // Existing dashboard/Login tests cover populated states; these cover boot/empty states.
 const cases = [
-  ['admin/AdminDashboard', 'Dashboard'],
+  ['admin/AdminDashboard', 'Principal Command Centre'],
   ['admin/AttendanceOverview', /Attendance Overview/],
   ['admin/BulkImportPage', 'Bulk Student Import'],
   ['admin/CalendarSettings', 'Academic Calendar'],

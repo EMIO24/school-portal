@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 /**
  * frontend/src/pages/admin/ResultManagement.jsx
  *
@@ -11,6 +12,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
+import ResultReview from './ResultReview';
+import { Link } from 'react-router-dom';
 import { downloadFile } from '../../services/download';
 import '../../styles/Results.css';
 
@@ -91,8 +94,9 @@ function RemarkDrawer({ student, termId, onSaved, onClose }) {
 export default function ResultManagement() {
   const [terms,      setTerms]      = useState([]);
   const [classArms,  setClassArms]  = useState([]);
-  const [selTerm,    setSelTerm]    = useState('');
-  const [selClass,   setSelClass]   = useState('');
+  const query = new URLSearchParams(window.location.search);
+  const [selTerm,    setSelTerm]    = useState(query.get('term') || '');
+  const [selClass,   setSelClass]   = useState(query.get('class_arm') || '');
 
   const [students,   setStudents]   = useState([]);
   const [loading,    setLoading]    = useState(false);
@@ -105,14 +109,14 @@ export default function ResultManagement() {
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/api/terms/'),
-      api.get('/api/class-arms/'),
+      referenceOptions('/api/terms/'),
+      referenceOptions('/api/class-arms/'),
     ]).then(([t, c]) => {
       const termList = t.data.results ?? t.data;
       setTerms(termList);
       setClassArms(c.data.results ?? c.data);
       const current = termList.find(x => x.is_current);
-      if (current) setSelTerm(String(current.id));
+      if (current) setSelTerm(previous => previous || String(current.id));
     });
   }, []);
 
@@ -198,6 +202,7 @@ export default function ResultManagement() {
           Result Management
           <small>Compute positions · Add remarks · Generate PDFs</small>
         </h1>
+        <Link className="res-btn res-btn--ghost" to="/admin/report-cards">Report card settings</Link>
       </div>
 
       {/* Controls */}
@@ -206,7 +211,7 @@ export default function ResultManagement() {
           <label>Term</label>
           <select className="res-select" value={selTerm} onChange={e => setSelTerm(e.target.value)}>
             <option value="">— Select term —</option>
-            {terms.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {terms.map(t => <option key={t.id} value={t.id}>{t.name_display || t.name}{t.session_name ? ` / ${t.session_name}` : ""}</option>)}
           </select>
         </div>
         <div className="res-field-group">
@@ -245,6 +250,8 @@ export default function ResultManagement() {
           </div>
         </div>
       </div>
+
+      <ResultReview classArm={selClass} term={selTerm}/>
 
       {/* Alert */}
       {alert && (

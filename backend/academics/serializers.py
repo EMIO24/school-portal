@@ -16,15 +16,22 @@ class HolidaySerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
     def validate(self, attrs):
-        if attrs.get("start_date") and attrs.get("end_date"):
-            if attrs["start_date"] > attrs["end_date"]:
-                raise serializers.ValidationError(
-                    {"end_date": "End date cannot be before start date."}
-                )
+        from rest_framework.exceptions import PermissionDenied
+        term = attrs.get('term', getattr(self.instance, 'term', None))
+        start = attrs.get('start_date', getattr(self.instance, 'start_date', None))
+        end = attrs.get('end_date', getattr(self.instance, 'end_date', None))
+        request = self.context.get('request')
+        if term and request and term.session.school_id != request.tenant.pk:
+            raise PermissionDenied('Term does not belong to this school.')
+        if start and end and start > end:
+            raise serializers.ValidationError({'end_date': 'End date cannot be before start date.'})
+        if term and start and end and (start < term.start_date or end > term.end_date):
+            raise serializers.ValidationError({'start_date': 'Holiday dates must stay within the selected term.'})
         return attrs
 
 
 class TermSerializer(serializers.ModelSerializer):
+    session_name = serializers.CharField(source='session.name', read_only=True)
     holidays           = HolidaySerializer(many=True, read_only=True)
     name_display       = serializers.CharField(source="get_name_display", read_only=True)
     name_display_short = serializers.CharField(
@@ -35,7 +42,7 @@ class TermSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Term
         fields = [
-            "id", "session", "name", "name_display", "name_display_short",
+            "id", "session", "session_name", "name", "name_display", "name_display_short",
             "start_date", "end_date", "is_current",
             "next_term_begins", "duration_weeks", "holidays",
         ]

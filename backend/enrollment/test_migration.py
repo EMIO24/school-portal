@@ -1,0 +1,217 @@
+import time
+from datetime import date
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase
+from rest_framework.test import APIClient
+
+from accounts.models import CustomUser, ParentStudentLink
+from academics.models import AcademicSession, Term
+from tenants.models import PlatformEvent, School
+from .models import (ClassArm, ClassLevel, MigrationStudentReference, StaffProfile, StudentProfile,
+                     Subject, SubjectAssignment)
+
+
+class MigrationCentreTests(TestCase):
+    def setUp(self):
+        self.school = School.objects.create(name='Migration School', slug='migration-school', subdomain='migration-school')
+        self.other = School.objects.create(name='Other School', slug='migration-other', subdomain='migration-other')
+        self.admin = CustomUser.objects.create_user(email='admin@migration.test', password='test',
+            school=self.school, role='school_admin', must_change_password=False)
+        self.client = APIClient(HTTP_X_SCHOOL_SLUG=self.school.slug)
+        self.client.force_authenticate(self.admin)
+
+    def upload(self, domain, operation, body, mapping=None):
+        from json import dumps
+        return self.client.post(f'/api/migration/{domain}/{operation}/', {
+            'file': SimpleUploadedFile('school.csv', body.encode(), content_type='text/csv'),
+            'mapping': dumps(mapping or {}),
+        }, format='multipart')
+
+    def test_templates_mapping_and_file_security(self):
+        template = self.client.get('/api/migration/templates/students/')
+        self.assertEqual(template.status_code, 200)
+        self.assertIn(b'student_ref', template.content)
+        self.assertNotIn(b'password', template.content)
+        data = 'Class Level,Class Arm\nJSS1,A'
+        preview = self.upload('classes', 'validate', data)
+        self.assertEqual(preview.data['counts']['CREATE'], 1)
+        self.assertFalse(ClassArm.objects.exists())
+        mapped = self.upload('classes', 'validate', 'Level Name,Arm Name,Legacy Note\nJSS1,A,old school',
+                             {'Level Name':'class_level','Arm Name':'class_arm'})
+        self.assertEqual(mapped.data['counts']['CREATE'], 1)
+        self.assertEqual(mapped.data['warnings'], ['Ignored column: Legacy Note'])
+        self.assertEqual(self.upload('classes', 'validate', data, {'Class Level':None}).status_code, 400)
+        self.assertEqual(self.upload('classes', 'validate', 'class_level,class_level\nJSS1,JSS1').status_code, 400)
+        self.assertEqual(self.upload('classes', 'validate', 'Class Level,class_level,class_arm\nJSS1,JSS1,A').status_code, 400)
+        self.assertEqual(self.upload('classes', 'validate', 'school_id,class_level,class_arm\n1,JSS1,A').status_code, 400)
+        self.assertEqual(self.upload('classes', 'validate', 'password_hash,class_level,class_arm\nx,JSS1,A').status_code, 400)
+        self.assertEqual(self.upload('classes', 'validate', data, {'Class Level':'class_arm','Class Arm':'class_arm'}).status_code, 400)
+        self.assertEqual(self.upload('classes', 'validate', 'class_level,class_arm\nJSS1').data['counts']['REJECT'], 1)
+        self.assertEqual(self.upload('classes', 'validate', 'class_level,class_arm\nJSS1,=1+1').data['counts']['REJECT'], 1)
+        teacher = CustomUser.objects.create_user(email='teacher@migration.test', password='test', school=self.school, role='teacher')
+        self.client.force_authenticate(teacher)
+        self.assertEqual(self.upload('classes', 'import', data).status_code, 403)
+        self.assertEqual(self.client.get('/api/migration/').status_code, 403)
+
+    def test_operational_sequence_retries_and_readiness(self):
+        session = AcademicSession.objects.create(school=self.school, name='2026/27',
+            start_date=date(2026, 9, 1), end_date=date(2027, 7, 1), is_current=True)
+        Term.objects.create(session=session, name='first', start_date=date(2026, 9, 1),
+            end_date=date(2026, 12, 15), is_current=True)
+        files = [
+            ('classes', 'class_level,class_arm\nJSS1,A'),
+            ('subjects', 'code,name,class_level\nMATH,Mathematics,JSS1'),
+            ('students', 'student_ref,first_name,last_name,class_level,class_arm,email,dob\nOLD-1,Ada,Okafor,JSS1,A,ada@migration.test,2013-01-02'),
+            ('staff', 'first_name,last_name,email\nTayo,Teacher,tayo@migration.test'),
+            ('parents', 'first_name,last_name,email,phone\nParent,One,parent@migration.test,08012345678'),
+            ('parent_links', 'parent_email,student_ref,relationship\nparent@migration.test,OLD-1,mother'),
+            ('assignments', 'teacher_email,class_level,class_arm,subject_code\ntayo@migration.test,JSS1,A,MATH'),
+        ]
+        for domain, body in files:
+            with self.subTest(domain=domain):
+                preview = self.upload(domain, 'validate', body)
+                self.assertEqual(preview.status_code, 200, preview.data)
+                self.assertEqual(preview.data['counts'], {'CREATE': 1, 'REUSE': 0, 'REJECT': 0})
+                imported = self.upload(domain, 'import', body)
+                self.assertEqual(imported.status_code, 200, imported.data)
+                self.assertEqual(imported.data['counts']['CREATE'], 1)
+                retry = self.upload(domain, 'import', body)
+                self.assertEqual(retry.data['counts'], {'CREATE': 0, 'REUSE': 1, 'REJECT': 0})
+        self.assertEqual(StudentProfile.objects.filter(school=self.school).count(), 1)
+        self.assertEqual(StaffProfile.objects.filter(school=self.school).count(), 1)
+        self.assertEqual(ParentStudentLink.objects.filter(school=self.school).count(), 1)
+        self.assertEqual(SubjectAssignment.objects.filter(school=self.school).count(), 1)
+        student = StudentProfile.objects.get(school=self.school)
+        self.assertTrue(student.user.must_change_password)
+        self.assertTrue(student.user.check_password(student.admission_number))
+        staff = StaffProfile.objects.get(school=self.school)
+        self.assertTrue(staff.user.check_password(staff.staff_id))
+        parent = CustomUser.objects.get(email='parent@migration.test')
+        self.assertFalse(parent.has_usable_password())
+        self.assertEqual(MigrationStudentReference.objects.get(student=student).reference, 'OLD-1')
+        self.assertEqual(PlatformEvent.objects.filter(action='school.migration_completed').count(), 7)
+        readiness = self.client.get('/api/school/setup/').data['steps']
+        for key in ('classes', 'subjects', 'teachers', 'assignments'):
+            self.assertTrue(next(step for step in readiness if step['key'] == key)['complete'])
+
+    def test_partial_errors_and_cross_tenant_references(self):
+        self.upload('classes', 'import', 'class_level,class_arm\nJSS1,A')
+        csv = ('student_ref,first_name,last_name,class_level,class_arm,dob\n'
+               'ONE,Ada,One,JSS1,A,2013-01-02\nTWO,Bad,Date,JSS1,A,not-a-date\n'
+               'ONE,Ada,One,JSS1,A,2013-01-02')
+        preview = self.upload('students', 'validate', csv)
+        self.assertEqual(preview.data['counts'], {'CREATE': 1, 'REUSE': 0, 'REJECT': 2})
+        self.assertEqual(StudentProfile.objects.count(), 0)
+        imported = self.upload('students', 'import', csv)
+        self.assertEqual(imported.data['counts'], {'CREATE': 1, 'REUSE': 0, 'REJECT': 2})
+        self.assertEqual(StudentProfile.objects.count(), 1)
+        foreign_parent = CustomUser.objects.create_user(email='foreign@migration.test', password=None,
+            school=self.other, role='parent', phone_number='08000000000')
+        foreign_level = ClassLevel.objects.create(school=self.other, name='SS1')
+        foreign_arm = ClassArm.objects.create(school=self.other, class_level=foreign_level, name='A')
+        foreign_user = CustomUser.objects.create_user(email=None, password='test',
+            school=self.other, role='student', first_name='Foreign', last_name='Student')
+        foreign_student = StudentProfile.objects.create(school=self.other, user=foreign_user, current_class=foreign_arm)
+        MigrationStudentReference.objects.create(school=self.other, reference='FOREIGN', student=foreign_student)
+        foreign_teacher = CustomUser.objects.create_user(email='foreign-teacher@migration.test', password='test',
+            school=self.other, role='teacher')
+        StaffProfile.objects.create(school=self.other, user=foreign_teacher)
+        self.assertEqual(self.upload('parent_links', 'validate',
+            'parent_email,student_ref,relationship\nforeign@migration.test,ONE,mother').data['counts']['REJECT'], 1)
+        self.upload('parents', 'import', 'first_name,last_name,email,phone\nParent,One,local@migration.test,08012345678')
+        self.assertEqual(self.upload('parent_links', 'validate',
+            'parent_email,student_ref,relationship\nlocal@migration.test,FOREIGN,mother').data['counts']['REJECT'], 1)
+        self.assertEqual(ParentStudentLink.objects.count(), 0)
+        self.assertEqual(foreign_parent.school, self.other)
+        self.assertEqual(self.upload('assignments', 'validate',
+            'teacher_email,class_level,class_arm,subject_code\nforeign-teacher@migration.test,JSS1,A,MATH').data['counts']['REJECT'], 1)
+        self.assertEqual(self.upload('students', 'validate',
+            'student_ref,first_name,last_name,class_level,class_arm\nOTHER,Ada,Other,SS1,A').data['counts']['REJECT'], 1)
+        other_admin = CustomUser.objects.create_user(email='admin@other-migration.test', password='test',
+            school=self.other, role='school_admin')
+        self.client.force_authenticate(other_admin)
+        self.assertEqual(self.upload('classes', 'import', 'class_level,class_arm\nJSS1,B').status_code, 403)
+
+    def test_existing_student_admission_number_can_be_linked_without_source_ids(self):
+        student_user = CustomUser.objects.create_user(email=None, password='test', school=self.school,
+            role='student', first_name='Existing', last_name='Student')
+        student = StudentProfile.objects.create(school=self.school, user=student_user)
+        self.upload('parents', 'import', 'first_name,last_name,email,phone\nParent,One,local@migration.test,08012345678')
+        response = self.upload('parent_links', 'import',
+            f'parent_email,student_ref,relationship\nlocal@migration.test,{student.admission_number},guardian')
+        self.assertEqual(response.data['counts']['CREATE'], 1)
+
+    def test_subject_coverage_and_guardian_contact_do_not_grant_access(self):
+        self.upload('classes', 'import', 'class_level,class_arm\nJSS1,A\nJSS2,A')
+        response = self.upload('subjects', 'import', 'code,name,class_levels\nMATH,Mathematics,JSS1;JSS2')
+        self.assertEqual(response.data['counts']['CREATE'], 1)
+        self.assertEqual(Subject.objects.get(school=self.school, code='MATH').class_levels.count(), 2)
+        student_csv = ('student_ref,first_name,last_name,class_level,class_arm,guardian_name,guardian_phone,guardian_email\n'
+                       'OLD-1,Ada,Okafor,JSS1,A,Parent One,08012345678,parent@migration.test')
+        self.assertEqual(self.upload('students', 'import', student_csv).data['counts']['CREATE'], 1)
+        self.assertEqual(ParentStudentLink.objects.count(), 0)
+        self.assertFalse(CustomUser.objects.filter(email='parent@migration.test').exists())
+        changed = student_csv.replace('Ada,Okafor', 'Other,Student')
+        self.assertEqual(self.upload('students', 'validate', changed).data['counts']['REJECT'], 1)
+        duplicate_email = ('student_ref,first_name,last_name,class_level,class_arm,email\n'
+                           'R1,One,Student,JSS1,A,same@migration.test\n'
+                           'R2,Two,Student,JSS1,A,same@migration.test')
+        self.assertEqual(self.upload('students', 'validate', duplicate_email).data['counts']['REJECT'], 1)
+
+    def test_dry_run_rejects_in_file_parent_phone_and_assignment_conflicts(self):
+        parents = ('first_name,last_name,email,phone\n'
+                   'First,Parent,first@migration.test,08012345678\n'
+                   'Second,Parent,second@migration.test,08012345678')
+        self.assertEqual(self.upload('parents', 'validate', parents).data['counts'],
+                         {'CREATE': 1, 'REUSE': 0, 'REJECT': 1})
+        self.upload('classes', 'import', 'class_level,class_arm\nJSS1,A')
+        self.upload('subjects', 'import', 'code,name,class_level\nMATH,Mathematics,JSS1')
+        self.upload('staff', 'import', 'first_name,last_name,email\nOne,Teacher,one@migration.test\nTwo,Teacher,two@migration.test')
+        session = AcademicSession.objects.create(school=self.school, name='2026/27',
+            start_date=date(2026, 9, 1), end_date=date(2027, 7, 1), is_current=True)
+        Term.objects.create(session=session, name='first', start_date=date(2026, 9, 1),
+            end_date=date(2026, 12, 15), is_current=True)
+        assignments = ('teacher_email,class_level,class_arm,subject_code\n'
+                       'one@migration.test,JSS1,A,MATH\n'
+                       'two@migration.test,JSS1,A,MATH')
+        self.assertEqual(self.upload('assignments', 'validate', assignments).data['counts'],
+                         {'CREATE': 1, 'REUSE': 0, 'REJECT': 1})
+
+    def test_400_student_simulation_is_retry_safe(self):
+        session = AcademicSession.objects.create(school=self.school, name='2026/27',
+            start_date=date(2026, 9, 1), end_date=date(2027, 7, 1), is_current=True)
+        Term.objects.create(session=session, name='first', start_date=date(2026, 9, 1),
+            end_date=date(2026, 12, 15), is_current=True)
+        arms = [chr(65 + i) for i in range(20)]
+        classes = 'class_level,class_arm\n' + ''.join(f'JSS1,{arm}\n' for arm in arms)
+        self.assertEqual(self.upload('classes', 'import', classes).data['counts']['CREATE'], 20)
+        subjects = 'code,name,class_level\n' + ''.join(f'SUB{i},Subject{i},JSS1\n' for i in range(15))
+        self.assertEqual(self.upload('subjects', 'import', subjects).data['counts']['CREATE'], 15)
+        header = 'student_ref,first_name,last_name,class_level,class_arm,dob\n'
+        body = header + ''.join(f'OLD-{i},Student,Number{i},JSS1,{arms[i % 20]},2013-01-02\n' for i in range(400))
+        started = time.perf_counter()
+        preview = self.upload('students', 'validate', body)
+        self.assertEqual(preview.data['counts']['CREATE'], 400)
+        self.assertEqual(StudentProfile.objects.count(), 0)
+        imported = self.upload('students', 'import', body)
+        self.assertEqual(imported.data['counts']['CREATE'], 400)
+        self.assertEqual(StudentProfile.objects.filter(school=self.school).count(), 400)
+        retry = self.upload('students', 'import', body)
+        self.assertEqual(retry.data['counts']['REUSE'], 400)
+        self.assertEqual(StudentProfile.objects.filter(school=self.school).count(), 400)
+        staff = 'first_name,last_name,email\n' + ''.join(
+            f'Teacher,Number{i},teacher{i}@migration.test\n' for i in range(40))
+        self.assertEqual(self.upload('staff', 'import', staff).data['counts']['CREATE'], 40)
+        parents = 'first_name,last_name,email,phone\n' + ''.join(
+            f'Parent,Number{i},parent{i}@migration.test,0801234{i:04d}\n' for i in range(40))
+        self.assertEqual(self.upload('parents', 'import', parents).data['counts']['CREATE'], 40)
+        links = 'parent_email,student_ref,relationship\n' + ''.join(
+            f'parent{i}@migration.test,OLD-{i},guardian\n' for i in range(40))
+        self.assertEqual(self.upload('parent_links', 'import', links).data['counts']['CREATE'], 40)
+        assignments = 'teacher_email,class_level,class_arm,subject_code\n' + ''.join(
+            f'teacher{i}@migration.test,JSS1,{arms[i]},SUB{i % 15}\n' for i in range(20))
+        self.assertEqual(self.upload('assignments', 'import', assignments).data['counts']['CREATE'], 20)
+        self.assertEqual(ParentStudentLink.objects.filter(school=self.school).count(), 40)
+        self.assertEqual(SubjectAssignment.objects.filter(school=self.school).count(), 20)
+        print(f'MIGRATION_SIMULATION_SQLITE students=400 teachers=40 parents=40 arms=20 subjects=15 assignments=20 total_seconds={time.perf_counter()-started:.2f}')

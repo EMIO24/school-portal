@@ -28,6 +28,12 @@
     color: #1a1a1a;
     line-height: 1.35;
   }
+  body.report-modern .school-header { border-bottom-width: 5px; padding: 10px; background: #f3f7fa; }
+  body.report-modern .bio-strip { border-radius: 10px; }
+  body.report-compact { font-size: 8pt; }
+  body.report-compact .school-header, body.report-compact .bio-strip { margin-bottom: 5px; }
+  .report-watermark { text-align: center; letter-spacing: .25em; opacity: .45; font-size: 8pt; }
+  .preview-banner { text-align: center; border: 2px solid #9a3412; color: #9a3412; padding: 5px; margin-bottom: 8px; font-weight: bold; }
 
   /* ── School header ── */
   .school-header {
@@ -112,40 +118,6 @@
   .bio-item { display: flex; gap: 4px; align-items: baseline; }
   .bio-label { font-size: 7.5pt; color: #555; font-weight: bold; text-transform: uppercase; }
   .bio-value { font-size: 9pt; font-weight: bold; color: {{ document_primary_color|default:"#0f1e3c" }}; }
-
-  body.result-layout-modern {
-    font-size: 8.8pt;
-  }
-
-  body.result-layout-modern .school-header {
-    border-bottom-width: 4px;
-    margin-bottom: 12px;
-  }
-
-  body.result-layout-modern .summary-bar {
-    border-radius: 8px;
-    margin-bottom: 12px;
-  }
-
-  body.result-layout-compact {
-    font-size: 8.3pt;
-  }
-
-  body.result-layout-compact .bio-strip,
-  body.result-layout-compact .summary-bar,
-  body.result-layout-compact .remarks-section,
-  body.result-layout-compact .footer-strip {
-    margin-bottom: 7px;
-  }
-
-  body.result-layout-compact .score-table th,
-  body.result-layout-compact .score-table td,
-  body.result-layout-compact .domain-table th,
-  body.result-layout-compact .domain-table td,
-  body.result-layout-compact .remark-box {
-    padding-top: 3px;
-    padding-bottom: 3px;
-  }
 
   /* ── Score table ── */
   table {
@@ -354,7 +326,9 @@
   .domain-col { flex: 1; }
 </style>
 </head>
-<body class="result-layout-{{ result_layout|default:'classic' }}">
+<body class="report-{{ layout }}">
+{% if unpublished_preview %}<div class="preview-banner">UNPUBLISHED PREVIEW — NOT AN OFFICIAL RESULT</div>{% endif %}
+{% if watermark != 'none' %}<div class="report-watermark">{% if watermark == 'school' %}{{ school_name }}{% else %}OFFICIAL{% endif %}</div>{% endif %}
 
 <!-- ── School Header ───────────────────────────────────────────────────── -->
 <div class="school-header">
@@ -366,7 +340,7 @@
   <div class="school-info">
     <div class="school-name">{{ school_name }}</div>
     <div class="school-address">{% if school_motto %}{{ school_motto }}<br>{% endif %}{{ school_contact_line }}{% if school_registration_number %}<br>Reg. No: {{ school_registration_number }}{% endif %}</div>
-    <div class="report-title">Student Academic Report — {{ term_name }} | {{ session_name }}</div>
+    <div class="report-title">{{ title }} — {{ term_name }} | {{ session_name }}</div>
   </div>
 </div>
 
@@ -409,17 +383,12 @@
   </div>
 </div>
 
-{% if 'scores' in result_sections %}
 <!-- ── Score Table ─────────────────────────────────────────────────────── -->
 <table class="score-table">
   <thead>
     <tr>
       <th class="col-subject">Subject</th>
-      <th>1st Test<br>/10</th>
-      <th>2nd Test<br>/10</th>
-      <th>Assignment<br>/10</th>
-      <th>CA Total<br>/40</th>
-      <th>Exam<br>/60</th>
+      <th>Assessment scores</th>
       <th>Total<br>/100</th>
       <th>Grade</th>
       <th>Remark</th>
@@ -429,11 +398,7 @@
     {% for row in score_rows %}
     <tr>
       <td class="col-subject">{{ row.subject }}</td>
-      <td>{{ row.first_test }}</td>
-      <td>{{ row.second_test }}</td>
-      <td>{{ row.assignment }}</td>
-      <td><strong>{{ row.ca_total }}</strong></td>
-      <td>{{ row.exam_score }}</td>
+      <td>{% for component in row.components %}<div>{{ component.name }}: {{ component.score }} / {{ component.maximum }}</div>{% endfor %}</td>
       <td><strong>{{ row.total_score }}</strong></td>
       <td><span class="grade-badge grade-{{ row.grade }}">{{ row.grade }}</span></td>
       <td>{{ row.remark }}</td>
@@ -441,9 +406,7 @@
     {% endfor %}
   </tbody>
 </table>
-{% endif %}
 
-{% if 'summary' in result_sections %}
 <!-- ── Summary Bar ─────────────────────────────────────────────────────── -->
 <div class="summary-bar">
   <div class="summary-cell">
@@ -454,29 +417,27 @@
     <span class="s-label">Average</span>
     <span class="s-value">{{ average_score|floatformat:1 }}</span>
   </div>
-  <div class="summary-cell pos-cell">
+  {% if show_position %}<div class="summary-cell pos-cell">
     <span class="s-label">Position</span>
     <span class="s-value">
-      {{ position }}{% if position == 1 %}st{% elif position == 2 %}nd{% elif position == 3 %}rd{% else %}th{% endif %}
+      {% if position %}{{ position }}{% if position == 1 %}st{% elif position == 2 %}nd{% elif position == 3 %}rd{% else %}th{% endif %}{% else %}Not calculated{% endif %}
     </span>
   </div>
   <div class="summary-cell">
     <span class="s-label">Out of</span>
     <span class="s-value">{{ class_size }}</span>
-  </div>
+  </div>{% endif %}
   <div class="summary-cell">
     <span class="s-label">Subjects</span>
     <span class="s-value">{{ num_subjects }}</span>
   </div>
 </div>
-{% endif %}
 
-{% if 'affective' in result_sections or 'psychomotor' in result_sections %}
 <!-- ── Domain Tables (side by side) ───────────────────────────────────── -->
-<div class="domain-columns">
+{% if show_skills or show_attendance %}<div class="domain-columns">
 
   <!-- Affective -->
-  {% if 'affective' in result_sections and affective_rows %}
+  {% if show_skills and affective_rows %}
   <div class="domain-col">
     <div class="section-title">Affective Domain</div>
     <table class="domain-table">
@@ -506,7 +467,7 @@
   {% endif %}
 
   <!-- Psychomotor -->
-  {% if 'psychomotor' in result_sections and psychomotor_rows %}
+  {% if show_skills and psychomotor_rows %}
   <div class="domain-col">
     <div class="section-title">Psychomotor Domain</div>
     <table class="domain-table">
@@ -533,15 +494,18 @@
       </tbody>
     </table>
 
-    {% if 'attendance' in result_sections %}
-    <div class="section-title" style="margin-top:8px">Attendance</div>
+  </div>
+  {% endif %}
+
+  {% if show_attendance and total_days %}
+  <div class="domain-col"><div class="section-title" style="margin-top:8px">Attendance</div>
     <div class="att-row">
       <div class="att-item">
-        <div class="att-label">Days Present</div>
+        <div class="att-label">Sessions Present</div>
         <div class="att-value">{{ days_present }}</div>
       </div>
       <div class="att-item">
-        <div class="att-label">Total Days</div>
+        <div class="att-label">Recorded Sessions</div>
         <div class="att-value">{{ total_days }}</div>
       </div>
       <div class="att-item">
@@ -549,16 +513,13 @@
         <div class="att-value">{{ att_percentage }}%</div>
       </div>
     </div>
-    {% endif %}
   </div>
   {% endif %}
 
-</div>
-{% endif %}
+</div>{% endif %}
 
-{% if 'remarks' in result_sections %}
 <!-- ── Remarks ─────────────────────────────────────────────────────────── -->
-<div class="remarks-section">
+{% if show_comments %}<div class="remarks-section">
   <div class="remark-box">
     <div class="remark-label">Class Teacher's Remark</div>
     <div class="remark-text">{{ class_teacher_remark|default:"—" }}</div>
@@ -567,11 +528,10 @@
     <div class="remark-label">Principal's Remark</div>
     <div class="remark-text">{{ principal_remark|default:"—" }}</div>
   </div>
-</div>
-{% endif %}
+</div>{% endif %}
 
 <!-- ── Footer ──────────────────────────────────────────────────────────── -->
-{% if next_term_date %}
+{% if show_next_term and next_term_date %}
 <div class="next-term-note">
   📅 Next Term Begins: {{ next_term_date }}
 </div>

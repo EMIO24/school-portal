@@ -18,11 +18,12 @@ from .models import CustomUser
 
 class LoginSerializer(serializers.Serializer):
     """
-    Validates email + password for the current tenant.
+    Validates email or a school-scoped student name, plus password.
     On success, returns JWT token pair + user metadata.
     """
 
-    email    = serializers.EmailField()
+    email    = serializers.CharField(max_length=320)
+    admission_number = serializers.CharField(required=False, allow_blank=True, max_length=50, write_only=True)
     password = serializers.CharField(write_only=True, style={"input_type": "password"})
 
     def validate(self, attrs):
@@ -32,11 +33,15 @@ class LoginSerializer(serializers.Serializer):
         tenant   = getattr(request, "tenant", None)
 
         # ── Authenticate ──────────────────────────────────────────────────────
-        user = authenticate(request=request, email=email, password=password)
+        if "@" in email:
+            user = authenticate(request=request, email=email, password=password)
+        else:
+            user = authenticate(request=request, student_name=email, password=password,
+                                admission_number=attrs.get("admission_number", ""))
 
         if user is None:
             raise serializers.ValidationError(
-                "Invalid email or password. Please try again.",
+                "Invalid login details.",
                 code="authentication_failed",
             )
 

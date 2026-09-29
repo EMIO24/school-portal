@@ -6,8 +6,17 @@ if [ "${RUN_MIGRATIONS:-}" = "true" ]; then
     python manage.py deployment_check ${DEPLOYMENT_CHECK_ARGS:-}
     python manage.py check --deploy --fail-level WARNING
 
+    if [ "${RESET_DB_ON_DEPLOY:-}" = "true" ]; then
+        echo "==> Resetting database because RESET_DB_ON_DEPLOY=true"
+        python manage.py flush --noinput
+    fi
+
     echo "==> Running database migrations..."
     python manage.py migrate --noinput
+
+    if [ "${RESET_DB_ON_DEPLOY:-}" = "true" ]; then
+        python manage.py bootstrap_platform
+    fi
 
     # Create superadmin from env vars (idempotent — skips if email already exists)
     if [ -n "${DJANGO_SUPERUSER_EMAIL:-}" ] && [ -n "${DJANGO_SUPERUSER_PASSWORD:-}" ]; then

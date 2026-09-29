@@ -22,6 +22,7 @@ import "./styles/global.css";
 import App from "./App";
 import "./styles/mobile.css";
 import "./styles/workspace.css";
+import "./styles/design-variants.css";
 import "./styles/mobile-workspace.css";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
@@ -31,10 +32,3 @@ root.render(
     <App />
   </React.StrictMode>
 );
-
-// Register service worker for parent portal PWA
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/serviceWorker.js').catch(() => {});
-  });
-}

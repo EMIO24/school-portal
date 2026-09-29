@@ -12,7 +12,7 @@ from accounts.models import CustomUser, ParentStudentLink
 from tenants.models import School, PlatformSecurity
 from enrollment.models import StudentProfile, ClassLevel, ClassArm
 from academics.models import AcademicSession, Term
-from .models import FeeCategory, FeeSchedule, FeePayment, SchoolPaymentAccount, PaymentOrder, SubscriptionOffer, TermInvoice
+from .models import FeeCategory, FeeSchedule, FeePayment, SchoolPaymentAccount, PaymentOrder, SubscriptionOffer
 from .payments import settle, add_months
 from .services.paystack import PaystackService
 
@@ -37,13 +37,24 @@ class PaystackTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(self.user)
         self.headers = {'HTTP_X_SCHOOL_SLUG':'pay'}
+    def subscription_invoice(self):
+        from .invoices import issue_invoice
+        from django.utils import timezone
+        return issue_invoice(school_id=self.school.pk, term_id=self.fee.term_id,
+                             due_date=timezone.localdate(), actor=self.owner)[0]
     def start(self):
         with patch.object(PaystackService, 'initialize', side_effect=lambda email, amount, ref, callback, **kw: ('https://checkout.paystack.com/test', ref)):
             return self.client.post('/api/fees/pay/initiate/', {'student_id': self.student.pk, 'fee_schedule_ids':[self.fee.pk]}, format='json', **self.headers)
     def data(self, order, **overrides):
         return {'status':'success', 'reference':order.reference, 'amount':order.amount_kobo, 'currency':'NGN', 'domain':'test', 'customer':{'email':order.payer_email}, 'id':123, **overrides}
     def test_outstanding_only_and_idempotent_receipts(self):
-        FeePayment.objects.create(school=self.school, student=self.student, fee_schedule=self.fee, amount_paid=2500, payment_date=date.today(), method='cash')
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.post('/api/fees/pay/manual/', {
+            'student_id': self.student.pk, 'fee_schedule_id': self.fee.pk,
+            'amount_paid': '2500.00', 'payment_date': '2026-09-27',
+            'method': 'cash', 'idempotency_key': 'paystack-partial-0001',
+        }, format='json', **self.headers).status_code, 201)
+        self.client.force_authenticate(self.user)
         self.assertEqual(self.start().status_code,200)
         order = PaymentOrder.objects.get()
         self.assertEqual(order.amount_kobo,750000)
@@ -51,10 +62,96 @@ class PaystackTests(TestCase):
         settle(order.reference,self.data(order)); settle(order.reference,self.data(order))
         self.assertEqual(FeePayment.objects.filter(paystack_reference=order.reference).count(),1)
         self.assertEqual(self.start().status_code,400)
+    def test_paystack_uses_frozen_charge_after_fee_structure_edit(self):
+        from .ledger import generate_charges, account_balance
+        generate_charges(self.school, self.fee.term, self.admin)
+        self.fee.amount = Decimal('20000.00')
+        self.fee.save(update_fields=['amount'])
+        self.assertEqual(self.start().status_code, 200)
+        order = PaymentOrder.objects.get()
+        self.assertEqual(order.amount_kobo, 1000000)
+        settle(order.reference, self.data(order))
+        self.assertEqual(account_balance(self.school, self.student)['outstanding'], Decimal('0.00'))
+
+    def test_paystack_declines_unverified_legacy_balance(self):
+        FeePayment.objects.create(school=self.school, student=self.student, fee_schedule=self.fee,
+            amount_paid=Decimal('200.00'), payment_date=date.today(), method='cash')
+        self.assertEqual(self.start().status_code, 409)
+        self.assertFalse(PaymentOrder.objects.exists())
+    def test_paystack_declines_account_credit_until_school_review(self):
+        from .ledger import generate_charges
+        generate_charges(self.school, self.fee.term, self.admin)
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.post('/api/fees/pay/manual/', {
+            'student_id': self.student.pk, 'fee_schedule_id': self.fee.pk,
+            'amount_paid': '11000.00', 'payment_date': '2026-09-27',
+            'method': 'cash', 'allow_credit': True,
+            'idempotency_key': 'paystack-credit-0001',
+        }, format='json', **self.headers).status_code, 201)
+        self.client.force_authenticate(self.user)
+        self.assertEqual(self.start().status_code, 409)
+        self.assertFalse(PaymentOrder.objects.exists())
     def test_pending_checkout_blocks_duplicate(self):
         self.start()
-        self.assertEqual(self.start().status_code,409)
-        self.assertEqual(PaymentOrder.objects.count(),1)
+
+        order = PaymentOrder.objects.get()
+
+        pending_data = {
+            'status': 'pending',
+            'reference': order.reference,
+            'amount': order.amount_kobo,
+            'currency': 'NGN',
+            'domain': 'test',
+            'customer': {'email': order.payer_email},
+            'id': 123,
+        }
+
+        with patch.object(PaystackService, 'verify', return_value=pending_data):
+            response = self.start()
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(PaymentOrder.objects.count(), 1)
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'pending')
+    def test_failed_pending_checkout_is_reconciled_and_retry_allowed(self):
+        # First checkout succeeds and creates a local pending PaymentOrder.
+        first_response = self.start()
+        self.assertEqual(first_response.status_code, 200)
+
+        first_order = PaymentOrder.objects.get()
+        self.assertEqual(first_order.status, 'pending')
+
+        # Paystack now reports that the transaction actually failed.
+        failed_data = {
+            'status': 'failed',
+            'reference': first_order.reference,
+            'amount': first_order.amount_kobo,
+            'currency': 'NGN',
+            'domain': 'test',
+            'customer': {'email': first_order.payer_email},
+            'id': 456,
+        }
+
+        # When the user tries again, Paideia should reconcile the old
+        # pending transaction before deciding whether to block the retry.
+        with patch.object(PaystackService, 'verify', return_value=failed_data):
+            second_response = self.start()
+
+        self.assertEqual(second_response.status_code, 200)
+
+        first_order.refresh_from_db()
+        self.assertEqual(first_order.status, 'failed')
+
+        # A new checkout should have been created.
+        self.assertEqual(PaymentOrder.objects.count(), 2)
+
+        # The declined transaction must never create a fee payment.
+        self.assertFalse(
+            FeePayment.objects.filter(
+                paystack_reference=first_order.reference
+            ).exists()
+        )
     def test_unmatched_amount_currency_email_reference_or_mode_never_credits(self):
         self.start(); order = PaymentOrder.objects.get()
         for changes in [{'amount':1}, {'currency':'USD'}, {'domain':'live'}, {'reference':'other'}, {'customer':{'email':'stranger@example.test'}}, {'amount':True}]:
@@ -97,7 +194,7 @@ class PaystackTests(TestCase):
     def test_subscription_extends_once_and_never_unsuspends(self):
         self.client.force_authenticate(self.admin)
         with patch.object(PaystackService,'initialize',side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
-            r=self.client.post('/api/fees/subscription/',{'plan':'basic'},format='json',**self.headers)
+            r=self.client.post('/api/fees/subscription/',{'invoice_id': self.subscription_invoice().pk},format='json',**self.headers)
         self.assertEqual(r.status_code,200,r.data)
         order=PaymentOrder.objects.get();self.assertEqual(order.amount_kobo,80000);self.assertFalse(order.subaccount_code)
         self.school.is_active=False;self.school.save()
@@ -105,93 +202,74 @@ class PaystackTests(TestCase):
         settle(order.reference,self.data(order));self.school.refresh_from_db()
         self.assertEqual(end,self.school.subscription_ends_on);self.assertFalse(self.school.is_active)
         self.assertEqual(self.school.subscription_plan,'basic')
+    def test_failed_pending_subscription_is_reconciled_and_retry_allowed(self):
+        self.client.force_authenticate(self.admin)
+
+        with patch.object(
+            PaystackService,
+            'initialize',
+            side_effect=lambda email, amount, ref, callback, **kw:
+                ('https://checkout.paystack.com/test', ref)
+        ):
+            first_response = self.client.post(
+                '/api/fees/subscription/',
+                {'invoice_id': self.subscription_invoice().pk},
+                format='json',
+                **self.headers
+            )
+
+        self.assertEqual(first_response.status_code, 200)
+
+        first_order = PaymentOrder.objects.get()
+        self.assertEqual(first_order.kind, 'subscription')
+        self.assertEqual(first_order.status, 'pending')
+
+        failed_data = {
+            'status': 'failed',
+            'reference': first_order.reference,
+            'amount': first_order.amount_kobo,
+            'currency': 'NGN',
+            'domain': 'test',
+            'customer': {'email': first_order.payer_email},
+            'id': 456,
+        }
+
+        with patch.object(PaystackService, 'verify', return_value=failed_data):
+            with patch.object(
+                PaystackService,
+                'initialize',
+                side_effect=lambda email, amount, ref, callback, **kw:
+                    ('https://checkout.paystack.com/test', ref)
+            ):
+                second_response = self.client.post(
+                    '/api/fees/subscription/',
+                    {'invoice_id': self.subscription_invoice().pk},
+                    format='json',
+                    **self.headers
+                )
+
+        self.assertEqual(second_response.status_code, 200)
+
+        first_order.refresh_from_db()
+        self.assertEqual(first_order.status, 'failed')
+
+        self.assertEqual(
+            PaymentOrder.objects.filter(
+                school=self.school,
+                kind='subscription'
+            ).count(),
+            2
+        )
+
     def test_subscription_10_percent_discount_for_100_students_and_above(self):
         self.client.force_authenticate(self.admin)
         for index in range(99):
             user = CustomUser.objects.create_user(f'bulk{index}@pay.test', 'Password!123', school=self.school, role='student')
             StudentProfile.objects.create(school=self.school, user=user, current_class=None, admission_number=f'BULK{index:03d}')
         with patch.object(PaystackService,'initialize',side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
-            r=self.client.post('/api/fees/subscription/',{'plan':'basic'},format='json',**self.headers)
+            r=self.client.post('/api/fees/subscription/',{'invoice_id': self.subscription_invoice().pk},format='json',**self.headers)
         self.assertEqual(r.status_code,200,r.data)
         order=PaymentOrder.objects.get(); self.assertEqual(order.amount_kobo,7200000)
-    def test_term_invoice_records_audit_trail_for_subscription_billing(self):
-        session = AcademicSession.objects.create(school=self.school, name='2026/2027', start_date='2026-09-01', end_date='2027-07-31', is_current=True)
-        term = Term.objects.create(session=session, name='first', start_date='2026-09-01', end_date='2026-12-31', is_current=True)
-        for index in range(418):
-            user = CustomUser.objects.create_user(f'invoice{index}@pay.test', 'Password!123', school=self.school, role='student')
-            StudentProfile.objects.create(school=self.school, user=user, current_class=None, admission_number=f'INV{index:03d}')
-        invoice = TermInvoice.objects.create(
-            school=self.school,
-            plan='premium',
-            academic_session=session,
-            term=term,
-            active_student_count=418,
-            snapshot_date=date(2026, 9, 20),
-            standard_rate=Decimal('1500.00'),
-            discount_eligible=True,
-            discount_percentage=10,
-            discount_amount=Decimal('56430.00'),
-            effective_rate=Decimal('1350.00'),
-            subtotal=Decimal('627000.00'),
-            final_amount=Decimal('564300.00'),
-            invoice_number='INV-2026-001',
-            issue_date=date(2026, 9, 20),
-            due_date=date(2026, 10, 4),
-            status='issued',
-            grace_period_days=14,
-            notes='Premium plan rate with 10% discount for 418 active students.'
-        )
-        self.assertEqual(invoice.plan, 'premium')
-        self.assertEqual(invoice.active_student_count, 418)
-        self.assertEqual(invoice.discount_percentage, 10)
-        self.assertEqual(invoice.effective_rate, Decimal('1350.00'))
-        self.assertEqual(invoice.final_amount, Decimal('564300.00'))
-        self.assertIn('10%', invoice.notes)
-
-    def test_term_invoice_is_immutable_after_generation(self):
-        from fees.payments import create_term_invoice_for_payment
-
-        session = AcademicSession.objects.create(school=self.school, name='2026/2027', start_date='2026-09-01', end_date='2027-07-31', is_current=True)
-        term = Term.objects.create(session=session, name='first', start_date='2026-09-01', end_date='2026-12-31', is_current=True)
-
-        for index in range(102):
-            user = CustomUser.objects.create_user(f'freeze{index}@pay.test', 'Password!123', school=self.school, role='student')
-            StudentProfile.objects.create(school=self.school, user=user, current_class=None, admission_number=f'FRZ{index:03d}')
-
-        invoice = create_term_invoice_for_payment(
-            school=self.school,
-            plan_code='premium',
-            academic_session=session,
-            term=term,
-            active_student_count=102,
-            issued_on=date(2026, 9, 20),
-            due_date=date(2026, 10, 4),
-            notes='Initial snapshot for term billing.'
-        )
-        self.assertEqual(invoice.final_amount, Decimal('137700.00'))
-
-        for index in range(102, 99, -1):
-            student = StudentProfile.objects.filter(school=self.school, user__email=f'freeze{index-1}@pay.test').first()
-            if student:
-                student.delete()
-
-        regenerated = create_term_invoice_for_payment(
-            school=self.school,
-            plan_code='premium',
-            academic_session=session,
-            term=term,
-            active_student_count=99,
-            issued_on=date(2026, 9, 21),
-            due_date=date(2026, 10, 5),
-            notes='Late recalculation attempt.'
-        )
-
-        self.assertEqual(regenerated.pk, invoice.pk)
-        regenerated.refresh_from_db()
-        self.assertEqual(regenerated.active_student_count, 102)
-        self.assertEqual(regenerated.final_amount, Decimal('137700.00'))
-        self.assertEqual(regenerated.audit_snapshot['active_student_count'], 102)
-
     def test_owner_controls_work_without_tenant_and_viewer_denied(self):
         self.client.force_authenticate(self.owner)
         self.assertEqual(self.client.get('/api/platform/payments/').status_code,200)
@@ -199,6 +277,81 @@ class PaystackTests(TestCase):
         self.assertEqual(r.status_code,200)
         PlatformSecurity.objects.create(user=self.owner,access_level='viewer')
         self.assertEqual(self.client.post('/api/platform/payments/',{},format='json').status_code,403)
+    def test_platform_reconciliation_marks_failed_without_credit(self):
+        self.start(); order = PaymentOrder.objects.get(); self.client.force_authenticate(self.owner)
+        with patch.object(PaystackService, 'verify', return_value=self.data(order, status='failed')):
+            response = self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json')
+        order.refresh_from_db()
+        self.assertEqual(response.data['status'], 'failed'); self.assertEqual(order.status, 'failed'); self.assertFalse(FeePayment.objects.exists())
+    def test_platform_reconciliation_keeps_pending_without_credit(self):
+        self.start(); order = PaymentOrder.objects.get(); self.client.force_authenticate(self.owner)
+        with patch.object(PaystackService, 'verify', return_value=self.data(order, status='pending')):
+            response = self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json')
+        order.refresh_from_db()
+        self.assertEqual(response.data['status'], 'pending'); self.assertEqual(order.status, 'pending'); self.assertFalse(FeePayment.objects.exists())
+    def test_platform_reconciliation_marks_mismatch_for_review_without_credit(self):
+        self.start(); order = PaymentOrder.objects.get(); self.client.force_authenticate(self.owner)
+        with patch.object(PaystackService, 'verify', return_value=self.data(order, amount=1)):
+            response = self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json')
+        order.refresh_from_db()
+        self.assertEqual(response.data['status'], 'review'); self.assertEqual(order.status, 'review'); self.assertFalse(FeePayment.objects.exists())
+    def test_reconciliation_logs_status_transition_without_customer_data(self):
+        self.start(); order = PaymentOrder.objects.get(); self.client.force_authenticate(self.owner)
+        with self.assertLogs('fees.payments', level='INFO') as captured:
+            with patch.object(PaystackService, 'verify', return_value=self.data(order, status='failed')):
+                response = self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json')
+        output = ' '.join(captured.output)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('payment_reconciliation_completed', output)
+        self.assertIn('resulting_status=failed', output)
+        self.assertNotIn(order.payer_email, output)
+    def test_webhook_rejection_log_excludes_body_and_signature(self):
+        secret = 'SENSITIVE_WEBHOOK_TEST_VALUE'
+        with self.assertLogs('fees.payments', level='WARNING') as captured:
+            response = self.client.post('/api/platform/paystack/webhook/', {'private':secret}, format='json', HTTP_X_PAYSTACK_SIGNATURE=secret)
+        output = ' '.join(captured.output)
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('reason=invalid_signature', output)
+        self.assertNotIn(secret, output)
+    def test_paystack_error_log_excludes_provider_message_and_secret(self):
+        class RejectedResponse:
+            status_code = 400
+            def json(self):
+                return {'status': False, 'message': 'SENSITIVE_PROVIDER_MESSAGE', 'data': {}}
+        service = PaystackService()
+        with self.assertLogs('fees.services.paystack', level='WARNING') as captured:
+            with self.assertRaises(ValueError):
+                service._data(RejectedResponse())
+        output = ' '.join(captured.output)
+        self.assertIn('paystack_response_rejected status_code=400', output)
+        self.assertNotIn('SENSITIVE_PROVIDER_MESSAGE', output)
+        self.assertNotIn('sk_test_fixture', output)
+    def test_platform_reconciliation_extends_subscription_once(self):
+        self.client.force_authenticate(self.admin)
+        with patch.object(PaystackService, 'initialize', side_effect=lambda email,amount,ref,callback,**kw:('https://checkout.paystack.com/test',ref)):
+            self.assertEqual(self.client.post('/api/fees/subscription/', {'invoice_id': self.subscription_invoice().pk}, format='json', **self.headers).status_code, 200)
+        order = PaymentOrder.objects.get(); self.client.force_authenticate(self.owner)
+        with patch.object(PaystackService, 'verify', return_value=self.data(order)):
+            self.assertEqual(self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json').data['status'], 'success')
+            self.school.refresh_from_db(); first_end = self.school.subscription_ends_on
+            self.assertEqual(self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json').data['status'], 'success')
+        self.school.refresh_from_db()
+        self.assertEqual(self.school.subscription_ends_on, first_end)
+    def test_platform_owner_filters_and_reconciles_orders(self):
+        self.start(); order = PaymentOrder.objects.get()
+        PaymentOrder.objects.create(school=self.other, payer=self.owner, payer_email=self.owner.email,
+            kind='subscription', reference='SCH-filtered', mode='test', amount_kobo=100, status='success')
+        self.client.force_authenticate(self.owner)
+        response = self.client.get('/api/platform/payments/', {'status':'pending', 'kind':'fees', 'school_id':self.school.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item['reference'] for item in response.data['orders']], [order.reference])
+        with patch.object(PaystackService, 'verify', return_value=self.data(order)):
+            response = self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data['status'], 'success')
+            self.assertEqual(self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json').data['status'], 'success')
+        PlatformSecurity.objects.create(user=self.owner, access_level='viewer')
+        self.assertEqual(self.client.post('/api/platform/payments/', {'reference':order.reference}, format='json').status_code, 403)
     def test_subaccount_is_verified_and_cannot_be_shared(self):
         self.client.force_authenticate(self.owner)
         data={'subaccount_code':'ACCT_school','business_name':'School','active':True,'currency':'NGN','domain':'test','account_number':'0123456789','settlement_bank':'Test Bank'}

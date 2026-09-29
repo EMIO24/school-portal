@@ -7,6 +7,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from accounts.serializers import UserProfileSerializer
+from accounts.school_access import TenantRelationsMixin
 from .models import ClassArm, ClassLevel, StudentProfile, Subject
 
 User = get_user_model()
@@ -15,6 +16,14 @@ User = get_user_model()
 # ── ClassLevel ─────────────────────────────────────────────────────────────
 
 class ClassLevelSerializer(serializers.ModelSerializer):
+    def validate_name(self, value):
+        qs = ClassLevel.objects.filter(school=self.context['request'].tenant, name=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError('This class level already exists.')
+        return value
+
     class Meta:
         model  = ClassLevel
         fields = ["id", "name", "order_index"]
@@ -23,7 +32,18 @@ class ClassLevelSerializer(serializers.ModelSerializer):
 
 # ── ClassArm ───────────────────────────────────────────────────────────────
 
-class ClassArmSerializer(serializers.ModelSerializer):
+class ClassArmSerializer(TenantRelationsMixin, serializers.ModelSerializer):
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        level = attrs.get('class_level', getattr(self.instance, 'class_level', None))
+        name = attrs.get('name', getattr(self.instance, 'name', None))
+        qs = ClassArm.objects.filter(school=self.context['request'].tenant, class_level=level, name=name)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError({'name':'This class arm already exists.'})
+        return attrs
+
     full_name         = serializers.ReadOnlyField()
     class_level_name  = serializers.CharField(source="class_level.name", read_only=True)
     teacher_name      = serializers.CharField(
@@ -45,10 +65,15 @@ class ClassArmSerializer(serializers.ModelSerializer):
     def get_student_count(self, obj) -> int:
         return obj.students.filter(status="active").count()
 
+    def validate_class_teacher(self, value):
+        if value and (value.role != 'teacher' or not value.is_active):
+            raise serializers.ValidationError('Select an active teacher.')
+        return value
+
 
 # ── Subject ────────────────────────────────────────────────────────────────
 
-class SubjectSerializer(serializers.ModelSerializer):
+class SubjectSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     class Meta:
         model  = Subject
         fields = [
@@ -58,6 +83,7 @@ class SubjectSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "max_total"]
 
     def validate(self, attrs):
+        attrs = super().validate(attrs)
         ca   = attrs.get("max_ca_score",   getattr(self.instance, "max_ca_score",   40))
         exam = attrs.get("max_exam_score",  getattr(self.instance, "max_exam_score", 60))
         if ca + exam != 100:
@@ -69,7 +95,7 @@ class SubjectSerializer(serializers.ModelSerializer):
 
 # ── StudentProfile ─────────────────────────────────────────────────────────
 
-class StudentProfileSerializer(serializers.ModelSerializer):
+class StudentProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     """Full serializer — used for create, retrieve, update."""
 
     # Nested read-only fields
@@ -84,7 +110,7 @@ class StudentProfileSerializer(serializers.ModelSerializer):
     )
 
     # Write-only fields for creating the user account alongside the profile
-    new_email      = serializers.EmailField(write_only=True, required=False)
+    new_email      = serializers.EmailField(write_only=True, required=False, allow_blank=True)
     new_first_name = serializers.CharField(write_only=True, required=False, max_length=150)
     new_last_name  = serializers.CharField(write_only=True, required=False, max_length=150)
 
@@ -112,6 +138,24 @@ class StudentProfileSerializer(serializers.ModelSerializer):
             "profile_photo", "current_class_name",
         ]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not (user and user.is_authenticated and user.role == "school_admin"
+                and user.school_id == instance.school_id):
+            data.pop("religion", None)
+        return data
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        from .account_editing import account_changes, edit_account
+        changes = account_changes(validated_data)
+        if 'status' in validated_data:
+            changes['is_active'] = validated_data['status'] == 'active'
+        edit_account(self.context['request'], instance.user, changes)
+        return super().update(instance, validated_data)
+
     @transaction.atomic
     def create(self, validated_data):
         """
@@ -119,16 +163,16 @@ class StudentProfileSerializer(serializers.ModelSerializer):
         Password defaults to the admission number — user must change on first login.
         """
         school      = validated_data.pop("school")
-        email       = validated_data.pop("new_email",      None)
+        email       = (validated_data.pop("new_email", None) or "").strip().lower()
         first_name  = validated_data.pop("new_first_name", "")
         last_name   = validated_data.pop("new_last_name",  "")
 
-        if not email:
-            raise serializers.ValidationError({"new_email": "Email is required."})
+        if not email and (not first_name.strip() or not last_name.strip()):
+            raise serializers.ValidationError("First and last name are required for student name login.")
 
-        if User.objects.filter(email=email).exists():
+        if email and User.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError(
-                {"new_email": f"A user with email '{email}' already exists."}
+                {"new_email": "This email cannot be used. Check the account details."}
             )
 
         user = User.objects.create_user(
@@ -139,6 +183,7 @@ class StudentProfileSerializer(serializers.ModelSerializer):
             role="student",
             school=school,
             must_change_password=True,
+            is_active=validated_data.get("status", "active") == "active",
         )
 
         profile = StudentProfile.objects.create(

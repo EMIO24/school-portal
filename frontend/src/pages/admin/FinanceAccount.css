@@ -1,0 +1,6 @@
+.finance-account{max-width:1000px;margin:auto;padding:24px;color:var(--text,#172b3a);min-width:0}.finance-account header p{max-width:70ch}
+.finance-form{background:var(--surface,#fff);border:1px solid var(--border,#dbe2e8);border-radius:var(--radius,12px);padding:20px;display:grid;gap:14px}
+.finance-form label{display:flex;flex-direction:column;gap:7px;font-weight:600}.finance-form input,.finance-form select,.finance-form textarea{max-width:100%;padding:10px;border:1px solid #91a5b2;border-radius:6px;font:inherit}
+.finance-form .finance-check{flex-direction:row;align-items:center}.finance-form button,.finance-error button{min-height:44px;padding:10px 16px;background:var(--primary,#163e59);color:#fff;border:0;border-radius:6px;cursor:pointer}
+.finance-form button:disabled{opacity:.55;cursor:wait}.finance-error,.finance-success{padding:12px;border-radius:6px;background:#fce8e6;color:#692a24}.finance-success{background:#e7f4e9;color:#215137}
+.finance-account :focus-visible{outline:3px solid #397bad;outline-offset:3px}@media(max-width:600px){.finance-account{padding:12px}.finance-form{padding:14px}}

@@ -1,3 +1,4 @@
+import {referenceOptions} from '../../services/referenceOptions';
 /**
  * frontend/src/pages/teacher/TakeAttendance.jsx
  *
@@ -15,7 +16,7 @@
  * detects the 400 conflict and offers to reload the existing session.
  */
 
-import React, { useState, useEffect, useReducer } from 'react';
+import React, { useState, useEffect, useReducer, useRef } from 'react';
 import api from '../../services/api';
 import '../../styles/Attendance.css';
 
@@ -79,12 +80,13 @@ export default function TakeAttendance() {
   const [finalizing, setFinalizing] = useState(false);
   const [error,      setError]      = useState(null);
   const [success,    setSuccess]    = useState(null);
+  const actionInFlight = useRef(false);
 
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      api.get('/api/terms/'),
-      api.get('/api/class-arms/'),
+      referenceOptions('/api/terms/'),
+      referenceOptions('/api/class-arms/'),
       api.get('/api/timetable/periods/'),
       api.get('/api/school/me/'),       // includes attendance_mode
     ]).then(([t, c, p, s]) => {
@@ -164,39 +166,63 @@ export default function TakeAttendance() {
 
   // ── Submit ──────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
+    if (actionInFlight.current || !session) return;
+    actionInFlight.current = true;
     setSubmitting(true);
     setError(null);
+    setSuccess(null);
+    const payload = {
+      records: Object.entries(records).map(([studentId, rec]) => ({
+        student_id: Number(studentId), status: rec.status, remark: rec.remark,
+      })),
+    };
     try {
-      const payload = {
-        records: Object.entries(records).map(([studentId, rec]) => ({
-          student_id: Number(studentId),
-          status:     rec.status,
-          remark:     rec.remark,
-        })),
-      };
       const { data } = await api.patch(`/api/attendance/sessions/${session.id}/submit/`, payload);
       loadSession(data);
       setSuccess('Attendance saved successfully.');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError(err?.response?.data?.detail ?? 'Failed to submit attendance.');
+      if (err?.response && err.response.status < 500) setError(err.response.data?.detail ?? 'Could not save attendance. Review the entries and retry.');
+      else {
+        try {
+          const {data} = await api.get(`/api/attendance/sessions/${session.id}/`);
+          const matches = payload.records.every(item => data.records.some(row =>
+            row.student === item.student_id && row.status === item.status &&
+            (row.remark || '') === (item.remark || '')
+          ));
+          if (matches) {loadSession(data);setSuccess('Attendance saved; the register confirms your entries.');}
+          else setError('Could not confirm the save. Your marks remain here; review the register before retrying.');
+        } catch {setError('Could not confirm the save. Your marks remain here; reconnect and retry.');}
+      }
     } finally {
+      actionInFlight.current = false;
       setSubmitting(false);
     }
   };
 
   // ── Finalize ─────────────────────────────────────────────────────────────────
   const handleFinalize = async () => {
+    if (actionInFlight.current || !session) return;
     if (!window.confirm('Lock this register? It cannot be edited by teachers after this.')) return;
+    actionInFlight.current = true;
     setFinalizing(true);
     setError(null);
+    setSuccess(null);
     try {
       await api.patch(`/api/attendance/sessions/${session.id}/finalize/`);
       setSession(prev => ({ ...prev, is_finalized: true }));
       setSuccess('Register locked successfully.');
     } catch (err) {
-      setError(err?.response?.data?.detail ?? 'Could not finalize session.');
+      if (err?.response && err.response.status < 500) setError(err.response.data?.detail ?? 'Could not lock this register.');
+      else {
+        try {
+          const {data} = await api.get(`/api/attendance/sessions/${session.id}/`);
+          if (data.is_finalized) {loadSession(data);setSuccess('Register lock confirmed.');}
+          else setError('Could not confirm the lock. Check the register before retrying.');
+        } catch {setError('Could not confirm the lock. Reconnect and check the register before retrying.');}
+      }
     } finally {
+      actionInFlight.current = false;
       setFinalizing(false);
     }
   };
@@ -224,17 +250,17 @@ export default function TakeAttendance() {
       {!session && (
         <div className="att-controls">
           <div className="att-field-group">
-            <label>Term</label>
-            <select className="att-select" value={selectedTerm}
+            <label htmlFor="attendance-term">Term</label>
+            <select id="attendance-term" className="att-select" value={selectedTerm}
               onChange={e => setSelectedTerm(e.target.value)}>
               <option value="">— Select term —</option>
-              {terms.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {terms.map(t => <option key={t.id} value={t.id}>{t.name_display || t.name}{t.session_name ? ` / ${t.session_name}` : ""}</option>)}
             </select>
           </div>
 
           <div className="att-field-group">
-            <label>Class</label>
-            <select className="att-select" value={selectedClassArm}
+            <label htmlFor="attendance-class">Class</label>
+            <select id="attendance-class" className="att-select" value={selectedClassArm}
               onChange={e => setSelectedClassArm(e.target.value)}>
               <option value="">— Select class —</option>
               {classArms.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -242,15 +268,15 @@ export default function TakeAttendance() {
           </div>
 
           <div className="att-field-group">
-            <label>Date</label>
-            <input type="date" className="att-input" value={selectedDate}
+            <label htmlFor="attendance-date">Date</label>
+            <input id="attendance-date" type="date" className="att-input" value={selectedDate}
               onChange={e => setSelectedDate(e.target.value)} />
           </div>
 
           {schoolMode === 'per_period' && (
             <div className="att-field-group">
-              <label>Period</label>
-              <select className="att-select" value={selectedPeriod}
+              <label htmlFor="attendance-period">Period</label>
+              <select id="attendance-period" className="att-select" value={selectedPeriod}
                 onChange={e => setSelectedPeriod(e.target.value)}>
                 <option value="">— Select period —</option>
                 {periods.filter(p => !p.is_break).map(p => (
@@ -293,6 +319,7 @@ export default function TakeAttendance() {
                   : (
                     <button
                       className="att-btn att-btn--ghost"
+                      disabled={submitting || finalizing}
                       onClick={() => setSession(null)}
                     >← Back</button>
                   )}
@@ -321,7 +348,8 @@ export default function TakeAttendance() {
               <span>{students.length} students total</span>
               <button
                 className="att-btn att-btn--ghost"
-                onClick={() => dispatch({ type: 'MARK_ALL_PRESENT' })}
+                disabled={submitting || finalizing}
+                onClick={() => {setSuccess(null);dispatch({ type: 'MARK_ALL_PRESENT' });}}
               >
                 ✓ Mark all present
               </button>
@@ -348,12 +376,14 @@ export default function TakeAttendance() {
                             key={s.key}
                             className={`att-status-btn is-${STATUS_KEY[s.key]}${rec.status === s.key ? ' active' : ''}`}
                             title={s.title}
-                            disabled={isFinalized}
-                            onClick={() => dispatch({
+                            aria-label={`${s.title} for ${student.student_name}`}
+                            aria-pressed={rec.status === s.key}
+                            disabled={isFinalized || submitting || finalizing}
+                            onClick={() => {setSuccess(null);dispatch({
                               type: 'SET_STATUS',
                               studentId: student.student,
                               status: s.key,
-                            })}
+                            });}}
                           >{s.label}</button>
                         ))}
                       </div>
@@ -364,13 +394,15 @@ export default function TakeAttendance() {
                         <span /><span />
                         <input
                           className="att-remark-input"
+                          aria-label={`Remark for ${student.student_name}`}
                           placeholder="Remark (optional)…"
                           value={rec.remark}
-                          onChange={e => dispatch({
+                          disabled={submitting || finalizing}
+                          onChange={e => {setSuccess(null);dispatch({
                             type: 'SET_REMARK',
                             studentId: student.student,
                             remark: e.target.value,
-                          })}
+                          });}}
                         />
                       </div>
                     )}
@@ -386,7 +418,7 @@ export default function TakeAttendance() {
               <button
                 className="att-btn att-btn--primary"
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || finalizing}
               >
                 {submitting ? 'Saving…' : '💾 Save Attendance'}
               </button>

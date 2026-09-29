@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{{ title }} — {{ number }}</title>
+<style>
+@page { size: A4; margin: 22mm; @bottom-right { content: "Page " counter(page); font-size: 9pt; color: #52616b; } }
+body { font: 11pt sans-serif; color: #173447; line-height: 1.5; }
+header { border-bottom: 3px solid #b59458; padding-bottom: 18px; margin-bottom: 28px; }
+.brand { font: 22pt Georgia, serif; letter-spacing: 2px; } h1 { font-size: 18pt; }
+.muted, footer { color: #52616b; font-size: 10pt; } .identity { overflow-wrap: anywhere; }
+table { width: 100%; border-collapse: collapse; margin: 22px 0; } th, td { text-align: left; padding: 10px 6px; border-bottom: 1px solid #d7dde0; }
+td:last-child, th:last-child { text-align: right; } tr { break-inside: avoid; } .total { font-size: 15pt; font-weight: bold; }
+footer { border-top: 1px solid #d7dde0; padding-top: 18px; margin-top: 30px; }
+</style></head><body>
+<header><div class="brand">PAIDEIA PORTALS</div><div class="muted">Cultivating minds. Building futures.</div></header>
+<h1>{{ title }}</h1><p class="identity"><strong>{{ number }}</strong><br>School: {{ invoice.school_name }}</p>
+<p>{{ invoice.session_name }} · {{ invoice.term_name }}<br>{{ invoice.plan|title }} · {{ invoice.subscription_months|default_if_none:"Duration awaiting confirmation" }} months</p>
+<p>Issued {{ invoice.issue_date }} · Due {{ invoice.due_date }}<br>Status: <strong>{{ invoice.display_status|title }}</strong></p>
+<table><thead><tr><th>Description</th><th>Amount / quantity</th></tr></thead><tbody>
+<tr><td>Billed active students</td><td>{{ invoice.active_student_count }}</td></tr>
+<tr><td>Standard rate per student</td><td>NGN {{ invoice.standard_rate|floatformat:2 }}</td></tr>
+<tr><td>Subtotal</td><td>NGN {{ invoice.subtotal|floatformat:2 }}</td></tr>
+<tr><td>Student population discount ({{ invoice.discount_percentage }}%)</td><td>− NGN {{ invoice.discount_amount|floatformat:2 }}</td></tr>
+<tr><td>Effective rate per student</td><td>NGN {{ invoice.effective_rate|floatformat:4 }}</td></tr>
+<tr class="total"><td>{% if receipt %}Amount paid{% else %}Total due{% endif %}</td><td>NGN {{ invoice.final_amount|floatformat:2 }}</td></tr>
+</tbody></table>
+{% if receipt %}<p class="identity">Paid {{ invoice.paid_at }}<br>Provider: Paystack<br>Payment reference: {{ invoice.payment.reference }}<br>Invoice: {{ invoice.invoice_number }}</p>{% endif %}
+<footer>This document covers the school's Paideia portal subscription. Student tuition and other school fees are separate. Amounts reflect the billing record at issue time. {% if not receipt %}This invoice is not a receipt. A receipt is issued after payment verification.{% endif %}</footer>
+</body></html>

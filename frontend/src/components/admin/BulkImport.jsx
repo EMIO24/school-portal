@@ -12,14 +12,15 @@ import api from "../../services/api";
 import "./BulkImport.css";
 
 const REQUIRED_COLS = [
-  "first_name","last_name","email",
+  "first_name","last_name",
   "gender","dob","class_level",
   "guardian_name","guardian_phone",
 ];
 
 const OPTIONAL_COLS = [
+  "email",
   "state_of_origin","religion",
-  "guardian_email","guardian_relationship",
+  "guardian_email","guardian_relationship","class_arm",
 ];
 
 // ── CSV parser (client-side preview only) ─────────────────────────────────
@@ -207,7 +208,7 @@ export default function BulkImport({
   endpoint = '/api/students/bulk-import/',
   requiredCols = REQUIRED_COLS,
   templateCols = [...REQUIRED_COLS, ...OPTIONAL_COLS],
-  exampleRow = 'Amaka,Okonkwo,amaka@school.edu.ng,female,2008-05-14,JSS1,Mrs Okonkwo,08012345678,Lagos,Christianity,parent@example.com,mother',
+  exampleRow = 'Amaka,Okonkwo,female,2008-05-14,JSS1,Mrs Okonkwo,08012345678,,Lagos,,parent@example.com,mother,A',
   title = 'Bulk Student Import',
   entityLabel = 'Students',
   templateName = 'student_import_template.csv',
@@ -297,7 +298,10 @@ export default function BulkImport({
           <p className="bi-sub">
             Upload multiple records from a CSV file.
             Required columns: {requiredCols.join(", ")}.
+            Optional columns: {templateCols.filter(c => !requiredCols.includes(c)).join(', ')}.
           </p>
+          <p>Review the preview before importing. Valid rows are saved individually; failed rows are listed with their row number and are not saved. Re-import only corrected failures. Paideia generates account identifiers; do not include identifier or school columns.</p>
+          {endpoint.includes('/students/') && <p>Use an existing class level (for example JSS1). If it has multiple arms, include class_arm with the arm name (for example A). Guardian details do not grant parent portal access.</p>}
         </div>
         <TemplateDownload columns={templateCols} exampleRow={exampleRow} templateName={templateName} />
       </div>
@@ -324,7 +328,7 @@ export default function BulkImport({
                   {preview && ` · ${preview.totalRows} rows`}
                 </div>
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={reset} type="button">
+              <button className="btn btn-ghost btn-sm" disabled={uploading} onClick={reset} type="button">
                 Remove ✕
               </button>
             </div>
@@ -355,6 +359,7 @@ export default function BulkImport({
               <button
                 className="btn btn-ghost"
                 onClick={reset}
+                disabled={uploading}
                 type="button"
               >
                 Cancel

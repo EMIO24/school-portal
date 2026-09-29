@@ -2,7 +2,7 @@
  * pages/admin/StudentProfile.jsx
  *
  * Full student profile card with:
- *  - Cloudinary photo upload (direct unsigned upload)
+ *  - Validated student photo upload through the school API
  *  - Class assignment panel
  *  - Personal, academic, guardian detail sections
  *
@@ -12,6 +12,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import api from "../../services/api";
+import StudentParents from '../../components/admin/StudentParents';
 import "./StudentProfile.css";
 
 const STATUS_COLORS = {
@@ -20,32 +21,6 @@ const STATUS_COLORS = {
   withdrawn: "badge-warning",
   suspended: "badge-danger",
 };
-
-// ── Cloudinary unsigned upload ─────────────────────────────────────────────
-// Set these in your .env:
-//   REACT_APP_CLOUDINARY_CLOUD_NAME=your_cloud
-//   REACT_APP_CLOUDINARY_UPLOAD_PRESET=your_unsigned_preset
-
-const CLOUD_NAME    = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || "";
-const UPLOAD_PRESET = process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET || "";
-
-async function uploadToCloudinary(file) {
-  if (!CLOUD_NAME || !UPLOAD_PRESET) {
-    throw new Error("Cloudinary env vars not configured.");
-  }
-  const fd = new FormData();
-  fd.append("file",         file);
-  fd.append("upload_preset", UPLOAD_PRESET);
-  fd.append("folder",       "student_photos");
-
-  const res  = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-    { method: "POST", body: fd }
-  );
-  if (!res.ok) throw new Error("Cloudinary upload failed.");
-  const data = await res.json();
-  return data.secure_url;
-}
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
@@ -69,7 +44,7 @@ function Section({ title, children }) {
 
 // ── Photo Upload ───────────────────────────────────────────────────────────
 
-function PhotoUpload({ currentUrl, name, onUpload }) {
+function PhotoUpload({ currentUrl, name, onUpload, studentId }) {
   const inputRef     = useRef();
   const [busy, setBusy] = useState(false);
   const [err,  setErr]  = useState(null);
@@ -90,16 +65,18 @@ function PhotoUpload({ currentUrl, name, onUpload }) {
     setBusy(true);
 
     try {
-      const url = await uploadToCloudinary(file);
-      // Persist to backend
-      await api.patch(`/api/auth/me/`, { profile_photo: url });
+      const form = new FormData();
+      form.append('photo', file);
+      const {data} = await api.post('/api/students/' + studentId + '/photo/', form);
+      const url = data.profile_photo;
       onUpload(url);
       URL.revokeObjectURL(objUrl);
       setPreview(null);
     } catch (e) {
-      setErr(e.message || "Upload failed.");
+      setErr("Could not upload the photo. Use a PNG, JPEG or WebP image up to 2 MB.");
       setPreview(null);
     } finally {
+      URL.revokeObjectURL(objUrl);
       setBusy(false);
     }
   }
@@ -119,12 +96,9 @@ function PhotoUpload({ currentUrl, name, onUpload }) {
           <div className="sp-avatar-edit" aria-hidden="true">📷</div>
         )}
       </div>
-      <input ref={inputRef} type="file" accept="image/*"
+      <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" aria-label="Student photo"
         className="sp-hidden-input" onChange={handleChange} />
       {err && <p className="sp-photo-err">{err}</p>}
-      {!CLOUD_NAME && (
-        <p className="sp-photo-warn">Photo upload: set REACT_APP_CLOUDINARY_* env vars.</p>
-      )}
     </div>
   );
 }
@@ -223,7 +197,7 @@ export default function StudentProfilePage() {
       <div className="sp-hero">
 
         {/* Photo upload */}
-        <PhotoUpload
+        <PhotoUpload studentId={id}
           currentUrl={student.profile_photo}
           name={student.full_name}
           onUpload={handlePhotoUpload}
@@ -294,7 +268,7 @@ export default function StudentProfilePage() {
             : null} />
         </Section>
       </div>
-
+      <StudentParents studentId={id}/>
     </div>
   );
 }

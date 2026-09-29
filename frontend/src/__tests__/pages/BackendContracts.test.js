@@ -47,7 +47,7 @@ test('timetable creation submits the teacher user ID and current term', async ()
   }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 });
-test('staff editing uses the profile PATCH and does not send an incompatible assignment request', async () => {
+test('staff editing uses the profile PATCH with supported account fields and no assignment request', async () => {
   api.get.mockImplementation(async url => ({ data: url === '/api/staff/1/' ? {
     id: 1, email: 'teacher@example.com', first_name: 'Ada', last_name: 'Teacher', role: 'teacher',
     subjects_taught: [4], assigned_classes: [3],
@@ -58,7 +58,7 @@ test('staff editing uses the profile PATCH and does not send an incompatible ass
   await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/api/staff/1/', expect.objectContaining({
     dob: null, date_employed: null, subjects_taught: [4], assigned_classes: [3],
   })));
-  expect(api.patch.mock.calls[0][1]).not.toHaveProperty('new_email');
+  expect(api.patch.mock.calls[0][1]).toHaveProperty('new_email', 'teacher@example.com');
   expect(api.post).not.toHaveBeenCalled();
 });
 test('student timetable loads the profile class and selects the backend current term', async () => {
@@ -73,13 +73,39 @@ test('student result requests use the account ID required by the result backend'
   expect(api.get).toHaveBeenCalledWith('/api/results/slip-data/41/?term=2');
   expect(screen.getByText(/Results are not available/)).toBeVisible();
 });
-test('student attendance requests and filters records by account ID', async () => {
-  api.get.mockImplementation(async url => ({ data: url === '/api/terms/' ? [term] : url.includes('/report/') ? { percentage: 100 } : [
-    { id: 9, date: '2026-09-07', records: [{ student: 7, status: 'present' }, { student: 41, status: 'absent' }] },
-  ] }));
-  await act(async () => renderPage(<MyAttendance />, { auth: { user: { id: 41, student_id: 7 } } }));
-  expect(api.get).toHaveBeenCalledWith('/api/attendance/sessions/report/?student=41&term=2');
-  expect(api.get).toHaveBeenCalledWith('/api/attendance/sessions/?term=2&student=41');
+test('student attendance requests use the student-scoped attendance endpoint', async () => {
+  api.get.mockImplementation(async url => ({
+    data:
+      url === '/api/terms/'
+        ? [term]
+        : url.includes('/report/')
+        ? { percentage: 100 }
+        : url.includes('/student-report/')
+        ? [
+            {
+              date: '2026-09-07',
+              status: 'present',
+              remark: '',
+              session_id: 9,
+            },
+          ]
+        : [],
+  }));
+
+  await act(async () =>
+    renderPage(<MyAttendance />, {
+      auth: { user: { id: 41, student_id: 7 } },
+    })
+  );
+
+  expect(api.get).toHaveBeenCalledWith(
+    '/api/attendance/sessions/report/?student=41&term=2'
+  );
+
+  expect(api.get).toHaveBeenCalledWith(
+    '/api/attendance/sessions/student-report/?student=41&term=2'
+  );
+
   expect(screen.getByText('You are on track.')).toBeVisible();
 });
 test('exam results loads the canonical results URL and pushes grades after confirmation', async () => {
@@ -153,27 +179,42 @@ test('teacher opens a register, marks absence with a remark, saves and locks it'
   expect(screen.getByTitle('Present')).toBeDisabled();
 });
 
-test.each([false, true])('teacher saves scores with publish=%s using backend payload fields', async publish => {
+async function openTeacherSheet() {
   api.get.mockImplementation(async url => ({ data: url === '/api/terms/' ? [term]
     : url === '/api/sessions/' ? [{ id: 1, name: '2026/2027' }]
     : url === '/api/class-arms/' ? [{ id: 3, name: 'JSS1 A' }]
     : url === '/api/subjects/' ? [{ id: 4, name: 'Mathematics' }]
-    : url.includes('grade-scale') ? { bands: [] }
-    : url.includes('/students/') ? [{ id: 7, user: 41, full_name: 'Ada Student', admission_number: 'S001' }] : [] }));
+    : url.includes('/sheet/') ? { students: [{ user: 41, full_name: 'Ada Student', admission_number: 'S001' }],
+      entries: [], session: 1, configuration: { components: [{ key: 'test', name: '1st Test', maximum: '40' }] } } : [] }));
+  api.post.mockResolvedValue({ data: { errors: {}, updated: [] } });
   await act(async () => renderPage(<ScoreEntry />));
-  const selects = screen.getAllByRole('combobox');
-  fireEvent.change(selects[1], { target: { value: '1' } });
-  fireEvent.change(selects[2], { target: { value: '3' } });
-  fireEvent.change(selects[3], { target: { value: '4' } });
+  await screen.findByRole('option', { name: 'Mathematics' });
+  fireEvent.change(screen.getByLabelText('Class'), { target: { value: '3' } });
+  fireEvent.change(screen.getByLabelText('Subject'), { target: { value: '4' } });
   await screen.findByText('Ada Student');
-  fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '8' } });
-  fireEvent.click(screen.getByRole('button', { name: publish ? /Publish/ : /Save Draft/ }));
+}
+async function saveTeacherDraft() {
+  fireEvent.change(screen.getByLabelText('1st Test'), { target: { value: '8' } });
+  fireEvent.click(screen.getByRole('button', { name: /Save Draft/ }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/gradebook/entries/bulk-update/', {
     class_arm: 3, subject: 4, term: 2, session: 1,
-    scores: [{ student_id: 41, first_test: 8, second_test: 0, assignment: 0, project: 0, practical: 0, exam_score: 0 }],
+    scores: [{ student_id: 41, component_scores: { test: 8 } }],
   }));
-  if (publish) expect(api.post).toHaveBeenCalledWith('/api/gradebook/entries/publish/?class_arm=3&subject=4&term=2');
-  expect(await screen.findByText(publish ? /Scores saved and published/ : /Scores saved as draft/)).toBeVisible();
+  expect(await screen.findByText(/Draft saved/)).toBeVisible();
+}
+test('teacher draft uses the configured component payload and does not publish', async () => {
+  await openTeacherSheet();
+  await saveTeacherDraft();
+  expect(api.post.mock.calls.every(([url]) => !url.includes('/publish/'))).toBe(true);
+});
+test('teacher submits a saved sheet for administrator review without publishing', async () => {
+  await openTeacherSheet();
+  await saveTeacherDraft();
+  fireEvent.click(screen.getByRole('button', { name: 'Submit for review' }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/gradebook/entries/submit/', {
+    class_arm: 3, subject: 4, term: 2,
+  }));
+  expect(api.post.mock.calls.every(([url]) => !url.includes('/publish/'))).toBe(true);
 });
 
 test.each(['fees', 'results'])('parent child %s uses the appropriate linked identifier', async mode => {

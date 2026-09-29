@@ -19,14 +19,6 @@ def school_branding_context(school):
     primary = theme.get("primary_color") or "#173B56"
     secondary = theme.get("secondary_color") or "#256D85"
     accent = theme.get("accent_color") or "#D8A548"
-    result_sections = theme.get("result_sections") or [
-        "summary",
-        "scores",
-        "attendance",
-        "remarks",
-        "affective",
-        "psychomotor",
-    ]
 
     contact_parts = [
         getattr(school, "address", ""),
@@ -47,8 +39,6 @@ def school_branding_context(school):
         "document_primary_color": primary,
         "document_secondary_color": secondary,
         "document_accent_color": accent,
-        "result_layout": theme.get("result_layout", "classic"),
-        "result_sections": result_sections,
     }
 
 

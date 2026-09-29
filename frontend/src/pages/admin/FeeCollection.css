@@ -21,3 +21,16 @@
 .modal-box label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-top: 12px; margin-bottom: 5px; }
 .modal-box input, .modal-box select { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+@media(max-width:600px){
+  .fee-summary-row{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+  .summary-card{min-width:0}
+  .filter-row>*{min-height:44px}
+  .filter-row select{flex:1;min-width:0}
+  .table-wrap .fee-directory,.fee-directory tbody,.fee-directory tr,.fee-directory td{display:block;width:100%}
+  .fee-directory thead{display:none}
+  .fee-directory tbody tr{padding:10px 12px;margin-bottom:12px;background:#fff;border:1px solid #dce4ea;border-radius:10px}
+  .fee-directory tbody td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:5px 0;border:0;text-align:right;overflow-wrap:anywhere}
+  .fee-directory tbody td::before{content:attr(data-label);font-weight:600;color:#526778;text-align:left}
+  .fee-directory td[colspan]{display:block;text-align:left}.fee-directory td[colspan]::before{display:none}
+  .modal-box{max-height:calc(100dvh - 24px);overflow-y:auto;padding:20px}
+}

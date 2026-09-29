@@ -30,7 +30,7 @@ traverse(ast, { JSXElement(p) {
   paths.push([prefix + routePath, name]);
 } });
 
-test('every page file has a concrete route element', () => {
+test('every page file is routed or rendered inside a routed page', () => {
   const root = path.join(__dirname, '../pages');
   const files = fs.readdirSync(root).flatMap(group =>
     fs.readdirSync(path.join(root, group))
@@ -38,9 +38,20 @@ test('every page file has a concrete route element', () => {
       .map(file => `./pages/${group}/${file.slice(0, -4)}`)
   );
   const routed = paths.map(([, name]) => pages.get(name));
-  const nested = ['./pages/platform/PlatformMFA'];
-  expect(fs.readFileSync(path.join(root, 'public/Login.jsx'), 'utf8')).toContain('PlatformMFA');
-  expect(files.filter(file => !routed.includes(file) && !nested.includes(file))).toEqual([]);
+  const nested = {
+    './pages/platform/PlatformMFA': './pages/public/Login',
+    './pages/admin/ResultReview': './pages/admin/ResultManagement',
+    './pages/admin/ScoringConfiguration': './pages/admin/SchoolSetup',
+    './pages/payments/Invoices': './pages/payments/Payments',
+    './pages/payments/PaymentExceptions': './pages/payments/Payments',
+    './pages/teacher/LessonCoverage': './pages/teacher/TeachingOperations',
+  };
+  for (const [child, parent] of Object.entries(nested)) {
+    expect(routed).toContain(parent);
+    const parentSource = fs.readFileSync(path.join(__dirname, '..', parent + '.jsx'), 'utf8');
+    expect(parentSource).toContain('<' + path.basename(child));
+  }
+  expect(files.filter(file => !routed.includes(file) && !(file in nested))).toEqual([]);
 });
 
 test('every declared route points at an imported page', () => {

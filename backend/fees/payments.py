@@ -3,6 +3,7 @@ import calendar
 import hashlib
 import hmac
 import json
+import logging
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -20,95 +21,26 @@ from rest_framework.views import APIView
 from accounts.permissions import IsAuthenticatedTenantUser, IsSchoolAdmin, IsSuperAdmin
 from enrollment.models import StudentProfile
 from tenants.models import School, PlatformEvent
-from tenants.plans import PLAN_FEATURES, FEATURES, calculate_billing_snapshot
-from .models import PaymentOrder, SchoolPaymentAccount, SubscriptionOffer, FeeSchedule, FeePayment, TermInvoice
+from tenants.plans import PLAN_FEATURES, FEATURES
+from .models import PaymentOrder, SchoolPaymentAccount, SubscriptionOffer, FeeSchedule, FeePayment
 from .access import payment_student
+from .billing import active_students, subscription_quote
 from .services.paystack import PaystackService
 
 
+logger = logging.getLogger(__name__)
+
+
 def subscription_student_count(school):
-    return StudentProfile.objects.filter(school=school, status='active').count()
+    return active_students(school).count()
 
 
 def subscription_offer_total(school, offer):
-    student_count = subscription_student_count(school)
-    snapshot = calculate_billing_snapshot(
-        school=school,
-        plan_code=offer.plan,
-        active_student_count=student_count,
-    )
-    return Decimal(str(snapshot['final_amount'])).quantize(Decimal('0.01'))
+    return subscription_quote(subscription_student_count(school), offer.amount)['total_amount']
 
 
 def subscription_offer_amount(school, offer):
     return subscription_offer_total(school, offer)
-
-
-def create_term_invoice_for_payment(school, plan_code, academic_session=None, term=None, active_student_count=None, issued_on=None, due_date=None, notes=''):
-    from academics.models import AcademicSession, Term
-
-    if academic_session is None:
-        academic_session = AcademicSession.objects.filter(school=school, is_current=True).order_by('-start_date').first()
-    if term is None:
-        term = Term.objects.filter(session__school=school, is_current=True).order_by('-session__start_date', '-start_date').first()
-    if academic_session is None or term is None:
-        return None
-
-    count = int(active_student_count if active_student_count is not None else StudentProfile.objects.filter(school=school, status='active').count())
-    snapshot = calculate_billing_snapshot(school=school, session=academic_session, term=term, plan_code=plan_code, active_student_count=count)
-    standard_rate = Decimal(str(snapshot['standard_rate']))
-    effective_rate = Decimal(str(snapshot['effective_rate']))
-    subtotal = Decimal(str(snapshot['subtotal']))
-    discount_amount = Decimal(str(snapshot['discount_amount']))
-    final_amount = Decimal(str(snapshot['final_amount']))
-    invoice_date = issued_on or timezone.localdate()
-    due = due_date or invoice_date
-    if isinstance(due, str):
-        due = timezone.datetime.strptime(due, '%Y-%m-%d').date()
-
-    invoice, created = TermInvoice.objects.get_or_create(
-        school=school,
-        academic_session=academic_session,
-        term=term,
-        defaults={
-            'plan': plan_code,
-            'active_student_count': count,
-            'snapshot_date': invoice_date,
-            'standard_rate': standard_rate,
-            'discount_eligible': bool(snapshot['discount_eligible']),
-            'discount_percentage': int(snapshot['discount_percentage']),
-            'discount_amount': discount_amount,
-            'effective_rate': effective_rate,
-            'subtotal': subtotal,
-            'final_amount': final_amount,
-            'invoice_number': f'TERM-{academic_session.name}-{term.name}-{school.pk}',
-            'issue_date': invoice_date,
-            'due_date': due,
-            'status': 'issued',
-            'grace_period_days': 14,
-            'notes': notes or f"{plan_code.title()} plan billing for {academic_session.name} {term.get_name_display()}.",
-            'audit_snapshot': snapshot,
-        },
-    )
-
-    if not created and invoice.status == 'draft':
-        invoice.plan = plan_code
-        invoice.active_student_count = count
-        invoice.snapshot_date = invoice_date
-        invoice.standard_rate = standard_rate
-        invoice.discount_eligible = bool(snapshot['discount_eligible'])
-        invoice.discount_percentage = int(snapshot['discount_percentage'])
-        invoice.discount_amount = discount_amount
-        invoice.effective_rate = effective_rate
-        invoice.subtotal = subtotal
-        invoice.final_amount = final_amount
-        invoice.issue_date = invoice_date
-        invoice.due_date = due
-        invoice.status = 'issued'
-        invoice.notes = notes or invoice.notes or f"{plan_code.title()} plan billing for {academic_session.name} {term.get_name_display()}."
-        invoice.audit_snapshot = snapshot
-        invoice.save(update_fields=['plan', 'active_student_count', 'snapshot_date', 'standard_rate', 'discount_eligible', 'discount_percentage', 'discount_amount', 'effective_rate', 'subtotal', 'final_amount', 'issue_date', 'due_date', 'status', 'notes', 'audit_snapshot'])
-    return invoice
 
 
 def event(user, action, target, details):
@@ -123,16 +55,20 @@ def checkout(request, **values):
         if parsed.scheme not in ('https', 'http') or not parsed.netloc or (service.mode == 'live' and parsed.scheme != 'https'):
             raise ValueError('Configure FRONTEND_URL before accepting payments.')
     except ValueError as exc:
+        logger.error("payment_checkout_configuration_failed kind=%s error_type=%s", values.get('kind', 'unknown'), type(exc).__name__)
         return Response({'error': str(exc)}, status=503)
+    prefix = f"SCH-I{values['invoice'].pk}-" if values.get('invoice') else 'SCH-'
     order = PaymentOrder.objects.create(school=request.tenant, payer=request.user,
-        payer_email=request.user.email, mode=service.mode, reference='SCH-' + uuid.uuid4().hex, **values)
+        payer_email=request.user.email, mode=service.mode, reference=prefix + uuid.uuid4().hex, **values)
     callback = origin + '/payments/return?' + urlencode({'school': request.tenant.subdomain})
     try:
         url, _ = service.initialize(order.payer_email, order.amount_kobo, order.reference, callback, subaccount=order.subaccount_code or None)
-    except (RequestException, ValueError):
+    except (RequestException, ValueError) as exc:
+        logger.warning("payment_initialization_failed order_id=%s reference=%s kind=%s error_type=%s", order.pk, order.reference, order.kind, type(exc).__name__)
         # A timeout can occur AFTER Paystack creates the transaction. Keep its reference.
         return Response({'error': 'Unable to start checkout. Contact your school with this reference before retrying.', 'reference': order.reference}, status=502)
     PaymentOrder.objects.filter(pk=order.pk, status='initializing').update(status='pending', authorization_url=url)
+    event(request.user, 'payment.checkout_initialized', order.reference, {'school_id': order.school_id, 'invoice_id': order.invoice_id})
     return Response({'authorization_url': url, 'reference': order.reference})
 
 
@@ -143,16 +79,47 @@ def add_months(day, months):
     return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
 
 
+def payable_fee_amount(school, student, schedule):
+    """Use a frozen charge when present; decline ambiguous legacy debt."""
+    from .ledger import account_balance
+    from .models import StudentLedgerEntry
+    position = account_balance(school, student)
+    if position['state'] == 'legacy_review' or (position['credit'] or Decimal('0.00')) > 0:
+        return None
+    opening = StudentLedgerEntry.objects.filter(school=school, student=student, kind='opening').first()
+    if opening and schedule.term.start_date <= opening.effective_date:
+        return None
+    charge = StudentLedgerEntry.objects.filter(school=school, student=student,
+        fee_schedule=schedule, kind='charge').first()
+    if charge:
+        applied = charge.charge_allocations.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        return max(charge.signed_amount - applied, Decimal('0.00'))
+    paid = FeePayment.objects.filter(student=student, fee_schedule=schedule).aggregate(
+        total=Sum('amount_paid'))['total'] or Decimal('0.00')
+    return max(schedule.amount - paid, Decimal('0.00'))
+
+
 @transaction.atomic
 def settle(reference, data):
+    school_id = PaymentOrder.objects.values_list('school_id', flat=True).get(reference=reference)
+    School.objects.select_for_update().get(pk=school_id)
     order = PaymentOrder.objects.select_for_update().get(reference=reference)
     if order.status == 'success':
+        logger.info("payment_settlement_idempotent order_id=%s reference=%s", order.pk, order.reference)
         return order
     if not isinstance(data, dict):
         return order
+    if data.get('reference') == order.reference:
+        received = data.get('amount')
+        order.received_amount_kobo = received if type(received) is int and 0 <= received < 2**63 else None
+        currency = data.get('currency')
+        order.received_currency = currency if isinstance(currency, str) and len(currency) == 3 else ''
+        order.verified_at = timezone.now()
+        order.save(update_fields=['received_amount_kobo', 'received_currency', 'verified_at'])
     if data.get('status') in ('failed', 'abandoned') and data.get('reference') == order.reference and data.get('domain') == order.mode == settings.PAYSTACK_MODE:
         order.status = 'failed'
         order.save(update_fields=['status'])
+        logger.info("payment_status_changed order_id=%s reference=%s status=failed provider_status=%s", order.pk, order.reference, data.get('status'))
         return order
     if data.get('status') != 'success':
         return order
@@ -165,56 +132,53 @@ def settle(reference, data):
         order.status, order.note = 'review', 'Payment details did not match the checkout. Contact the platform owner.'
         order.save(update_fields=['status', 'note'])
         event(None, 'payment.mismatch', order.reference, {'school_id': order.school_id})
+        logger.warning("payment_review_required order_id=%s reference=%s reason=validation_mismatch", order.pk, order.reference)
         return order
     school = School.objects.select_for_update().get(pk=order.school_id)
+    if order.invoice_id:
+        from .invoice_payments import settle_invoice_order
+        return settle_invoice_order(order, school, data)
     if order.kind == 'fees':
         for allocation in order.allocations:
             schedule = FeeSchedule.objects.filter(pk=allocation['schedule_id'], school=school).first()
-            paid = FeePayment.objects.filter(student=order.student, fee_schedule=schedule).aggregate(total=Sum('amount_paid'))['total'] or Decimal(0)
-            if schedule is None or int(max(Decimal(0), schedule.amount - paid) * 100) < allocation['amount_kobo']:
+            remaining = payable_fee_amount(school, order.student, schedule) if schedule else None
+            if remaining is None or int(remaining * 100) < allocation['amount_kobo']:
                 order.status, order.note = 'review', 'Fee balance changed; contact the owner to reconcile or refund this payment.'
                 order.save(update_fields=['status', 'note'])
+                logger.warning("payment_review_required order_id=%s reference=%s reason=balance_changed", order.pk, order.reference)
                 return order
         for allocation in order.allocations:
-            FeePayment.objects.create(school=school, student=order.student,
+            payment = FeePayment.objects.create(school=school, student=order.student,
                 fee_schedule_id=allocation['schedule_id'], amount_paid=Decimal(allocation['amount_kobo']) / 100,
                 payment_date=timezone.localdate(), method='paystack', paystack_reference=reference,
                 paystack_status='success', recorded_by=order.payer)
+            from .ledger import record_payment_entry
+            record_payment_entry(payment)
     else:
         today = timezone.localdate()
         if school.subscription_ends_on and school.subscription_ends_on >= today and school.subscription_plan not in ('free', order.plan):
             order.status, order.note = 'review', 'Plan changed while payment was pending. Owner review required.'
             order.save(update_fields=['status', 'note'])
+            logger.warning("payment_review_required order_id=%s reference=%s reason=plan_changed", order.pk, order.reference)
             return order
         start = max(today, school.subscription_ends_on or today)
         school.subscription_plan = order.plan
         school.subscription_ends_on = add_months(start, order.months)
         school.save(update_fields=['subscription_plan', 'subscription_ends_on'])
-        if order.kind == 'subscription':
-            current_session = school.sessions.filter(is_current=True).order_by('-start_date').first()
-            current_term = None
-            if current_session:
-                current_term = current_session.terms.filter(is_current=True).order_by('-start_date').first()
-            create_term_invoice_for_payment(
-                school=school,
-                plan_code=order.plan,
-                academic_session=current_session,
-                term=current_term,
-                active_student_count=StudentProfile.objects.filter(school=school, status='active').count(),
-                issued_on=today,
-                due_date=add_months(today, 1),
-                notes=f"Term subscription invoice for {school.name} on the {order.plan.title()} plan.",
-            )
         # Paying never overrides manual approval or suspension.
     order.status, order.paid_at, order.provider_id, order.note = 'success', timezone.now(), str(data.get('id', '')), ''
     order.save(update_fields=['status', 'paid_at', 'provider_id', 'note'])
     event(order.payer, 'payment.verified', reference, {'school_id': school.pk, 'kind': order.kind, 'amount_kobo': order.amount_kobo})
+    logger.info("payment_settled order_id=%s reference=%s kind=%s school_id=%s", order.pk, order.reference, order.kind, school.pk)
     return order
 
 
 def result(order):
     return {'reference': order.reference, 'status': order.status, 'kind': order.kind,
         'amount': str(Decimal(order.amount_kobo) / 100), 'note': order.note,
+        'invoice_id': order.invoice_id, 'verified_at': order.verified_at,
+        'received_amount': str(Decimal(order.received_amount_kobo) / 100) if order.received_amount_kobo is not None else None,
+        'received_currency': order.received_currency,
         'receipts': list(FeePayment.objects.filter(paystack_reference=order.reference, school=order.school).values('id', 'receipt_number'))}
 
 
@@ -235,14 +199,58 @@ class PaystackInitiateView(APIView):
         account = SchoolPaymentAccount.objects.filter(school=request.tenant, mode=settings.PAYSTACK_MODE).first()
         if not account:
             return Response({'error': 'Your school has not connected its Paystack settlement account. Contact your school administrator.'}, status=409)
-        pending = PaymentOrder.objects.filter(student=student, kind='fees', mode=settings.PAYSTACK_MODE, status__in=['initializing', 'pending', 'review'])
+        pending = PaymentOrder.objects.filter(
+            student=student,
+            kind='fees',
+            mode=settings.PAYSTACK_MODE,
+            status__in=['initializing', 'pending', 'review']
+        )
+
         for previous in pending:
-            if set(ids) & {a['schedule_id'] for a in previous.allocations}:
-                return Response({'error': 'A payment for these fees is awaiting verification. Check it before paying again.', 'reference': previous.reference}, status=409)
+            previous_schedule_ids = {
+                allocation['schedule_id']
+                for allocation in previous.allocations
+            }
+
+            if not (set(ids) & previous_schedule_ids):
+                continue
+
+            # A Paystack checkout may have failed while the local order
+            # remained pending because no verify request/webhook followed.
+            if previous.status == 'pending':
+                try:
+                    service = PaystackService()
+                    data = service.verify(previous.reference)
+                    previous = settle(previous.reference, data)
+                except (RequestException, ValueError):
+                    # If Paystack cannot be reached or verification is invalid,
+                    # fail closed: do not risk creating a duplicate checkout.
+                    return Response({
+                        'error': 'The previous payment could not be verified. Check it before paying again.',
+                        'reference': previous.reference
+                    }, status=409)
+
+                # Failed/abandoned transactions are now reconciled and should
+                # no longer prevent the user from starting another checkout.
+                if previous.status == 'failed':
+                    continue
+
+                # If verification discovered a successful payment, don't create
+                # another checkout. The outstanding balance will be recalculated
+                # below.
+                if previous.status == 'success':
+                    continue
+
+            return Response({
+                'error': 'A payment for these fees is awaiting verification. Check it before paying again.',
+                'reference': previous.reference
+            }, status=409)
         allocations = []
         for schedule in schedules:
-            paid = FeePayment.objects.filter(student=student, fee_schedule=schedule).aggregate(total=Sum('amount_paid'))['total'] or Decimal(0)
-            outstanding = int(max(Decimal(0), schedule.amount - paid) * 100)
+            remaining = payable_fee_amount(request.tenant, student, schedule)
+            if remaining is None:
+                return Response({'error': 'This fee account needs school review before online payment.'}, status=409)
+            outstanding = int(remaining * 100)
             if outstanding:
                 allocations.append({'schedule_id': schedule.pk, 'amount_kobo': outstanding})
         if not allocations:
@@ -260,7 +268,8 @@ class PaystackVerifyView(APIView):
         if order.status != 'success':
             try:
                 order = settle(order.reference, PaystackService().verify(order.reference))
-            except (RequestException, ValueError):
+            except (RequestException, ValueError) as exc:
+                logger.warning("payment_verification_failed order_id=%s reference=%s error_type=%s", order.pk, order.reference, type(exc).__name__)
                 return Response({'error': 'Verification unavailable. Your payment reference is saved; try verification again.'}, status=502)
         return Response(result(order))
 
@@ -271,21 +280,29 @@ class PaystackWebhook(APIView):
     def post(self, request):
         try:
             service = PaystackService()
-        except ValueError:
+        except ValueError as exc:
+            logger.error("paystack_webhook_configuration_failed error_type=%s", type(exc).__name__)
             return Response(status=503)
         signature = hmac.new(settings.PAYSTACK_SECRET_KEY.encode(), request.body, hashlib.sha512).hexdigest()
         if not hmac.compare_digest(signature.encode(), request.headers.get('x-paystack-signature', '').encode()):
+            logger.warning("paystack_webhook_rejected reason=invalid_signature")
             return Response(status=403)
         try:
             payload = json.loads(request.body)
             reference = payload['data']['reference']
         except (ValueError, KeyError, TypeError):
+            logger.warning("paystack_webhook_rejected reason=invalid_payload")
             return Response(status=400)
-        if payload.get('event') != 'charge.success' or not PaymentOrder.objects.filter(reference=reference).exists():
+        if payload.get('event') != 'charge.success':
+            logger.info("paystack_webhook_ignored reason=unsupported_event")
+            return Response(status=200)
+        if not PaymentOrder.objects.filter(reference=reference).exists():
+            logger.warning("paystack_webhook_ignored reason=unknown_reference reference=%s", reference)
             return Response(status=200)
         try:
             settle(reference, service.verify(reference))
-        except (RequestException, ValueError):
+        except (RequestException, ValueError) as exc:
+            logger.error("paystack_webhook_processing_failed reference=%s error_type=%s", reference, type(exc).__name__)
             return Response(status=502)
         return Response(status=200)
 
@@ -294,23 +311,16 @@ class SchoolSubscription(APIView):
     permission_classes = [IsSchoolAdmin]
     def get(self, request):
         offers = []
-        school_student_count = StudentProfile.objects.filter(school=request.tenant, status='active').count()
+        school_student_count = subscription_student_count(request.tenant)
         for offer in SubscriptionOffer.objects.filter(enabled=True):
-            snapshot = calculate_billing_snapshot(
-                school=request.tenant,
-                plan_code=offer.plan,
-                active_student_count=school_student_count,
-            )
+            quote = subscription_quote(school_student_count, offer.amount)
             offers.append({
                 'plan': offer.plan,
                 'amount': float(offer.amount),
                 'months': offer.months,
                 'base_amount': float(offer.amount),
-                'total_amount': float(snapshot['final_amount']),
-                'student_count': school_student_count,
-                'discount_percent': snapshot['discount_percentage'],
-                'discount_applied': snapshot['discount_eligible'],
-                'billing_note': 'per active student at the selected plan rate',
+                **{key: float(value) if isinstance(value, Decimal) else value for key, value in quote.items()},
+                'billing_note': 'per student per term',
             })
         school_summary = f"School size: {school_student_count} active students."
         if school_student_count >= 100:
@@ -324,19 +334,9 @@ class SchoolSubscription(APIView):
             'school_student_count': school_student_count,
             'offers': offers,
             'orders': [result(o) for o in PaymentOrder.objects.filter(school=request.tenant, kind='subscription').order_by('-id')[:30]]})
-    @transaction.atomic
     def post(self, request):
-        school = School.objects.select_for_update().get(pk=request.tenant.pk)
-        previous = PaymentOrder.objects.filter(school=school, kind='subscription', mode=settings.PAYSTACK_MODE, status__in=['initializing', 'pending', 'review']).first()
-        if previous:
-            return Response({'error': 'A subscription payment is awaiting verification. Check its status before paying again.', 'reference': previous.reference}, status=409)
-        if school.approval_status != 'approved':
-            raise ValidationError('Your school must be approved before subscribing.')
-        offer = get_object_or_404(SubscriptionOffer, plan=request.data.get('plan'), enabled=True)
-        if school.subscription_ends_on and school.subscription_ends_on >= timezone.localdate() and school.subscription_plan not in ('free', offer.plan):
-            raise ValidationError('Contact the platform owner to change plans during a paid period.')
-        final_amount = subscription_offer_total(school, offer)
-        return checkout(request, kind='subscription', plan=offer.plan, months=offer.months, amount_kobo=int(final_amount * 100))
+        from .invoice_payments import initialize_invoice_payment
+        return initialize_invoice_payment(request)
 
 
 class PlatformPayments(APIView):
@@ -347,14 +347,33 @@ class PlatformPayments(APIView):
             configured = True
         except ValueError:
             configured = False
+        orders = PaymentOrder.objects.order_by('-id')
+        status = request.query_params.get('status')
+        kind = request.query_params.get('kind')
+        school_id = request.query_params.get('school_id')
+        if status:
+            if status not in dict(PaymentOrder._meta.get_field('status').choices):
+                raise ValidationError('Select a valid payment status.')
+            orders = orders.filter(status=status)
+        if kind:
+            if kind not in dict(PaymentOrder._meta.get_field('kind').choices):
+                raise ValidationError('Select a valid payment type.')
+            orders = orders.filter(kind=kind)
+        if school_id:
+            try:
+                orders = orders.filter(school_id=int(school_id))
+            except (TypeError, ValueError):
+                raise ValidationError('Select a valid school.')
         return Response({'mode': settings.PAYSTACK_MODE, 'configured': configured,
             'schools': list(School.objects.order_by('name').values('id', 'name')),
             'offers': list(SubscriptionOffer.objects.values('plan', 'amount', 'months', 'enabled')),
             'accounts': list(SchoolPaymentAccount.objects.filter(mode=settings.PAYSTACK_MODE).values('school_id', 'business_name', 'bank_name', 'account_last_four', 'subaccount_code')),
-            'orders': [dict(result(o), school_id=o.school_id) for o in PaymentOrder.objects.order_by('-id')[:100]]})
+            'orders': [dict(result(o), school_id=o.school_id) for o in orders[:100]]})
     def post(self, request):
         if request.data.get('action') == 'retry_checkout':
             order = get_object_or_404(PaymentOrder, reference=request.data.get('reference'), mode=settings.PAYSTACK_MODE)
+            if order.invoice_id:
+                raise ValidationError('Use the school invoice checkout to reopen this payment safely.')
             if order.status not in ('initializing','pending'):
                 raise ValidationError('Only unfinished checkouts can be reopened.')
             if order.authorization_url:
@@ -369,10 +388,13 @@ class PlatformPayments(APIView):
             return Response({'authorization_url':url,'reference':order.reference})
         if 'reference' in request.data:
             order = get_object_or_404(PaymentOrder, reference=request.data['reference'])
+            previous_status = order.status
             try:
                 order = settle(order.reference, PaystackService().verify(order.reference))
-            except (ValueError, RequestException):
+            except (ValueError, RequestException) as exc:
+                logger.error("payment_reconciliation_failed order_id=%s reference=%s status=%s error_type=%s", order.pk, order.reference, order.status, type(exc).__name__)
                 return Response({'error': 'Paystack verification unavailable. No credit was applied.'}, status=502)
+            logger.info("payment_reconciliation_completed order_id=%s reference=%s previous_status=%s resulting_status=%s", order.pk, order.reference, previous_status, order.status)
             return Response(result(order))
         from rest_framework import serializers
         class OfferInput(serializers.Serializer):

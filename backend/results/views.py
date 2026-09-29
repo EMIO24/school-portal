@@ -24,7 +24,7 @@ Endpoint map:
 
 import csv
 import io
-import random
+import secrets
 import string
 import zipfile
 from decimal import Decimal, InvalidOperation
@@ -34,7 +34,7 @@ from accounts.permissions import IsSchoolAdmin
 from .scratch_pdf import scratch_cards_pdf
 
 from django.contrib.auth.hashers import check_password, make_password
-from django.db.models import Count, Q, Sum, Avg
+from django.db.models import Count, Q, Sum, Avg, F
 from django.http import HttpResponse, JsonResponse
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -47,14 +47,48 @@ from tenants.document_branding import school_branding_context, secure_document_r
 from academics.models import Term
 from enrollment.models import ClassArm, StudentProfile
 
-from .models import ResultRemark, ScratchCard, _generate_serial
+from .models import ResultRemark, ScratchCard, ReportConfiguration, _generate_serial
+from .presentation import presentation, current_configuration, has_complete_published_result, FIELDS
 from .serializers import (
     ResultRemarkSerializer, RemarkPatchSerializer,
     ScratchCardSerializer,
 )
 
 from gradebook.models import ScoreEntry, AffectiveDomain, PsychomotorDomain
+from gradebook.scoring import entry_components
 from attendance.models import AttendanceRecord
+
+
+class ReportConfigurationView(TenantMixin, APIView):
+    permission_classes = [IsSchoolAdmin]
+
+    def get(self, request):
+        return Response(current_configuration(self.school))
+
+    @transaction.atomic
+    def patch(self, request):
+        from tenants.models import PlatformEvent, School
+        School.objects.select_for_update().get(pk=self.school.pk)
+        values = request.data
+        if not isinstance(values, dict) or not values or set(values) - set(FIELDS):
+            return Response({'detail': 'Choose supported report options.'}, status=400)
+        for name, value in values.items():
+            if name == 'layout' and value not in ('classic', 'modern', 'compact'):
+                return Response({'detail': 'Choose a supported report layout.'}, status=400)
+            if name == 'watermark' and value not in ('none', 'official', 'school'):
+                return Response({'detail': 'Choose a supported watermark.'}, status=400)
+            if name == 'title' and (not isinstance(value, str) or not value.strip() or len(value.strip()) > 80):
+                return Response({'detail': 'Enter a report title of up to 80 characters.'}, status=400)
+            if name.startswith('show_') and not isinstance(value, bool):
+                return Response({'detail': 'Section visibility must be true or false.'}, status=400)
+        config, _ = ReportConfiguration.objects.get_or_create(school=self.school)
+        for name, value in values.items():
+            setattr(config, name, value.strip() if name == 'title' else value)
+        config.save()
+        PlatformEvent.objects.create(actor=request.user, actor_email=request.user.email,
+            action='school.report_configuration_changed', target=str(self.school.pk),
+            details={'school_id': self.school.pk, 'fields': list(values)})
+        return Response(current_configuration(self.school))
 
 
 def _safe_asset_url(value):
@@ -112,7 +146,7 @@ def _simple_pdf_bytes(lines):
 # Data assembly helper
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def _assemble_slip_data(school, student, term):
+def _assemble_slip_data(school, student, term, *, preview=False):
     """
     Build the complete context dict for both the HTML template and JSON preview.
     This is the single source of truth for all result slip data.
@@ -123,8 +157,8 @@ def _assemble_slip_data(school, student, term):
     # Score entries for this student/term (published only for students, all for admin)
     scores = (
         ScoreEntry.objects
-        .filter(school=school, student=student, term=term, is_published=True)
-        .select_related('subject')
+        .filter(school=school, student=student, term=term, **({} if preview else {'is_published': True}))
+        .select_related('subject', 'policy', 'class_arm__class_level')
         .order_by('subject__name')
     )
 
@@ -132,6 +166,8 @@ def _assemble_slip_data(school, student, term):
     for entry in scores:
         score_rows.append({
             'subject':     entry.subject.name,
+            'components': entry_components(entry),
+            'grading_bands': entry.policy.bands if entry.policy_id else [],
             'first_test':  float(entry.first_test  or 0),
             'second_test': float(entry.second_test or 0),
             'assignment':  float(entry.assignment  or 0),
@@ -186,9 +222,6 @@ def _assemble_slip_data(school, student, term):
             for s, r in skills
         ]
 
-    # Attendance summary
-    att_summary = AttendanceRecord.objects.summary(student.id, term.id)
-
     # Remarks + position
     remark_obj = ResultRemark.objects.filter(
         school=school, student=student, term=term
@@ -196,29 +229,34 @@ def _assemble_slip_data(school, student, term):
 
     # Student profile fields
     profile = getattr(student, 'student_profile', None)
+    report_class = scores[0].class_arm if scores else getattr(profile, 'current_class', None)
 
-    # Compute total sessions in the term for attendance denominator
-    from attendance.models import AttendanceSession
-    total_sessions = AttendanceSession.objects.filter(
-        school=school, term=term, is_finalized=True
-    ).count()
+    # Only explicitly recorded, finalized attendance in the report's class
+    # is authoritative. A missing register is unknown, not an absence.
+    att_summary = AttendanceRecord.objects.filter(
+        student=student, attendance_session__school=school,
+        attendance_session__term=term, attendance_session__class_arm=report_class,
+        attendance_session__is_finalized=True,
+    ).aggregate(
+        total=Count('id'),
+        present=Count('id', filter=Q(status='present')),
+        late=Count('id', filter=Q(status='late')),
+        excused=Count('id', filter=Q(status='excused')),
+    )
+    recorded_sessions = att_summary['total'] or 0
+    effective_sessions = max(recorded_sessions - (att_summary['excused'] or 0), 0)
+    present_sessions = (att_summary['present'] or 0) + (att_summary['late'] or 0)
 
     # Class size for "out of N students"
     class_size = ResultRemark.objects.filter(
         school=school, term=term,
-        class_arm=getattr(profile, 'current_class', None)
+        class_arm=report_class
     ).count()
-
-    theme = school.get_theme() if hasattr(school, 'get_theme') else {}
-    result_sections = theme.get('result_sections') or [
-        'summary', 'scores', 'attendance', 'remarks', 'affective', 'psychomotor'
-    ]
 
     return {
         # School
-        **school_branding_context(school),
-        'result_layout': theme.get('result_layout', 'classic'),
-        'result_sections': result_sections,
+        **presentation(school, term, preview=preview),
+        'unpublished_preview': preview,
 
         # Term / session
         'term_name':      term.name,
@@ -228,7 +266,7 @@ def _assemble_slip_data(school, student, term):
         # Student
         'student_name':   f"{student.last_name} {student.first_name}".strip(),
         'admission_no':   getattr(profile, 'admission_number', ''),
-        'class_name':     str(getattr(profile, 'current_class', '')),
+        'class_name':     str(report_class or ''),
         'gender':         getattr(profile, 'gender', ''),
         'date_of_birth':  getattr(profile, 'date_of_birth', ''),
         'photo_url':      _safe_asset_url(getattr(profile, 'photo_url', '')),
@@ -244,16 +282,16 @@ def _assemble_slip_data(school, student, term):
 
         # Position
         'position':       getattr(remark_obj, 'computed_position', None),
-        'class_size':     class_size or 'â€”',
+        'class_size':     class_size or '—',
 
         # Domains
         'affective_rows':   affective_rows,
         'psychomotor_rows': psychomotor_rows,
 
         # Attendance
-        'days_present':   att_summary.get('present', 0) + att_summary.get('late', 0),
-        'total_days':     total_sessions,
-        'att_percentage': att_summary.get('percentage', 0),
+        'days_present':   present_sessions,
+        'total_days':     recorded_sessions,
+        'att_percentage': round(present_sessions / effective_sessions * 100, 1) if effective_sessions else 0,
 
         # Remarks
         'class_teacher_remark': getattr(remark_obj, 'class_teacher_remark', ''),
@@ -269,6 +307,29 @@ def _render_pdf(template_name, context, orientation='portrait'):
         base_css = CSS(string=f'@page {{ size: A4 {orientation}; margin: 12mm; }}')
         return HTML(string=html_string).write_pdf(stylesheets=[base_css])
     except Exception:
+        if template_name == 'result_slip.html':
+            from .report_pdf import text_report_pdf
+            lines = [f"Student: {context.get('student_name', '')}",
+                     f"Admission: {context.get('admission_no', '')}",
+                     f"Class: {context.get('class_name', '')}",
+                     f"Term: {context.get('term_name', '')} | Session: {context.get('session_name', '')}"]
+            for row in context.get('score_rows', []):
+                parts = ', '.join(f"{part['name']} {part['score']}/{part['maximum']}"
+                                  for part in row.get('components', []))
+                lines.append(f"{row['subject']}: {parts}; Total {row['total_score']}; Grade {row['grade']}; {row['remark']}")
+            lines.extend([f"Total: {context.get('total_score', '')}",
+                          f"Average: {context.get('average_score', '')}"])
+            if context.get('show_position'):
+                lines.append(f"Position: {context.get('position') or 'Not calculated'}")
+            if context.get('show_attendance'):
+                lines.append(f"Attendance: {context.get('days_present', 0)}/{context.get('total_days', 0)} finalized sessions"
+                             if context.get('total_days') else 'Attendance: Not finalized')
+            if context.get('show_comments'):
+                lines.extend([f"Teacher: {context.get('class_teacher_remark', '')}",
+                              f"Principal: {context.get('principal_remark', '')}"])
+            if context.get('unpublished_preview'):
+                lines.insert(0, 'UNPUBLISHED PREVIEW - NOT AN OFFICIAL RESULT')
+            return text_report_pdf(context.get('title', 'Student Academic Report'), lines, context)
         title = context.get('school_name', 'School Portal')
         subtitle = context.get('student_name') or context.get('class_name') or 'Report'
         term = context.get('term_name', '')
@@ -304,6 +365,16 @@ class ComputePositionsView(TenantMixin, APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if not (str(class_arm_id).isdigit() and str(term_id).isdigit() and
+                ClassArm.objects.filter(pk=class_arm_id, school=self.school).exists() and
+                Term.objects.filter(pk=term_id, session__school=self.school).exists()):
+            return Response({'detail': 'Choose a class and term in this school.'}, status=400)
+        class_scores = ScoreEntry.objects.filter(school=self.school, class_arm_id=class_arm_id, term_id=term_id)
+        counts = list(class_scores.values('student_id').annotate(
+            total=Count('id'), published=Count('id', filter=Q(is_published=True))))
+        if not counts or any(row['published'] != row['total'] for row in counts) or len({row['total'] for row in counts}) != 1:
+            return Response({'detail': 'Publish complete results for every student before computing positions.'}, status=409)
+
         from django.contrib.auth import get_user_model
         User = get_user_model()
 
@@ -311,12 +382,13 @@ class ComputePositionsView(TenantMixin, APIView):
         score_filter = Q(
             score_entries__school=self.school,
             score_entries__term_id=term_id,
+            score_entries__class_arm_id=class_arm_id,
             score_entries__is_published=True,
         )
         students = User.objects.filter(
             school=self.school,
             role='student',
-            student_profile__current_class_id=class_arm_id,
+            pk__in=[row['student_id'] for row in counts],
         ).annotate(
             agg_total=Sum('score_entries__total_score', filter=score_filter),
             agg_avg=Avg('score_entries__total_score',   filter=score_filter),
@@ -378,7 +450,10 @@ class ResultRemarkView(TenantMixin, APIView):
             return Response({'detail': 'No result found.'}, status=404)
         return Response(ResultRemarkSerializer(obj).data)
 
+    @transaction.atomic
     def patch(self, request, student_id):
+        from gradebook.lifecycle import lock_school, require_unpublished
+        lock_school(self.school)
         term_id = request.query_params.get('term')
         if not term_id:
             return Response({'detail': 'term param required.'}, status=400)
@@ -393,6 +468,7 @@ class ResultRemarkView(TenantMixin, APIView):
         except (StudentProfile.DoesNotExist, Term.DoesNotExist):
             return Response({'detail': 'Student or term not found.'}, status=404)
 
+        require_unpublished(self.school, profile.user, term)
         class_arm_id = request.data.get('class_arm') or getattr(profile, 'current_class_id', None)
         if not class_arm_id:
             return Response({'detail': 'class_arm is required for this student.'}, status=400)
@@ -456,12 +532,15 @@ class SlipDataView(TenantMixin, APIView):
 
         try:
             from academics.models import Term
-            student = User.objects.get(pk=student_id, school=self.school)
+            student = User.objects.get(pk=student_id, school=self.school, role='student')
             term    = Term.objects.get(pk=term_id, session__school=self.school)
         except Exception:
             return Response({'detail': 'Student or term not found.'}, status=404)
 
-        data = _assemble_slip_data(self.school, student, term)
+        preview = request.query_params.get('preview') == '1' and request.user.role == 'school_admin'
+        if not preview and not has_complete_published_result(self.school, student, term):
+            return Response({'detail': 'Result not available.'}, status=404)
+        data = _assemble_slip_data(self.school, student, term, preview=preview)
         return Response(data)
 
 
@@ -478,13 +557,16 @@ class ResultSlipPDFView(TenantMixin, APIView):
         term_id = request.query_params.get('term')
 
         try:
-            student = User.objects.get(pk=student_id, school=self.school)
+            student = User.objects.get(pk=student_id, school=self.school, role='student')
             from academics.models import Term
             term = Term.objects.get(pk=term_id, session__school=self.school)
         except Exception:
             return Response({'detail': 'Student or term not found.'}, status=404)
 
-        context = _assemble_slip_data(self.school, student, term)
+        preview = request.query_params.get('preview') == '1' and request.user.role == 'school_admin'
+        if not preview and not has_complete_published_result(self.school, student, term):
+            return Response({'detail': 'Result not available.'}, status=404)
+        context = _assemble_slip_data(self.school, student, term, preview=preview)
         pdf     = _render_pdf('result_slip.html', context, orientation='portrait')
 
         filename = f"result_{student_id}_term{term_id}.pdf"
@@ -508,6 +590,20 @@ class BroadsheetPDFView(TenantMixin, APIView):
         if not term_id:
             return Response({'detail': 'term param required.'}, status=400)
 
+        if not str(term_id).isdigit():
+            return Response({'detail': 'Choose a valid term.'}, status=400)
+
+        counts = list(ScoreEntry.objects.filter(
+            school=self.school, class_arm_id=class_arm_id, term_id=term_id,
+        ).values('student_id').annotate(
+            total=Count('id'), published=Count('id', filter=Q(is_published=True)),
+            score_total=Sum('total_score'),
+        ))
+        if not counts:
+            return Response({'detail': 'No result is available for this class and term.'}, status=404)
+        if any(row['published'] != row['total'] for row in counts) or len({row['total'] for row in counts}) != 1:
+            return Response({'detail': 'Publish complete class results before exporting the broadsheet.'}, status=409)
+
         # All subjects with at least one published entry in this class/term
         subjects = list(
             ScoreEntry.objects
@@ -523,12 +619,24 @@ class BroadsheetPDFView(TenantMixin, APIView):
         )
 
         # All students with a remark (i.e. positions computed)
-        remarks = (
+        remarks = list((
             ResultRemark.objects
             .filter(school=self.school, class_arm_id=class_arm_id, term_id=term_id)
-            .select_related('student')
+            .select_related('student', 'student__student_profile')
             .order_by('computed_position', 'student__last_name')
-        )
+        ))
+        totals = {row['student_id']: row for row in counts}
+        if (len(remarks) != len(totals) or any(
+                remark.student_id not in totals or
+                remark.total_score != totals[remark.student_id]['score_total'] or
+                remark.subjects_offered != totals[remark.student_id]['total']
+                for remark in remarks)):
+            return Response({'detail': 'Recompute class positions before exporting the broadsheet.'}, status=409)
+
+        entries_by_student = {}
+        for entry in ScoreEntry.objects.filter(school=self.school, class_arm_id=class_arm_id,
+                term_id=term_id, is_published=True).select_related('subject'):
+            entries_by_student.setdefault(entry.student_id, {})[entry.subject.name] = entry
 
         # Build row data for each student
         rows = []
@@ -537,16 +645,7 @@ class BroadsheetPDFView(TenantMixin, APIView):
             profile = getattr(student, 'student_profile', None)
 
             # Scores keyed by subject name
-            entries = {
-                e.subject.name: e
-                for e in ScoreEntry.objects.filter(
-                    school=self.school,
-                    student=student,
-                    class_arm_id=class_arm_id,
-                    term_id=term_id,
-                    is_published=True,
-                ).select_related('subject')
-            }
+            entries = entries_by_student.get(student.pk, {})
 
             subject_scores = []
             for subj in subjects:
@@ -622,11 +721,18 @@ class AllSlipsZipView(TenantMixin, APIView):
         except Term.DoesNotExist:
             return Response({'detail': 'Term not found.'}, status=404)
 
+        if not ClassArm.objects.filter(pk=class_arm_id, school=self.school).exists():
+            return Response({'detail': 'Class not found.'}, status=404)
+        published_students = ScoreEntry.objects.filter(
+            school=self.school, class_arm_id=class_arm_id, term=term,
+        ).values('student_id').annotate(
+            total=Count('id'), published=Count('id', filter=Q(is_published=True)),
+        ).filter(total=F('published')).values_list('student_id', flat=True)
         students = User.objects.filter(
-            school=self.school,
-            role='student',
-            student_profile__current_class_id=class_arm_id,
-        )
+            school=self.school, role='student', pk__in=published_students,
+        ).order_by('last_name', 'first_name')
+        if not students.exists():
+            return Response({'detail': 'No published results are available for this class and term.'}, status=404)
 
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -685,7 +791,7 @@ class ScratchCardGenerateView(TenantMixin, APIView):
                 if not ScratchCard.objects.filter(serial_number=serial).exists():
                     break
 
-            plain_pin = ''.join(random.choices(string.digits, k=10))
+            plain_pin = ''.join(secrets.choice(string.digits) for _ in range(10))
             hashed    = make_password(plain_pin)
 
             cards_to_create.append(ScratchCard(
@@ -714,7 +820,7 @@ class ScratchCardGenerateView(TenantMixin, APIView):
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ScratchCardListView(TenantMixin, APIView):
-    permission_classes = [SchoolModulePermission]
+    permission_classes = [IsSchoolAdmin]
 
     def get(self, request):
         batch = request.query_params.get('batch')
@@ -725,8 +831,30 @@ class ScratchCardListView(TenantMixin, APIView):
         return Response(serializer.data)
 
 
+class ScratchCardRevokeView(TenantMixin, APIView):
+    permission_classes = [IsSchoolAdmin]
+
+    @transaction.atomic
+    def post(self, request, card_id):
+        from tenants.models import PlatformEvent
+        card = ScratchCard.objects.select_for_update().filter(school=self.school, pk=card_id).first()
+        if not card:
+            return Response({'detail': 'Card not found.'}, status=404)
+        if card.is_used:
+            return Response({'detail': 'A used card cannot be revoked.'}, status=409)
+        if card.revoked_at:
+            return Response({'revoked': True})
+        card.revoked_at = timezone.now()
+        card.revoked_by = request.user
+        card.save(update_fields=['revoked_at', 'revoked_by'])
+        PlatformEvent.objects.create(actor=request.user, actor_email=request.user.email,
+            action='school.scratch_card_revoked', target=str(card.pk),
+            details={'school_id': self.school.pk, 'card_id': card.pk})
+        return Response({'revoked': True})
+
+
 class ScratchCardBatchStatsView(TenantMixin, APIView):
-    permission_classes = [SchoolModulePermission]
+    permission_classes = [IsSchoolAdmin]
 
     def get(self, request):
         from django.db.models import Min
@@ -737,7 +865,8 @@ class ScratchCardBatchStatsView(TenantMixin, APIView):
             .annotate(
                 total     = Count('id'),
                 used      = Count('id', filter=Q(is_used=True)),
-                unused    = Count('id', filter=Q(is_used=False)),
+                unused    = Count('id', filter=Q(is_used=False, revoked_at__isnull=True)),
+                revoked   = Count('id', filter=Q(revoked_at__isnull=False)),
                 created_at= Min('created_at'),
             )
             .order_by('-created_at')
@@ -752,7 +881,7 @@ class ScratchCardUnusedPDFView(TenantMixin, APIView):
         batch = request.query_params.get('batch', '').strip()
         if not batch:
             return Response({'detail': 'batch param required.'}, status=400)
-        cards = ScratchCard.objects.filter(school=self.school, batch_name=batch, is_used=False)
+        cards = ScratchCard.objects.filter(school=self.school, batch_name=batch, is_used=False, revoked_at__isnull=True)
         pdf = scratch_cards_pdf(school_branding_context(self.school), batch, ((card.serial_number, '') for card in cards), include_pins=False)
         response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="unused_{slugify(batch) or "batch"}.pdf"'
@@ -775,22 +904,19 @@ class PublicResultCheckView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
+    @transaction.atomic
     def post(self, request):
         generic_error = Response(
             {'detail': 'The supplied result-checking details are invalid or unavailable.'},
             status=403,
             headers={'Cache-Control': 'no-store'},
         )
-        admission_number = request.data.get('admission_number', '').strip().upper()
-        serial_number    = request.data.get('serial_number', '').strip().upper()
-        pin              = request.data.get('pin', '').strip()
+        admission_number = str(request.data.get('admission_number') or '').strip().upper()
+        serial_number    = str(request.data.get('serial_number') or '').strip().upper()
+        pin              = str(request.data.get('pin') or '').strip()
 
-        if not (admission_number and serial_number and pin):
-            return Response(
-                {'detail': 'The supplied result-checking details are invalid or unavailable.'},
-                status=400,
-                headers={'Cache-Control': 'no-store'},
-            )
+        if not (admission_number and serial_number and pin) or max(map(len, (admission_number, serial_number, pin))) > 100:
+            return generic_error
 
         # Look up card
         try:
@@ -808,7 +934,7 @@ class PublicResultCheckView(APIView):
             return generic_error
 
         # Already used?
-        if card.is_used:
+        if card.is_used or card.revoked_at:
             return generic_error
 
         # Find student by admission number within that school
@@ -835,8 +961,12 @@ class PublicResultCheckView(APIView):
             if not term:
                 return generic_error
 
+        # A single-use card must not be consumed for an unavailable result.
+        if not has_complete_published_result(card.school, student, term):
+            return generic_error
+
         # Mark card used atomically to prevent double-use race condition
-        updated = ScratchCard.objects.filter(pk=card.pk, is_used=False).update(
+        updated = ScratchCard.objects.filter(pk=card.pk, is_used=False, revoked_at__isnull=True).update(
             is_used=True,
             used_at=timezone.now(),
             used_by_student=student,

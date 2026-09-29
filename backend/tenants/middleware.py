@@ -22,6 +22,7 @@ EXEMPT_PATH_PREFIXES = (
     "/superadmin/",
     "/health/",
     "/api/auth/login/",          # resolves tenant itself
+    "/api/school-lookup/",       # Public school lookup resolves tenant itself
     "/api/auth/token/",          # JWT refresh — no tenant needed
     "/api/auth/parent/",         # OTP flow — resolves tenant itself
     "/api/results/check/",       # Public PIN result checker — no tenant needed

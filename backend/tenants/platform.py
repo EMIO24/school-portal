@@ -12,8 +12,9 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from accounts.permissions import IsSuperAdmin, IsPlatformReader
 from .security import audit
-from .models import School, SchoolActivity
+from .models import School, SchoolActivity, DemoRequest
 from .serializers import SchoolSerializer
+from .image_uploads import store_uploaded_image
 
 User = get_user_model()
 
@@ -87,7 +88,39 @@ def school_data(school, detail=False):
         data['administrators'] = list(school.users.filter(role='school_admin').values(
             'id', 'email', 'first_name', 'last_name', 'is_active', 'last_login'))
         data['activity'] = list(school.platform_activity.values('action', 'created_at', 'actor__email')[:30])
+        data['setup'] = {
+            'administrator': school.users.filter(role='school_admin', is_active=True).exists(),
+            'identity': bool(school.name and school.email),
+            'logo': bool(school.logo),
+            'plan': school.subscription_plan in dict(School.SUBSCRIPTION_CHOICES),
+            'academic_session': school.sessions.exists(),
+            'current_term': school.sessions.filter(terms__is_current=True).exists(),
+        }
     return data
+
+
+class PlatformSchoolLogo(APIView):
+    permission_classes = [IsSuperAdmin]
+
+    def post(self, request, pk):
+        school = get_object_or_404(School, pk=pk)
+        upload = request.FILES.get('logo')
+        try:
+            school.logo = store_uploaded_image(upload, f'school-logos/{school.pk}')
+        except serializers.ValidationError as exc:
+            raise serializers.ValidationError({'logo': list(exc.detail.values())[0]})
+        school.save(update_fields=['logo'])
+        audit(request, 'school.logo_updated', school.pk)
+        SchoolActivity.objects.create(school=school, actor=request.user, action='School logo updated')
+        return Response({'logo': school.logo})
+
+    def delete(self, request, pk):
+        school = get_object_or_404(School, pk=pk)
+        school.logo = ''
+        school.save(update_fields=['logo'])
+        audit(request, 'school.logo_removed', school.pk)
+        SchoolActivity.objects.create(school=school, actor=request.user, action='School logo removed')
+        return Response({'logo': ''})
 
 
 def create_school(data, actor=None):
@@ -107,6 +140,40 @@ def create_school(data, actor=None):
 
 class SignupThrottle(AnonRateThrottle):
     rate = '5/hour'
+
+
+class DemoRequestInput(serializers.ModelSerializer):
+    class Meta:
+        model = DemoRequest
+        fields = ['school_name', 'contact_name', 'email', 'phone', 'student_population', 'location', 'message']
+        extra_kwargs = {'message': {'required': False, 'allow_blank': True}}
+
+    def validate_phone(self, value):
+        if sum(character.isdigit() for character in value) < 7:
+            raise serializers.ValidationError('Enter a valid phone number.')
+        return value.strip()
+
+
+class DemoRequestView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [SignupThrottle]
+
+    def post(self, request):
+        if request.data.get('website'):
+            raise serializers.ValidationError({'website': 'Invalid submission.'})
+        serializer = DemoRequestInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        lead = serializer.save()
+        audit(request, 'demo.requested', lead.pk, {'school_name': lead.school_name})
+        return Response({'detail': 'Demo request received. We will be in touch.'}, status=201)
+
+
+class PlatformDemoRequests(APIView):
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request):
+        return Response(list(DemoRequest.objects.values('id', 'school_name', 'contact_name', 'email', 'phone', 'student_population', 'location', 'message', 'status', 'created_at')[:100]))
 
 
 class SchoolRegistration(APIView):

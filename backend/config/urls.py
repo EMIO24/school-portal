@@ -9,10 +9,11 @@ admin.site.has_permission = admin_permission
 from django.urls import include, path
 from django.http import JsonResponse
 from results.urls import results_urlpatterns, scratch_card_urlpatterns
+from analytics.principal import PrincipalOperationsView
 
 
 def health_check(request):
-    return JsonResponse({"status": "ok", "version": "1.0"})
+    return JsonResponse({"status": "ok"})
 
 
 urlpatterns = [
@@ -42,15 +43,18 @@ urlpatterns = [
 
     # Phase 4
     path('api/notifications/', include('notifications.urls')),
+    path('api/communications/', include('notifications.communication_urls')),
     path('api/fees/',          include('fees.urls')),
 
     # Timetable
     path('api/timetable/',     include('timetable.urls')),
+    path('api/curriculum/',     include('curriculum.urls')),
 
     # Parent data (tenant-aware — must NOT be under /api/auth/)
     path('api/parent/',        include('accounts.parent_urls')),
 
     # Phase 5
+    path('api/principal/', PrincipalOperationsView.as_view()),
     path('api/analytics/',     include('analytics.urls')),
     path('api/reports/',       include('analytics.reports_urls')),  # transcript only
     path('api/promotion/',     include('promotion.urls')),

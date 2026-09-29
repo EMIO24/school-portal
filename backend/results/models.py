@@ -7,7 +7,7 @@ Positions are calculated server-side via compute_positions() and written here.
 All FKs use correct project app labels (tenants, enrollment, academics, settings.AUTH_USER_MODEL).
 """
 
-import random
+import secrets
 import string
 
 from django.conf import settings
@@ -72,8 +72,8 @@ class ResultRemark(models.Model):
 def _generate_serial(school_slug):
     """Generate a serial number in the format {SLUG}-XXXX-XXXX (uppercase alphanumeric)."""
     chars = string.ascii_uppercase + string.digits
-    part1 = ''.join(random.choices(chars, k=4))
-    part2 = ''.join(random.choices(chars, k=4))
+    part1 = ''.join(secrets.choice(chars) for _ in range(4))
+    part2 = ''.join(secrets.choice(chars) for _ in range(4))
     return f"{school_slug.upper()}-{part1}-{part2}"
 
 
@@ -107,6 +107,12 @@ class ScratchCard(models.Model):
         limit_choices_to={'role': 'student'}
     )
 
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='revoked_scratch_cards',
+    )
+
     created_at     = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -116,3 +122,29 @@ class ScratchCard(models.Model):
     def __str__(self):
         status = 'USED' if self.is_used else 'unused'
         return f"{self.serial_number} [{status}] — {self.batch_name}"
+
+
+class ReportConfiguration(models.Model):
+    """Bounded school presentation options; academic facts live elsewhere."""
+    school = models.OneToOneField('tenants.School', on_delete=models.PROTECT,
+                                  related_name='report_configuration')
+    layout = models.CharField(max_length=12, choices=[
+        ('classic', 'Classic Academic'), ('modern', 'Modern'), ('compact', 'Compact')], default='classic')
+    title = models.CharField(max_length=80, default='Student Academic Report')
+    show_comments = models.BooleanField(default=True)
+    show_attendance = models.BooleanField(default=True)
+    show_position = models.BooleanField(default=True)
+    show_skills = models.BooleanField(default=True)
+    show_next_term = models.BooleanField(default=True)
+    watermark = models.CharField(max_length=12, choices=[
+        ('none', 'None'), ('official', 'Official'), ('school', 'School name')], default='none')
+
+
+class PublishedReportStyle(models.Model):
+    """First publication fixes presentation and branding for a school term."""
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT)
+    term = models.OneToOneField('academics.Term', on_delete=models.PROTECT,
+                                related_name='published_report_style')
+    configuration = models.JSONField(default=dict)
+    branding = models.JSONField(default=dict)
+    captured_at = models.DateTimeField(auto_now_add=True)

@@ -74,3 +74,33 @@ class NotificationOutbox(models.Model):
     subject = models.CharField(max_length=200, blank=True)
     claimed_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+
+
+class Communication(models.Model):
+    """Immutable published portal notice with an audience snapshot."""
+    school = models.ForeignKey('tenants.School', on_delete=models.CASCADE)
+    sender = models.ForeignKey('accounts.CustomUser', on_delete=models.SET_NULL, null=True)
+    sender_name = models.CharField(max_length=300)
+    title = models.CharField(max_length=160)
+    body = models.TextField()
+    audience = models.CharField(max_length=32)
+    audience_label = models.CharField(max_length=160)
+    recipient_count = models.PositiveIntegerField()
+    key = models.CharField(max_length=64)
+    digest = models.CharField(max_length=64)
+    published_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['school', 'key'], name='unique_communication_key')]
+        indexes = [models.Index(fields=['school', '-published_at'])]
+
+
+class CommunicationRecipient(models.Model):
+    communication = models.ForeignKey(Communication, on_delete=models.CASCADE, related_name='recipients')
+    user = models.ForeignKey('accounts.CustomUser', on_delete=models.CASCADE, related_name='portal_notices')
+    recipient_name = models.CharField(max_length=300)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['communication', 'user'], name='unique_communication_recipient')]
+        indexes = [models.Index(fields=['user', '-id'])]
