@@ -129,8 +129,8 @@ class CurriculumSourceListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not _school_user(request):
-            return Response({'detail': 'School access required.'}, status=403)
+        if not _school_user(request) or request.user.role not in ('school_admin', 'teacher'):
+            return Response({'detail': 'Academic standards access required.'}, status=403)
         sources = CurriculumSource.objects.filter(school=request.tenant).prefetch_related('versions').order_by('name')
         return Response({'sources': [_source_data(source) for source in sources]})
 
@@ -202,8 +202,8 @@ class CurriculumApplicabilityView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not _school_user(request):
-            return Response({'detail': 'School access required.'}, status=403)
+        if not _school_user(request) or request.user.role not in ('school_admin', 'teacher'):
+            return Response({'detail': 'Academic standards access required.'}, status=403)
         rows = CurriculumApplicability.objects.filter(school=request.tenant).select_related(
             'session', 'class_level', 'subject', 'curriculum_version__source'
         ).order_by('-session__start_date', 'class_level__order_index', 'subject__name')
@@ -411,7 +411,8 @@ class AcademicStandardTransitionView(APIView):
             standard.approved_at = timezone.now()
         standard.status = expected[1]
         standard.save()
-        audit(request, f'curriculum.standard_{action}ed', target=f'academic-standard:{standard.pk}',
+        audit_name = {'submit': 'submitted', 'review': 'reviewed', 'approve': 'approved'}[action]
+        audit(request, f'curriculum.standard_{audit_name}', target=f'academic-standard:{standard.pk}',
               details={'school_id': request.tenant.pk, 'revision': standard.revision})
         return Response({'standard': _standard_data(standard)})
 
