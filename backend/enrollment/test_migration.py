@@ -1,5 +1,8 @@
 import time
+from io import BytesIO
 from datetime import date
+
+from openpyxl import Workbook
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
@@ -56,6 +59,63 @@ class MigrationCentreTests(TestCase):
         self.client.force_authenticate(teacher)
         self.assertEqual(self.upload('classes', 'import', data).status_code, 403)
         self.assertEqual(self.client.get('/api/migration/').status_code, 403)
+
+    def test_excel_inspect_validate_import_and_formula_rejection(self):
+        def workbook_file(rows):
+            stream = BytesIO()
+            book = Workbook()
+            sheet = book.active
+            for row in rows:
+                sheet.append(row)
+            book.save(stream)
+            return SimpleUploadedFile(
+                'school.xlsx', stream.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+
+        inspect = self.client.post('/api/migration/classes/inspect/', {
+            'file': workbook_file([
+                ['Class Level', 'Class Arm', 'Legacy Note'],
+                ['JSS1', 'A', 'old spreadsheet'],
+            ]),
+        }, format='multipart')
+        self.assertEqual(inspect.status_code, 200, inspect.data)
+        self.assertEqual(inspect.data['format'], 'xlsx')
+        self.assertEqual(inspect.data['total_rows'], 1)
+        self.assertEqual(inspect.data['suggested_mapping']['Class Level'], 'class_level')
+        self.assertEqual(inspect.data['suggested_mapping']['Class Arm'], 'class_arm')
+
+        mapping = '{"Class Level":"class_level","Class Arm":"class_arm"}'
+        validate = self.client.post('/api/migration/classes/validate/', {
+            'file': workbook_file([
+                ['Class Level', 'Class Arm', 'Legacy Note'],
+                ['JSS1', 'A', 'old spreadsheet'],
+            ]),
+            'mapping': mapping,
+        }, format='multipart')
+        self.assertEqual(validate.data['counts'], {'CREATE': 1, 'REUSE': 0, 'REJECT': 0})
+        self.assertEqual(validate.data['warnings'], ['Ignored column: Legacy Note'])
+        self.assertFalse(ClassArm.objects.exists())
+
+        imported = self.client.post('/api/migration/classes/import/', {
+            'file': workbook_file([
+                ['Class Level', 'Class Arm', 'Legacy Note'],
+                ['JSS1', 'A', 'old spreadsheet'],
+            ]),
+            'mapping': mapping,
+        }, format='multipart')
+        self.assertEqual(imported.data['counts']['CREATE'], 1)
+        self.assertEqual(ClassArm.objects.get(school=self.school).full_name, 'JSS1 A')
+
+        formula = self.client.post('/api/migration/classes/validate/', {
+            'file': workbook_file([
+                ['class_level', 'class_arm'],
+                ['JSS2', '=1+1'],
+            ]),
+            'mapping': '{}',
+        }, format='multipart')
+        self.assertEqual(formula.data['counts']['REJECT'], 1)
+        self.assertEqual(formula.data['rows'][0]['field'], 'file')
 
     def test_operational_sequence_retries_and_readiness(self):
         session = AcademicSession.objects.create(school=self.school, name='2026/27',
