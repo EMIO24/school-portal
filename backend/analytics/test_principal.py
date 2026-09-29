@@ -9,7 +9,10 @@ from rest_framework.test import APIClient
 from accounts.models import CustomUser
 from academics.models import AcademicSession, Holiday, Term
 from attendance.models import AttendanceRecord, AttendanceSession
-from curriculum.models import CurriculumPlan, CurriculumTopic, CurriculumWeek, TopicCoverage
+from curriculum.models import (
+    AcademicResource, CurriculumPlan, CurriculumTopic, CurriculumWeek,
+    LessonPlan, TopicCoverage,
+)
 from enrollment import test_operations as operations
 from enrollment.models import ClassArm, StudentProfile
 from fees.models import FeeCategory, FeePayment, FeeSchedule
@@ -130,6 +133,26 @@ class PrincipalOperationsTests(TestCase):
         self.assertEqual(data['groups'][0]['not_started'], 1)
         foreign = self.other
         self.assertNotIn(foreign.pk, [row['class_arm'] for row in data['groups']])
+
+    def test_academic_management_distinguishes_planning_from_delivery(self):
+        plan = CurriculumPlan.objects.create(school=self.school, term=self.term, class_level=self.level, subject=self.subject)
+        week = CurriculumWeek.objects.create(plan=plan, number=1)
+        topic = CurriculumTopic.objects.create(week=week, title='Whole Numbers', position=1)
+        LessonPlan.objects.create(
+            school=self.school, term=self.term, class_arm=self.arm, subject=self.subject,
+            curriculum_topic=topic, teacher=self.teacher, title='Whole Numbers plan', status='submitted'
+        )
+        AcademicResource.objects.create(
+            school=self.school, class_level=self.level, subject=self.subject,
+            title='Whole Numbers note', kind='note', status='reviewed', created_by=self.teacher
+        )
+        data = self.read('academic_management').data
+        self.assertEqual(data['lesson_plan_counts']['submitted'], 1)
+        self.assertEqual(data['resource_counts']['reviewed'], 1)
+        self.assertEqual(data['groups'][0]['lesson_outcomes'], {})
+        self.assertEqual(data['groups'][0]['covered_evidence_rows'], 0)
+        self.assertIn('LessonRecord', data['note'])
+        self.assertIn('TopicCoverage', data['note'])
 
     def test_curriculum_query_count_does_not_grow_per_topic(self):
         plan = CurriculumPlan.objects.create(school=self.school, term=self.term, class_level=self.level, subject=self.subject)
