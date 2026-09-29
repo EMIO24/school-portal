@@ -130,7 +130,7 @@ class CurriculumApplicability(models.Model):
                                 related_name='curriculum_applicability')
     curriculum_version = models.ForeignKey(CurriculumVersion, on_delete=models.PROTECT,
                                            related_name='applicability')
-    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                     related_name='recorded_curriculum_applicability')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -179,7 +179,7 @@ class SchoolAcademicStandard(models.Model):
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.DRAFT)
     supersedes = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT,
                                    related_name='revisions')
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name='created_academic_standards')
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                     related_name='reviewed_academic_standards')
