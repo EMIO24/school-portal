@@ -15,6 +15,7 @@ export default function Fees({ studentId: requestedStudentId }) {
   const [loading, setLoading]   = useState(false);
   const [paying, setPaying]     = useState(false);
   const [selected, setSelected] = useState({});
+  const [amounts, setAmounts] = useState({});
   const [feeError, setFeeError] = useState('');
   const loadVersion = useRef(0);
 
@@ -30,7 +31,7 @@ export default function Fees({ studentId: requestedStudentId }) {
 
   const loadFees = useCallback(() => {
     const version = ++loadVersion.current;
-    setLoading(true); setFeeError(''); setFeeData([]); setSelected({});
+    setLoading(true); setFeeError(''); setFeeData([]); setSelected({}); setAmounts({});
     api.get(`/api/fees/student/${studentId}/?term=${selectedTerm}`)
       .then(({ data }) => { if (version === loadVersion.current) setFeeData(Array.isArray(data) ? data : []); })
       .catch(() => { if (version === loadVersion.current) setFeeError('Could not load term fees. Retry.'); })
@@ -43,19 +44,41 @@ export default function Fees({ studentId: requestedStudentId }) {
   }, [loadFees, selectedTerm, studentId]);
 
 
-  function toggleSelect(scheduleId) {
-    setSelected(s => ({ ...s, [scheduleId]: !s[scheduleId] }));
+  function toggleSelect(fee) {
+    const scheduleId = fee.schedule.id;
+    const nextSelected = !selected[scheduleId];
+    setSelected(s => ({ ...s, [scheduleId]: nextSelected }));
+    if (nextSelected) {
+      setAmounts(current => ({
+        ...current,
+        [scheduleId]: current[scheduleId] || String(fee.outstanding),
+      }));
+    }
   }
 
   async function payOnline() {
-    const ids = feeData
+    const allocations = feeData
       .filter(f => selected[f.schedule.id] && f.outstanding != null && Number(f.outstanding) > 0)
-      .map(f => f.schedule.id);
-    if (ids.length === 0) return;
+      .map(f => ({
+        schedule_id: f.schedule.id,
+        amount: amounts[f.schedule.id],
+        outstanding: Number(f.outstanding),
+      }));
+    if (allocations.length === 0) return;
+    const invalid = allocations.find(item => {
+      const amount = Number(item.amount);
+      return !Number.isFinite(amount) || amount <= 0 || amount > item.outstanding ||
+        !/^\d+(?:\.\d{1,2})?$/.test(String(item.amount).trim());
+    });
+    if (invalid) {
+      alert("Enter a valid amount up to the outstanding balance for each selected fee.");
+      return;
+    }
     setPaying(true);
     try {
       const { data } = await api.post("/api/fees/pay/initiate/", {
-        student_id: studentId, fee_schedule_ids: ids,
+        student_id: studentId,
+        allocations: allocations.map(({schedule_id, amount}) => ({schedule_id, amount})),
       });
       if (data.authorization_url) {
         window.location.href = data.authorization_url;
@@ -70,6 +93,8 @@ export default function Fees({ studentId: requestedStudentId }) {
   }
 
   const anySelected = feeData.some(f => selected[f.schedule.id] && f.outstanding != null && Number(f.outstanding) > 0);
+  const selectedTotal = feeData.reduce((total, f) => selected[f.schedule.id]
+    ? total + (Number(amounts[f.schedule.id]) || 0) : total, 0);
 
   return (
     <main className="page-shell fees-page">
@@ -97,7 +122,7 @@ export default function Fees({ studentId: requestedStudentId }) {
                 <span className="fee-name">{f.schedule.fee_category_name}</span>
                 {outstanding > 0 && (
                   <label className="fee-checkbox">
-                    <input type="checkbox" checked={!!selected[f.schedule.id]} onChange={() => toggleSelect(f.schedule.id)} />
+                    <input type="checkbox" checked={!!selected[f.schedule.id]} onChange={() => toggleSelect(f)} />
                     Select
                   </label>
                 )}
@@ -112,6 +137,24 @@ export default function Fees({ studentId: requestedStudentId }) {
                 <div className="fee-progress-fill" style={{ width: `${pct}%` }} />
               </div>
               {f.schedule.due_date && <p className="due-date">Due: {f.schedule.due_date}</p>}
+              {selected[f.schedule.id] && outstanding > 0 && (
+                <label className="fee-payment-amount">
+                  Amount to pay (₦)
+                  <input
+                    aria-label={`Amount to pay for ${f.schedule.fee_category_name}`}
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    max={outstanding}
+                    value={amounts[f.schedule.id] ?? ''}
+                    onChange={event => setAmounts(current => ({
+                      ...current,
+                      [f.schedule.id]: event.target.value,
+                    }))}
+                  />
+                  <small>Maximum ₦{outstanding.toLocaleString()}</small>
+                </label>
+              )}
 
               {f.payments.length > 0 && (
                 <div className="fee-history">
@@ -142,6 +185,7 @@ export default function Fees({ studentId: requestedStudentId }) {
 
       {anySelected && (
         <div className="pay-bar">
+          <span>Selected payment: <strong>₦{selectedTotal.toLocaleString()}</strong></span>
           <button className="btn-primary pay-btn" onClick={payOnline} disabled={paying}>
             {paying ? "Redirecting…" : "Pay Online via Paystack"}
           </button>
