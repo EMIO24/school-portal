@@ -1,7 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import api from '../../services/api';
-import {parseCSVPreview} from '../../components/admin/BulkImport';
 import './MigrationCentre.css';
 
 const labels = {
@@ -48,20 +47,29 @@ export default function MigrationCentre() {
   async function chooseFile(nextFile) {
     setFile(null); setParsed(null); setReport(null); setError('');
     if (!nextFile) return;
-    if (!nextFile.name.toLowerCase().endsWith('.csv') || nextFile.size > 2 * 1024 * 1024) {
-      setError('Choose a CSV file of at most 2 MB.'); return;
+    const lower = nextFile.name.toLowerCase();
+    if (!(lower.endsWith('.csv') || lower.endsWith('.xlsx')) || nextFile.size > 2 * 1024 * 1024) {
+      setError('Choose a CSV or Excel .xlsx file of at most 2 MB.'); return;
     }
+    setBusy(true);
     try {
-      const text = await nextFile.text();
-      const preview = parseCSVPreview(text, 2000);
-      if (preview.totalRows > 2000) throw new Error('Import at most 2,000 rows per file.');
-      const suggested = {};
-      for (const header of preview.headers) {
-        const match = selected?.columns.find(field => normalized(field) === normalized(header)) || aliases[normalized(header)];
-        if (match && selected?.columns.includes(match) && !Object.values(suggested).includes(match)) suggested[header] = match;
-      }
-      setParsed(preview); setMapping(suggested); setFile(nextFile);
-    } catch (err) {setError(err.message || 'Could not read the CSV.');}
+      const form = new FormData();
+      form.append('file', nextFile);
+      const {data} = await api.post(`/api/migration/${domain}/inspect/`, form);
+      setParsed({
+        headers: data.headers || [],
+        rows: data.rows || [],
+        rowNumbers: data.row_numbers || [],
+        totalRows: data.total_rows || 0,
+        format: data.format,
+      });
+      setMapping(data.suggested_mapping || {});
+      setFile(nextFile);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not read the spreadsheet.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   function changeMapping(header, field) {
@@ -105,7 +113,7 @@ export default function MigrationCentre() {
     if (!parsed || !report) return;
     const rejected = report.rows.filter(row => row.action === 'REJECT');
     const lines = [parsed.headers.map(csvCell).join(','), ...rejected.map(item =>
-      parsed.headers.map(header => csvCell(parsed.rows[item.row - 2]?.[header])).join(','))];
+      parsed.headers.map(header => csvCell(parsed.rows[parsed.rowNumbers.indexOf(item.row)]?.[header])).join(','))];
     const url = URL.createObjectURL(new Blob([lines.join('\r\n')], {type: 'text/csv'}));
     const anchor = document.createElement('a'); anchor.href = url;
     anchor.download = `paideia_${domain}_rejected.csv`; anchor.click(); URL.revokeObjectURL(url);
@@ -130,7 +138,8 @@ export default function MigrationCentre() {
       {domain === 'standard_topics' && <p>Imports into an existing draft academic standard. Objectives are separated with semicolons; approved standards are never edited by import.</p>}
     </section>
     <section><h2>2. Upload and map columns</h2>
-      <label>CSV file <input type="file" accept=".csv,text/csv" onChange={event => chooseFile(event.target.files[0])}/></label>
+      <label>Spreadsheet file <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy} onChange={event => chooseFile(event.target.files[0])}/></label>
+      <p>Upload CSV or Excel (.xlsx), up to 2 MB and 2,000 data rows. Excel imports use the first worksheet.</p>
       {parsed && <><p>{parsed.totalRows} rows found. Review each suggested mapping.</p>
         <div className="migration-mapping">{parsed.headers.map(header => <label key={header}>{header}
           <select value={mapping[header] || ''} onChange={event => changeMapping(header, event.target.value)}>
