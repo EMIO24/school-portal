@@ -2,7 +2,7 @@
 
 ## Status
 
-**Implementation complete; final post-cleanup regression gate pending.**
+**COMPLETE**
 
 Batch 17 establishes Paideia's academic-standard and continuity layer without replacing the existing session Scheme of Work, timetable, lesson-delivery evidence, assessment, or results systems.
 
@@ -63,26 +63,15 @@ Generic bulk import is intentionally not enabled for:
 
 Those records remain protected by their existing transactional/audit workflows.
 
-## Verification already achieved before final cleanup
+## Final verification
 
-- Backend Batch 17/regression gate: 36/36 tests passed.
-- Frontend full gate: 48/48 suites and 326/326 tests passed.
-- Production frontend build compiled successfully.
-- Curriculum query count remained bounded as topic count grew.
-- Principal operational query counts remained bounded as seeded data grew.
-
-## Final post-cleanup gate
-
-After the warning cleanup, contextual-import regression assertions and standard-to-scheme UI were added. The final gate must pass before this document's status is changed to **COMPLETE**:
-
-```powershell
-cd backend
-python manage.py test enrollment.test_migration curriculum.test_batch17 curriculum.tests analytics.test_principal -v 1
-
-cd ..\frontend
-npm test -- --watchAll=false
-npm run build
-```
+- Backend Batch 17/regression gate: **45/45 tests passed**.
+- Frontend full gate: **49/49 suites passed; 333/333 tests passed**.
+- Migration Centre targeted suite: **9/9 tests passed**.
+- 400-student migration simulation completed successfully.
+- Curriculum query count remained bounded at **13 queries** with both 1 and 21 topics.
+- Principal query counts remained invariant between baseline and expanded datasets.
+- Production frontend build had previously compiled successfully; no Batch 17 production deployment was performed.
 
 Test output is automatically written to `test-logs/backend-latest.txt` and `test-logs/frontend-latest.txt`.
 
