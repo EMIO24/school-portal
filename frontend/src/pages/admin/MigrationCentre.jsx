@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from 'react';
+import {useSearchParams} from 'react-router-dom';
 import api from '../../services/api';
 import {parseCSVPreview} from '../../components/admin/BulkImport';
 import './MigrationCentre.css';
@@ -7,7 +8,8 @@ const labels = {
   classes: 'Classes and arms', subjects: 'Subjects', students: 'Students',
   staff: 'Teachers', parents: 'Parents and guardians',
   parent_links: 'Parent-child links', assignments: 'Teacher assignments',
-  opening_balances: 'Verified opening balances',
+  opening_balances: 'Verified opening balances', timetable: 'Timetable entries',
+  fee_schedules: 'Fee schedules', standard_topics: 'Academic-standard topics',
 };
 const aliases = {regno: 'student_ref', studentnumber: 'student_ref'};
 const normalized = value => value.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -18,8 +20,10 @@ const csvCell = value => {
 };
 
 export default function MigrationCentre() {
+  const [searchParams] = useSearchParams();
+  const requestedDomain = searchParams.get('type') || 'classes';
   const [domains, setDomains] = useState([]);
-  const [domain, setDomain] = useState('classes');
+  const [domain, setDomain] = useState(requestedDomain);
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [mapping, setMapping] = useState({});
@@ -30,9 +34,12 @@ export default function MigrationCentre() {
   const selected = domains.find(item => item.key === domain);
 
   useEffect(() => {
-    api.get('/api/migration/').then(({data}) => setDomains(data.domains)).catch(() => setError('Could not load migration types. Retry this page.'));
+    api.get('/api/migration/').then(({data}) => {
+      setDomains(data.domains);
+      if (!data.domains.some(item => item.key === requestedDomain)) setDomain('classes');
+    }).catch(() => setError('Could not load migration types. Retry this page.'));
     api.get('/api/school/setup/').then(({data}) => setReadiness(data)).catch(() => {});
-  }, []);
+  }, [requestedDomain]);
 
   function reset(nextDomain = domain) {
     setDomain(nextDomain); setFile(null); setParsed(null); setMapping({}); setReport(null); setError('');
@@ -118,6 +125,9 @@ export default function MigrationCentre() {
       <button type="button" onClick={template} disabled={!selected || busy}>Download CSV template</button>
       {selected && <p>Required: {selected.required.join(', ')}. Reference students with their source student_ref; no Paideia database IDs or passwords.</p>}
       {domain === 'opening_balances' && <p>One verified balance per student. Direction is debt or credit. Amount is nonnegative; zero is allowed when verified. Effective date and source reference preserve provenance. Historical payments stay as existing receipts.</p>}
+      {domain === 'timetable' && <p>Uses the current term. Period may be the exact period name or its order number. Teachers must already be assigned to the class and subject.</p>}
+      {domain === 'fee_schedules' && <p>Uses the current term. Fee categories and class levels must already exist. Existing schedules with different amounts are rejected for manual review.</p>}
+      {domain === 'standard_topics' && <p>Imports into an existing draft academic standard. Objectives are separated with semicolons; approved standards are never edited by import.</p>}
     </section>
     <section><h2>2. Upload and map columns</h2>
       <label>CSV file <input type="file" accept=".csv,text/csv" onChange={event => chooseFile(event.target.files[0])}/></label>
