@@ -255,3 +255,125 @@ class AcademicStandardObjective(models.Model):
             models.UniqueConstraint(fields=['topic', 'position'], name='unique_academic_standard_objective_position'),
             models.UniqueConstraint(fields=['topic', 'text'], name='unique_academic_standard_objective_text'),
         ]
+
+
+class LessonPlan(models.Model):
+    """Teacher plan for one class/subject/term; reviewable evidence, not proof of delivery."""
+
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        SUBMITTED = 'submitted', 'Submitted'
+        REVIEWED = 'reviewed', 'Reviewed'
+        APPROVED = 'approved', 'Approved'
+
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT, related_name='lesson_plans')
+    term = models.ForeignKey('academics.Term', on_delete=models.PROTECT, related_name='lesson_plans')
+    class_arm = models.ForeignKey('enrollment.ClassArm', on_delete=models.PROTECT, related_name='lesson_plans')
+    subject = models.ForeignKey('enrollment.Subject', on_delete=models.PROTECT, related_name='lesson_plans')
+    curriculum_topic = models.ForeignKey(CurriculumTopic, on_delete=models.PROTECT, related_name='lesson_plans')
+    teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='lesson_plans')
+    title = models.CharField(max_length=180)
+    objectives = models.TextField(blank=True)
+    activities = models.TextField(blank=True)
+    assessment = models.TextField(blank=True)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.DRAFT)
+    revision = models.PositiveIntegerField(default=1)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name='reviewed_lesson_plans')
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name='approved_lesson_plans')
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['school', 'term', 'class_arm', 'subject', 'status'], name='lesson_plan_scope_idx')]
+        constraints = [
+            models.UniqueConstraint(fields=['school', 'term', 'class_arm', 'subject', 'curriculum_topic', 'revision'],
+                                    name='unique_lesson_plan_revision'),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        errors = {}
+        if self.term_id and self.term.session.school_id != self.school_id:
+            errors['term'] = 'Term must belong to this school.'
+        if self.class_arm_id and self.class_arm.school_id != self.school_id:
+            errors['class_arm'] = 'Class must belong to this school.'
+        if self.subject_id and self.subject.school_id != self.school_id:
+            errors['subject'] = 'Subject must belong to this school.'
+        if self.curriculum_topic_id:
+            plan = self.curriculum_topic.week.plan
+            if plan.school_id != self.school_id or plan.term_id != self.term_id or plan.subject_id != self.subject_id:
+                errors['curriculum_topic'] = 'Topic must belong to this school, term and subject plan.'
+            elif plan.class_level_id != self.class_arm.class_level_id:
+                errors['curriculum_topic'] = 'Topic class level must match the selected class.'
+        if self.teacher_id and (self.teacher.school_id != self.school_id or self.teacher.role != 'teacher'):
+            errors['teacher'] = 'Choose a teacher in this school.'
+        if errors:
+            raise ValidationError(errors)
+
+
+class AcademicResource(models.Model):
+    """Versioned institutional teaching resource that may outlive its author."""
+
+    class Kind(models.TextChoices):
+        NOTE = 'note', 'Lesson note'
+        HANDOUT = 'handout', 'Handout'
+        SLIDE = 'slide', 'Slide / presentation'
+        WORKSHEET = 'worksheet', 'Worksheet'
+        OTHER = 'other', 'Other'
+
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        SUBMITTED = 'submitted', 'Submitted'
+        REVIEWED = 'reviewed', 'Reviewed'
+        APPROVED = 'approved', 'Approved'
+
+    school = models.ForeignKey('tenants.School', on_delete=models.PROTECT, related_name='academic_resources')
+    class_level = models.ForeignKey('enrollment.ClassLevel', on_delete=models.PROTECT, related_name='academic_resources')
+    subject = models.ForeignKey('enrollment.Subject', on_delete=models.PROTECT, related_name='academic_resources')
+    standard_topic = models.ForeignKey(AcademicStandardTopic, null=True, blank=True, on_delete=models.PROTECT,
+                                       related_name='resources')
+    title = models.CharField(max_length=180)
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    content = models.TextField(blank=True)
+    external_url = models.URLField(blank=True)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.DRAFT)
+    revision = models.PositiveIntegerField(default=1)
+    supersedes = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT, related_name='revisions')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='created_academic_resources')
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name='reviewed_academic_resources')
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name='approved_academic_resources')
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['school', 'class_level', 'subject', 'status'], name='acad_res_scope_idx')]
+        constraints = [
+            models.UniqueConstraint(fields=['school', 'class_level', 'subject', 'title', 'revision'],
+                                    name='unique_academic_resource_revision'),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        errors = {}
+        if self.class_level_id and self.class_level.school_id != self.school_id:
+            errors['class_level'] = 'Class level must belong to this school.'
+        if self.subject_id and self.subject.school_id != self.school_id:
+            errors['subject'] = 'Subject must belong to this school.'
+        if self.standard_topic_id:
+            standard = self.standard_topic.standard
+            if standard.school_id != self.school_id or standard.class_level_id != self.class_level_id or standard.subject_id != self.subject_id:
+                errors['standard_topic'] = 'Standard topic must match this school, class and subject.'
+        if self.supersedes_id:
+            if self.supersedes.school_id != self.school_id:
+                errors['supersedes'] = 'Previous resource revision must belong to this school.'
+            elif self.supersedes.revision >= self.revision:
+                errors['revision'] = 'Revision must be newer than the resource it supersedes.'
+        if errors:
+            raise ValidationError(errors)
