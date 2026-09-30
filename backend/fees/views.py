@@ -146,6 +146,19 @@ class FeeCategoryDetailView(APIView):
 
 # ── Schedule ──────────────────────────────────────────────────────────────────
 
+def _fee_schedule_locked(schedule):
+    from .models import PaymentOrder
+    if FeePayment.objects.filter(fee_schedule=schedule).exists():
+        return True
+    if StudentLedgerEntry.objects.filter(fee_schedule=schedule).exists():
+        return True
+    for allocations in PaymentOrder.objects.filter(
+            school=schedule.school, kind='fees').values_list('allocations', flat=True).iterator():
+        if any(item.get('schedule_id') == schedule.pk for item in (allocations or []) if isinstance(item, dict)):
+            return True
+    return False
+
+
 class FeeScheduleView(APIView):
     permission_classes = [IsAuthenticatedTenantUser]
 
@@ -184,16 +197,31 @@ class FeeScheduleView(APIView):
                 value = Decimal(str(item.get('amount')))
                 if not value.is_finite() or value <= 0 or value != value.quantize(Decimal('0.01')):
                     raise ValueError('Enter a positive fee amount with at most two decimal places.')
-                obj, _ = FeeSchedule.objects.update_or_create(
+                obj = FeeSchedule.objects.filter(
                     school=school,
                     term_id=term_id,
                     class_level_id=item['class_level_id'],
                     fee_category_id=item['fee_category_id'],
-                    defaults={
-                        'amount':   item['amount'],
-                        'due_date': item.get('due_date'),
-                    },
-                )
+                ).first()
+                proposed_due = item.get('due_date') or None
+                if obj:
+                    changed = obj.amount != value or str(obj.due_date or '') != str(proposed_due or '')
+                    if changed and _fee_schedule_locked(obj):
+                        raise ValueError(
+                            'This fee schedule already has financial history. '
+                            'Keep it unchanged and use a controlled adjustment or a later-term schedule.'
+                        )
+                    if changed:
+                        obj.amount = value
+                        obj.due_date = proposed_due
+                        obj.save(update_fields=['amount', 'due_date'])
+                else:
+                    obj = FeeSchedule.objects.create(
+                        school=school, term_id=term_id,
+                        class_level_id=item['class_level_id'],
+                        fee_category_id=item['fee_category_id'],
+                        amount=value, due_date=proposed_due,
+                    )
                 created.append(obj.id)
             except (KeyError, Exception) as exc:
                 errors.append({'index': i, 'detail': str(exc)})
@@ -377,23 +405,38 @@ class FeeReceiptView(APIView):
         check_student_access(request.user, payment.student)
         try:
             from weasyprint import HTML
+            receipt = payment.receipt_snapshot or payment._receipt_snapshot()
+            contact = ' | '.join(filter(None, [
+                receipt.get('school_address', ''), receipt.get('school_phone', ''), receipt.get('school_email', '')
+            ]))
             html = render_to_string('fees/receipt.html', {
                 'payment': payment,
-                'school': school,
+                'receipt': receipt,
                 'receipt_barcode': receipt_barcode_data_uri(payment),
-                **school_branding_context(school),
+                'school_name': receipt.get('school_name', ''),
+                'school_logo': receipt.get('school_logo', ''),
+                'school_motto': receipt.get('school_motto', ''),
+                'school_contact_line': contact,
+                'school_registration_number': receipt.get('school_registration_number', ''),
+                'document_primary_color': receipt.get('document_primary_color', '#173B56'),
+                'document_secondary_color': receipt.get('document_secondary_color', '#256D85'),
+                'document_accent_color': receipt.get('document_accent_color', '#D8A548'),
             })
             pdf  = HTML(string=html).write_pdf()
             resp = HttpResponse(pdf, content_type='application/pdf')
             resp['Content-Disposition'] = f'inline; filename="{payment.receipt_number}.pdf"'
             return secure_document_response(resp)
         except Exception:
+            receipt = payment.receipt_snapshot or payment._receipt_snapshot()
             pdf = _simple_pdf_bytes([
-                getattr(school, 'name', 'School'),
+                receipt.get('school_name', 'School'),
                 f'Receipt {payment.receipt_number}',
-                f'Student: {payment.student.user.full_name or payment.student.admission_number}',
-                f'Category: {payment.fee_schedule.fee_category.name}',
-                f'Amount: {payment.amount_paid}',
+                f"Student: {receipt.get('student_name', '')}",
+                f"Admission No: {receipt.get('admission_number', '')}",
+                f"Class: {receipt.get('class_name', '')}",
+                f"Category: {receipt.get('fee_category', '')}",
+                f"Term: {receipt.get('term_name', '')} {receipt.get('session_name', '')}".strip(),
+                f"Amount: {receipt.get('amount_paid', '')}",
             ])
             resp = HttpResponse(pdf, content_type='application/pdf')
             resp['Content-Disposition'] = f'inline; filename="{payment.receipt_number}.pdf"'
