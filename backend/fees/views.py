@@ -147,16 +147,8 @@ class FeeCategoryDetailView(APIView):
 # ── Schedule ──────────────────────────────────────────────────────────────────
 
 def _fee_schedule_locked(schedule):
-    from .models import PaymentOrder
-    if FeePayment.objects.filter(fee_schedule=schedule).exists():
-        return True
-    if StudentLedgerEntry.objects.filter(fee_schedule=schedule).exists():
-        return True
-    for allocations in PaymentOrder.objects.filter(
-            school=schedule.school, kind='fees').values_list('allocations', flat=True).iterator():
-        if any(item.get('schedule_id') == schedule.pk for item in (allocations or []) if isinstance(item, dict)):
-            return True
-    return False
+    from .history import fee_schedule_has_history
+    return fee_schedule_has_history(schedule.pk, schedule.school_id)
 
 
 class FeeScheduleView(APIView):
