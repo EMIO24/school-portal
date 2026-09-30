@@ -46,17 +46,26 @@ def evaluate_student(student, session, criteria, class_arm=None):
         and attend_pct >= criteria.min_attendance_pct
     )
 
-    # Final-year students graduate rather than promote (configurable via ClassLevel.is_final_year)
-    is_final = student.current_class and student.current_class.class_level.is_final_year
-    recommended = 'graduated' if is_final else ('promoted' if criteria_met else 'repeated')
+    # Historical class context is authoritative when the caller supplies it.
+    source_class = class_arm or student.current_class
+    is_final = bool(
+        source_class and source_class.class_level.is_final_year
+    )
+    recommended = (
+        'graduated'
+        if is_final
+        else ('promoted' if criteria_met else 'repeated')
+    )
 
     return {
-        'student_id':    student.id,
-        'student_name':  student.user.get_full_name(),
-        'class':         student.current_class.full_name if student.current_class else '',
-        'session_avg':   round(float(session_avg), 1),
+        'student_id': student.id,
+        'student_name': student.user.get_full_name(),
+        'class': source_class.full_name if source_class else '',
+        'class_arm_id': source_class.id if source_class else None,
+        'class_level_id': source_class.class_level_id if source_class else None,
+        'session_avg': round(float(session_avg), 1),
         'subjects_passed': subjects_passed,
-        'attendance_pct':  attend_pct,
-        'criteria_met':    criteria_met,
-        'recommended':     recommended,
+        'attendance_pct': attend_pct,
+        'criteria_met': criteria_met,
+        'recommended': recommended,
     }
