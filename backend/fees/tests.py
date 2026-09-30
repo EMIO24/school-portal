@@ -359,6 +359,30 @@ class PaystackTests(TestCase):
         self.assertEqual(r.status_code,200)
         PlatformSecurity.objects.create(user=self.owner,access_level='viewer')
         self.assertEqual(self.client.post('/api/platform/payments/',{},format='json').status_code,403)
+    def test_verified_fee_payment_moves_to_review_if_school_subaccount_changed(self):
+        self.assertEqual(self.start().status_code, 200)
+        order = PaymentOrder.objects.get()
+        SchoolPaymentAccount.objects.filter(pk=self.account.pk).update(
+            subaccount_code='ACCT_replacement'
+        )
+        self.account.refresh_from_db()
+        settled = settle(order.reference, self.data(order))
+        self.assertEqual(settled.status, 'review')
+        self.assertIn('settlement account', settled.note.lower())
+        self.assertFalse(FeePayment.objects.exists())
+        self.assertIsNotNone(settled.verified_at)
+        self.assertEqual(settled.received_amount_kobo, order.amount_kobo)
+        self.assertEqual(settled.received_currency, 'NGN')
+
+    def test_verified_fee_payment_requires_connected_school_subaccount(self):
+        self.assertEqual(self.start().status_code, 200)
+        order = PaymentOrder.objects.get()
+        self.account.delete()
+        settled = settle(order.reference, self.data(order))
+        self.assertEqual(settled.status, 'review')
+        self.assertIn('settlement account', settled.note.lower())
+        self.assertFalse(FeePayment.objects.exists())
+
     def test_platform_checkout_reopen_blocks_integrity_drift_before_paystack(self):
         self.start()
         order = PaymentOrder.objects.get()
