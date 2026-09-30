@@ -116,6 +116,9 @@ export default function StudentProfilePage() {
   const [assigning, setAssigning] = useState(false);
   const [assignVal, setAssignVal] = useState("");
   const [toast,     setToast]     = useState(null);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const [withdrawDate, setWithdrawDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [lifecycleReason, setLifecycleReason] = useState("");
 
   function showToast(msg, type = "success") {
     setToast({ msg, type });
@@ -159,6 +162,39 @@ export default function StudentProfilePage() {
   function handlePhotoUpload(url) {
     setStudent(prev => ({ ...prev, profile_photo: url }));
     showToast("Photo updated.");
+  }
+
+  async function handleLifecycle(action) {
+    const labels = {
+      suspend: "Suspend this student's login while keeping their current enrollment?",
+      reactivate: "Reactivate this student's login and current enrollment access?",
+      withdraw: "Withdraw this student from the current session?",
+    };
+    if (!window.confirm(labels[action])) return;
+
+    setLifecycleBusy(true);
+    try {
+      const payload = { action, reason: lifecycleReason };
+      if (action === "withdraw") payload.effective_date = withdrawDate;
+      const {data} = await api.post(`/api/students/${id}/lifecycle/`, payload);
+      setStudent(data);
+      setAssignVal(data.current_class || "");
+      showToast(
+        action === "suspend" ? "Student suspended." :
+        action === "reactivate" ? "Student reactivated." :
+        "Student withdrawn."
+      );
+      if (action === "withdraw") setLifecycleReason("");
+    } catch (err) {
+      showToast(
+        err?.response?.data?.error ||
+        err?.response?.data?.detail ||
+        "Could not update student lifecycle state.",
+        "error"
+      );
+    } finally {
+      setLifecycleBusy(false);
+    }
   }
 
   // ── Renders ──────────────────────────────────────────────────────────────
@@ -262,6 +298,40 @@ export default function StudentProfilePage() {
           <InfoRow label="Status"         value={
             student.status.charAt(0).toUpperCase() + student.status.slice(1)
           } />
+        </Section>
+
+        <Section title="Student Lifecycle">
+          {student.status === "active" && (
+            <button className="btn btn-secondary btn-sm" disabled={lifecycleBusy}
+              onClick={() => handleLifecycle("suspend")}>
+              Suspend Student
+            </button>
+          )}
+          {student.status === "suspended" && (
+            <button className="btn btn-secondary btn-sm" disabled={lifecycleBusy}
+              onClick={() => handleLifecycle("reactivate")}>
+              Reactivate Student
+            </button>
+          )}
+          {(student.status === "active" || student.status === "suspended") && (
+            <div>
+              <label>Withdrawal date
+                <input type="date" value={withdrawDate}
+                  onChange={e => setWithdrawDate(e.target.value)} />
+              </label>
+              <label>Lifecycle reason
+                <input type="text" maxLength="500" value={lifecycleReason}
+                  onChange={e => setLifecycleReason(e.target.value)} />
+              </label>
+              <button className="btn btn-secondary btn-sm" disabled={lifecycleBusy || !withdrawDate}
+                onClick={() => handleLifecycle("withdraw")}>
+                Withdraw Student
+              </button>
+            </div>
+          )}
+          {(student.status === "withdrawn" || student.status === "graduated") && (
+            <p>This lifecycle state is closed. Re-enrollment requires a dedicated workflow.</p>
+          )}
         </Section>
 
         <Section title="Guardian / Parent">
