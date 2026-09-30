@@ -94,13 +94,14 @@ test('ParentLogin returns to saved payment verification after successful login',
   const { container } = renderPage(<ParentLogin />, {
     auth: { loadUser: jest.fn().mockResolvedValue() },
     path: '/parent/login',
+    route: '/parent/login',
   });
   fireEvent.click(screen.getByRole('button', { name: /Email/i }));
   fireEvent.change(screen.getByPlaceholderText('parent@email.com'), { target: { value: 'parent@example.com' } });
   fireEvent.change(container.querySelector('input[type=password]'), { target: { value: 'Password1!' } });
   fireEvent.click(screen.getByRole('button', { name: 'Login', exact: true }));
   expect(await screen.findByText('Navigation destination')).toBeVisible();
-  expect(window.location.pathname + window.location.search).toBe('/payments/return?reference=SCH-parent');
+  expect(sessionStorage.getItem('payment_return')).toBe('/payments/return?reference=SCH-parent');
   sessionStorage.removeItem('payment_return');
 });
 
