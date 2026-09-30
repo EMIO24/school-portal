@@ -370,9 +370,18 @@ class SessionEnrollment(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=["school", "session", "status"]),
-            models.Index(fields=["school", "class_arm", "session"]),
-            models.Index(fields=["student", "session"]),
+            models.Index(
+                fields=["school", "session", "status"],
+                name="enrollment_s_school__71af38_idx",
+            ),
+            models.Index(
+                fields=["school", "class_arm", "session"],
+                name="enrollment_s_school__f2394d_idx",
+            ),
+            models.Index(
+                fields=["student", "session"],
+                name="enrollment_s_student_69bed0_idx",
+            ),
         ]
 
     def clean(self):
