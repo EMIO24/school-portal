@@ -223,6 +223,14 @@ class PromotionExecuteView(APIView):
             ).first()
 
             if not source_enrollment:
+                if SessionEnrollment.objects.filter(
+                    school=school,
+                    student=student,
+                    session=session,
+                ).exists():
+                    raise ValidationError(
+                        'The session has enrollment history but no active final placement. Restore the enrollment history before promotion.'
+                    )
                 if not session.is_current or not student.current_class:
                     raise ValidationError(
                         'Historical class membership is missing for this session. Restore the session enrollment before promotion.'
