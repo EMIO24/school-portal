@@ -33,7 +33,6 @@ class BasicOperationsTests(TestCase):
         cls.term = Term.objects.create(
             session=cls.session, name='first',
             start_date=date(2026,9,1), end_date=date(2026,12,18),
-            is_current=True,
         )
         SessionEnrollment.objects.create(
             school=cls.school,
