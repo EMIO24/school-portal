@@ -23,9 +23,10 @@ def ensure_current_enrollment(
     if not class_arm:
         raise EnrollmentPlacementError("Choose a class before creating an enrollment.")
 
-    locked_student = StudentProfile.objects.select_for_update().select_related(
-        "current_class"
-    ).filter(pk=student.pk, school=school).first()
+    locked_student = StudentProfile.objects.select_for_update().filter(
+        pk=student.pk,
+        school=school,
+    ).first()
     if not locked_student or locked_student.user.school_id != school.pk:
         raise EnrollmentPlacementError("Student must belong to this school.")
     if locked_student.status != "active":
