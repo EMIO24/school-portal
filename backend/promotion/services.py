@@ -2,7 +2,7 @@ from decimal import Decimal
 from django.db.models import Avg, Count, Q
 
 
-def evaluate_student(student, session, criteria):
+def evaluate_student(student, session, criteria, class_arm=None):
     from gradebook.models import ScoreEntry
     from attendance.models import AttendanceRecord
     from academics.models import Term
