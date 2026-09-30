@@ -238,6 +238,55 @@ class PaystackInitiateView(APIView):
                 'error': 'Your school has not connected its Paystack settlement account. Contact your school administrator.'
             }, status=409)
 
+        request_key = (request.headers.get('Idempotency-Key') or '').strip()
+        if request_key:
+            from .ledger import retry_key
+            try:
+                retry_key(request_key)
+            except ValueError as exc:
+                raise ValidationError(str(exc))
+
+            previous = PaymentOrder.objects.filter(
+                school=request.tenant, request_key=request_key
+            ).first()
+            if previous:
+                same_request = (
+                    previous.kind == 'fees' and
+                    previous.student_id == student.pk and
+                    previous.payer_id == request.user.pk and
+                    previous.mode == settings.PAYSTACK_MODE and
+                    previous.subaccount_code == account.subaccount_code
+                )
+                previous_ids = [item.get('schedule_id') for item in previous.allocations]
+                if requested is None:
+                    same_request = same_request and sorted(previous_ids) == sorted(ids)
+                else:
+                    requested_allocations = sorted(
+                        ({'schedule_id': schedule_id, 'amount_kobo': int(amount * 100)}
+                         for schedule_id, amount in desired.items()),
+                        key=lambda item: item['schedule_id'],
+                    )
+                    same_request = same_request and sorted(
+                        previous.allocations, key=lambda item: item.get('schedule_id')
+                    ) == requested_allocations
+
+                if not same_request:
+                    return Response({
+                        'error': 'This payment retry key was already used for different checkout details.'
+                    }, status=409)
+                if previous.status == 'pending' and previous.authorization_url:
+                    return Response({
+                        'authorization_url': previous.authorization_url,
+                        'reference': previous.reference,
+                        'reused': True,
+                    })
+                return Response({
+                    'error': (
+                        'This checkout already exists. Check its saved payment reference before retrying.'
+                    ),
+                    'reference': previous.reference,
+                }, status=409)
+
         pending = PaymentOrder.objects.filter(
             student=student,
             kind='fees',
@@ -301,6 +350,7 @@ class PaystackInitiateView(APIView):
             subaccount_code=account.subaccount_code,
             amount_kobo=sum(item['amount_kobo'] for item in allocations),
             allocations=allocations,
+            request_key=request_key,
         )
 
 
