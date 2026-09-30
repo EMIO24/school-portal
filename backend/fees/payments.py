@@ -173,6 +173,13 @@ def settle(reference, data):
         from .invoice_payments import settle_invoice_order
         return settle_invoice_order(order, school, data)
     if order.kind == 'fees':
+        if (order.student_id is None or order.student.school_id != school.pk or
+                order.payer.school_id != school.pk):
+            order.status, order.note = 'review', 'Checkout ownership details are inconsistent. Contact the platform owner.'
+            order.save(update_fields=['status', 'note'])
+            event(None, 'payment.mismatch', order.reference, {'school_id': order.school_id})
+            logger.warning("payment_review_required order_id=%s reference=%s reason=ownership_mismatch", order.pk, order.reference)
+            return order
         allocations = valid_fee_allocations(order)
         if allocations is None:
             order.status, order.note = 'review', 'Checkout allocation details are inconsistent. Contact the platform owner.'
