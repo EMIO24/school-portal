@@ -24,6 +24,38 @@ from accounts.permissions import IsSchoolAdmin, IsAuthenticatedTenantUser, IsSch
 from tenants.mixins import TenantMixin
 
 from .models import ClassArm, StaffProfile, Subject, SubjectAssignment
+
+
+def assignment_has_history(assignment):
+    """A teaching responsibility becomes historical once school operations depend on it."""
+    from gradebook.models import ScoreEntry
+    from timetable.models import LessonRecord
+    from curriculum.models import LessonPlan
+    from cbt.models import OnlineAssignment, CBTExam
+
+    scope = {
+        'school': assignment.school,
+        'term': assignment.term,
+        'class_arm': assignment.class_arm,
+        'subject': assignment.subject,
+    }
+    if ScoreEntry.objects.filter(**scope).exists():
+        return True
+    if LessonPlan.objects.filter(**scope).exists():
+        return True
+    if OnlineAssignment.objects.filter(**scope).exists():
+        return True
+    if LessonRecord.objects.filter(
+        school=assignment.school,
+        term=assignment.term,
+        class_arm_id_snapshot=assignment.class_arm_id,
+        subject_id_snapshot=assignment.subject_id,
+    ).exists():
+        return True
+    return CBTExam.objects.filter(
+        school=assignment.school, term=assignment.term, subject=assignment.subject,
+        class_arms=assignment.class_arm,
+    ).exists()
 from .assignment_serializers import (
     AssignmentGridSerializer,
     BulkAssignSerializer,
@@ -51,7 +83,7 @@ class SubjectAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ("list", "retrieve", "grid"):
-            return [IsAuthenticatedTenantUser()]
+            return [IsSchoolAdminOrTeacher()]
         return [IsSchoolAdmin()]
 
     def get_queryset(self):
@@ -70,6 +102,15 @@ class SubjectAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
 
         return qs.order_by("class_arm__class_level__order_index",
                            "class_arm__name", "subject__name")
+
+    def perform_destroy(self, instance):
+        from rest_framework.exceptions import ValidationError
+        if assignment_has_history(instance):
+            raise ValidationError(
+                "This teaching assignment has academic history and must be retained. "
+                "Create a new assignment for a later term instead."
+            )
+        instance.delete()
 
     def perform_create(self, serializer):
         tenant = self._get_tenant()
@@ -198,7 +239,22 @@ class AssignSubjectsMixin:
             rows.append(row.validated_data)
         with transaction.atomic():
             StaffProfile.objects.select_for_update().get(pk=teacher.pk, school=tenant)
-            SubjectAssignment.objects.filter(school=tenant, teacher=teacher, term=term).delete()
+            existing = list(SubjectAssignment.objects.select_for_update().filter(
+                school=tenant, teacher=teacher, term=term
+            ))
+            desired = {(row['subject'].pk, row['class_arm'].pk) for row in rows}
+            removals = [row for row in existing if (row.subject_id, row.class_arm_id) not in desired]
+            protected = [row for row in removals if assignment_has_history(row)]
+            if protected:
+                return Response({
+                    'detail': (
+                        'One or more teaching assignments already have academic history and cannot be removed. '
+                        'Preserve the old term and make changes in a later term.'
+                    ),
+                    'protected_assignment_ids': [row.pk for row in protected],
+                }, status=status.HTTP_409_CONFLICT)
+            if removals:
+                SubjectAssignment.objects.filter(pk__in=[row.pk for row in removals]).delete()
             created = []
             for values in rows:
                 assignment, _ = SubjectAssignment.objects.get_or_create(school=tenant, **values)
