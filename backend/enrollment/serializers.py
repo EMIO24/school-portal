@@ -138,6 +138,21 @@ class StudentProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer
             "profile_photo", "current_class_name",
         ]
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if (
+            self.instance
+            and "current_class" in attrs
+            and attrs["current_class"] != self.instance.current_class
+        ):
+            raise serializers.ValidationError({
+                "current_class": (
+                    "Use the controlled class-assignment workflow to change "
+                    "a student's current class."
+                )
+            })
+        return attrs
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         request = self.context.get("request")
@@ -186,11 +201,31 @@ class StudentProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer
             is_active=validated_data.get("status", "active") == "active",
         )
 
+        initial_class = validated_data.pop("current_class", None)
         profile = StudentProfile.objects.create(
             user=user,
             school=school,
+            current_class=None,
             **validated_data,
         )
+
+        if initial_class:
+            from .session_enrollment import (
+                EnrollmentPlacementError,
+                ensure_current_enrollment,
+            )
+            try:
+                ensure_current_enrollment(
+                    school=school,
+                    student=profile,
+                    class_arm=initial_class,
+                    actor=self.context["request"].user,
+                    entry_reason="admission",
+                )
+            except EnrollmentPlacementError as exc:
+                raise serializers.ValidationError({
+                    "current_class": str(exc)
+                }) from exc
 
         # Set the default password to the admission number
         user.set_password(profile.admission_number)
