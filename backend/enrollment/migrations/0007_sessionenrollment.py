@@ -23,7 +23,7 @@ def backfill_current_session_enrollments(apps, schema_editor):
                     "class_arm_id": student.current_class_id,
                     "status": "active",
                     "entry_reason": "migration",
-                    "enrolled_on": max(student.admission_date, session.start_date),
+                    "enrolled_on": min(max(student.admission_date, session.start_date), session.end_date),
                     "notes": "Backfilled from StudentProfile.current_class during Batch 19 migration.",
                 },
             )
@@ -36,7 +36,7 @@ def noop_reverse(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("academics", "0001_initial"),
+        ("academics", "0002_alter_term_next_term_begins"),
         ("enrollment", "0006_migrationstudentreference_and_more"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
