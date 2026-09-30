@@ -11,7 +11,10 @@ from django.utils import timezone
 from accounts.models import CustomUser, ParentStudentLink
 from academics.models import AcademicSession, Term
 from attendance.models import AttendanceRecord, AttendanceSession
-from enrollment.models import ClassArm, ClassLevel, StaffProfile, StudentProfile, Subject, SubjectAssignment
+from enrollment.models import (
+    ClassArm, ClassLevel, SessionEnrollment, StaffProfile,
+    StudentProfile, Subject, SubjectAssignment,
+)
 from fees.invoices import issue_invoice
 from fees.ledger import generate_charges, record_payment_entry
 from fees.models import FeeCategory, FeePayment, FeeSchedule, SubscriptionOffer
@@ -141,6 +144,21 @@ class Command(BaseCommand):
                 guardian_name=f'Guardian {i % 380 + 1:03d}', guardian_phone=f'0801{i % 380:07d}',
                 guardian_relationship='guardian',
             ) for i, user in enumerate(student_users)
+        ])
+
+        SessionEnrollment.objects.bulk_create([
+            SessionEnrollment(
+                school=school,
+                student=student,
+                session=session,
+                class_arm=student.current_class,
+                status='active',
+                entry_reason='migration',
+                enrolled_on=session.start_date,
+                created_by=admin,
+            )
+            for student in students
+            if student.status == 'active' and student.current_class_id
         ])
 
         parents = CustomUser.objects.bulk_create([
@@ -281,6 +299,16 @@ class Command(BaseCommand):
         )
         student = StudentProfile.objects.create(
             school=school, user=user, admission_number='BOUNDARY-2026-0001', current_class=arm,
+        )
+        SessionEnrollment.objects.create(
+            school=school,
+            student=student,
+            session=session,
+            class_arm=arm,
+            status='active',
+            entry_reason='migration',
+            enrolled_on=session.start_date,
+            created_by=admin,
         )
         assignment = SubjectAssignment.objects.create(
             school=school, teacher=staff, subject=subject, class_arm=arm, session=session, term=term,
