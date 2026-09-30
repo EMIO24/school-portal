@@ -151,8 +151,16 @@ test('Fees only offers payment for selected unpaid schedules and handles gateway
   expect(pay).toBeEnabled();
   fireEvent.click(pay);
   await waitFor(() => expect(window.alert).toHaveBeenCalledWith('Payment initiation failed. Please try again.'));
-  expect(api.post).toHaveBeenCalledWith('/api/fees/pay/initiate/', { student_id: 3, allocations: [{ schedule_id: 2, amount: '1000' }] });
+  expect(api.post).toHaveBeenCalledWith(
+    '/api/fees/pay/initiate/',
+    { student_id: 3, allocations: [{ schedule_id: 2, amount: '1000' }] },
+    { headers: { 'Idempotency-Key': expect.any(String) } },
+  );
+  const firstKey = api.post.mock.calls[0][2].headers['Idempotency-Key'];
   expect(pay).toBeEnabled();
+  fireEvent.click(pay);
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+  expect(api.post.mock.calls[1][2].headers['Idempotency-Key']).toBe(firstKey);
 });
 
 test('manual payment retry reuses one idempotency key', async () => {
