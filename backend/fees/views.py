@@ -20,7 +20,7 @@ from requests.exceptions import RequestException
 
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.utils.dateparse import parse_date
@@ -449,75 +449,64 @@ class OutstandingFeesView(APIView):
     permission_classes = [IsSchoolAdmin]
 
     def get(self, request):
-        school       = getattr(request, 'tenant', None)
-        term_id      = request.query_params.get('term')
+        school = getattr(request, 'tenant', None)
+        term_id = request.query_params.get('term')
         class_arm_id = request.query_params.get('class_arm')
+        if term_id and not re.fullmatch(r'[1-9][0-9]*', str(term_id)):
+            return Response({'detail': 'Select a valid term.'}, status=400)
+        if class_arm_id and not re.fullmatch(r'[1-9][0-9]*', str(class_arm_id)):
+            return Response({'detail': 'Select a valid class.'}, status=400)
 
-        student_qs = StudentProfile.objects.filter(school=school, status='active').select_related(
-            'user', 'current_class__class_level'
-        )
+        student_qs = StudentProfile.objects.filter(
+            school=school, status='active'
+        ).select_related('user', 'current_class__class_level')
         if class_arm_id:
             student_qs = student_qs.filter(current_class_id=class_arm_id)
-        level_counts = {
-            row['current_class__class_level_id']: row['count']
-            for row in student_qs.exclude(current_class__isnull=True)
-            .values('current_class__class_level_id').annotate(count=Count('id'))
-        }
 
-        level_ids = list(level_counts)
-
-        sched_qs = FeeSchedule.objects.filter(school=school, class_level_id__in=level_ids)
+        ledger = StudentLedgerEntry.objects.filter(school=school, student__in=student_qs)
         if term_id:
-            sched_qs = sched_qs.filter(term_id=term_id)
+            ledger = ledger.filter(term_id=term_id)
 
-        # Total fee amount per class_level — one query
-        level_totals = {
-            row['class_level_id']: row['t'] or Decimal('0')
-            for row in sched_qs.values('class_level_id').annotate(t=Sum('amount'))
+        aggregates = {
+            row['student_id']: row
+            for row in ledger.values('student_id').annotate(
+                charges=Sum('signed_amount', filter=Q(kind='charge')),
+                payments=Sum('signed_amount', filter=Q(kind='payment')),
+                balance=Sum('signed_amount'),
+            )
         }
 
-        # Paid amount per student — one query
-        total_expected = sum(
-            level_totals.get(level_id, Decimal('0')) * count
-            for level_id, count in level_counts.items()
+        summary_expected = sum((row['charges'] or Decimal('0')) for row in aggregates.values(), Decimal('0'))
+        summary_collected = sum((abs(row['payments'] or Decimal('0'))) for row in aggregates.values(), Decimal('0'))
+        summary_outstanding = sum(
+            (max(row['balance'] or Decimal('0'), Decimal('0')) for row in aggregates.values()),
+            Decimal('0'),
         )
-        total_collected = FeePayment.objects.filter(
-            student__in=student_qs, fee_schedule__in=sched_qs,
-        ).aggregate(t=Sum('amount_paid'))['t'] or Decimal('0')
 
         paginator = PageNumberPagination()
         paginator.page_size = 50
         student_list = paginator.paginate_queryset(student_qs, request, view=self)
 
-        student_ids = [s.id for s in student_list if s.current_class]
-        paid_map = {
-            row['student_id']: row['t'] or Decimal('0')
-            for row in FeePayment.objects.filter(
-                student_id__in=student_ids,
-                fee_schedule__in=sched_qs,
-            ).values('student_id').annotate(t=Sum('amount_paid'))
-        }
-
         result = []
         for student in student_list:
-            if not student.current_class:
-                continue
-            level_id = student.current_class.class_level_id
-            total    = level_totals.get(level_id, Decimal('0'))
-            paid     = paid_map.get(student.id, Decimal('0'))
+            row = aggregates.get(student.pk, {})
+            total = row.get('charges') or Decimal('0')
+            paid = abs(row.get('payments') or Decimal('0'))
+            outstanding = max(row.get('balance') or Decimal('0'), Decimal('0'))
             result.append({
-                'student_id':   student.id,
+                'student_id': student.id,
                 'student_name': student.user.get_full_name() or student.admission_number,
-                'class':        student.current_class.full_name,
-                'total_fees':   total,
-                'paid':         paid,
-                'outstanding':  max(total - paid, Decimal('0')),
+                'class': student.current_class.full_name if student.current_class else '',
+                'total_fees': total,
+                'paid': paid,
+                'outstanding': outstanding,
             })
 
         response = paginator.get_paginated_response(result)
         response.data['summary'] = {
-            'total_expected': total_expected,
-            'total_collected': total_collected,
-            'total_outstanding': max(total_expected - total_collected, Decimal('0')),
+            'total_expected': summary_expected,
+            'total_collected': summary_collected,
+            'total_outstanding': summary_outstanding,
         }
         return response
+
