@@ -118,14 +118,20 @@ class AttendanceSessionCreateSerializer(TenantRelationsMixin, serializers.ModelS
             **validated_data,
         )
 
-        # Fetch enrolled students for this class arm (scoped to tenant)
+        # Resolve the roster from enrollment history on the attendance date.
         from django.contrib.auth import get_user_model
+        from enrollment.enrollment_periods import enrolled_user_ids_for_class_on_date
         User = get_user_model()
+        roster_ids = enrolled_user_ids_for_class_on_date(
+            school=school,
+            class_arm=session.class_arm,
+            session=session.term.session,
+            on_date=session.date,
+        )
         students = User.objects.filter(
+            pk__in=roster_ids,
             school=school,
             role='student',
-            student_profile__current_class=session.class_arm,
-            student_profile__status='active',
         )
 
         AttendanceRecord.objects.bulk_create([
