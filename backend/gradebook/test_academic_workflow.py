@@ -233,7 +233,7 @@ class AcademicWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         entry.refresh_from_db()
         self.assertEqual(entry.class_arm, self.arm)
-        self.assertEqual(entry.component_scores['c0'], '9')
+        self.assertEqual(str(entry.component_scores['c0']), '9')
 
     def test_teacher_cannot_read_unassigned_subject_scores(self):
         self.configure();self.save_scores();entry=ScoreEntry.objects.get()
