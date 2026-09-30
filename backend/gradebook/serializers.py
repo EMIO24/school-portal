@@ -104,7 +104,19 @@ class ScoreEntryWriteSerializer(serializers.ModelSerializer):
         student, arm, term = merged['student'], merged['class_arm'], merged.get('term')
         if not term or term.session_id != merged['session'].pk or term.session.school_id != school.pk:
             raise serializers.ValidationError({'term':'Select a term in this session.'})
-        if student.role != 'student' or getattr(getattr(student, 'student_profile', None), 'current_class_id', None) != arm.pk:
+        if student.role != 'student':
+            raise serializers.ValidationError({'student':'Student must belong to the selected class.'})
+        current_class_id = getattr(
+            getattr(student, 'student_profile', None),
+            'current_class_id',
+            None,
+        )
+        established_historical_context = bool(
+            self.instance
+            and self.instance.student_id == student.pk
+            and self.instance.class_arm_id == arm.pk
+        )
+        if current_class_id != arm.pk and not established_historical_context:
             raise serializers.ValidationError({'student':'Student must belong to the selected class.'})
         require_assignment(self.context['request'], arm.pk, term.pk, merged['subject'].pk)
         if self.instance and (self.instance.is_published or self.instance.review_state != 'draft'):
