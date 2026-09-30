@@ -9,7 +9,7 @@ from django.template.loader import render_to_string
 from accounts.models import ParentStudentLink
 from academics.models import Term
 from enrollment import test_operations as operations
-from enrollment.models import Subject, StudentProfile
+from enrollment.models import Subject, StudentProfile, StaffProfile
 from .models import ScoreEntry, TermScoring, GradeScale
 from .scoring import ScoringInput
 
@@ -213,7 +213,9 @@ class AcademicWorkflowTests(TestCase):
 
     def test_teacher_cannot_read_unassigned_subject_scores(self):
         self.configure();self.save_scores();entry=ScoreEntry.objects.get()
-        self.assignment.delete();self.client.force_authenticate(self.teacher)
+        unassigned_teacher=self.user('unassigned-teacher','teacher')
+        StaffProfile.objects.create(school=self.school,user=unassigned_teacher)
+        self.client.force_authenticate(unassigned_teacher)
         self.assertEqual(self.client.get(f'/api/gradebook/entries/{entry.pk}/').status_code,404)
 
     def test_published_remarks_and_domains_require_reopening(self):
