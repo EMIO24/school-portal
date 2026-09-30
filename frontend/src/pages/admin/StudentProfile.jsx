@@ -119,6 +119,8 @@ export default function StudentProfilePage() {
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [withdrawDate, setWithdrawDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [lifecycleReason, setLifecycleReason] = useState("");
+  const [transferDate, setTransferDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [transferReason, setTransferReason] = useState("");
 
   function showToast(msg, type = "success") {
     setToast({ msg, type });
@@ -137,22 +139,42 @@ export default function StudentProfilePage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  async function handleAssignClass() {
+  async function handleClassPlacement() {
     if (!assignVal) return;
     setAssigning(true);
     try {
-      const { data } = await api.post(`/api/students/${id}/assign-class/`, {
-        class_arm: assignVal,
-      });
-      setStudent(data);
-      showToast("Class assigned successfully.");
+      if (student.current_class) {
+        if (String(assignVal) === String(student.current_class)) {
+          showToast("Choose a different destination class.", "error");
+          return;
+        }
+        if (!window.confirm(
+          `Transfer ${student.full_name} from ${student.current_class_name} effective ${transferDate}? Historical class records will be preserved.`
+        )) return;
+        const { data } = await api.post(`/api/students/${id}/transfer-class/`, {
+          class_arm: assignVal,
+          effective_date: transferDate,
+          reason: transferReason,
+        });
+        setStudent(data.student);
+        setAssignVal(data.student.current_class || "");
+        setTransferReason("");
+        showToast("Student transferred successfully.");
+      } else {
+        const { data } = await api.post(`/api/students/${id}/assign-class/`, {
+          class_arm: assignVal,
+        });
+        setStudent(data);
+        setAssignVal(data.current_class || "");
+        showToast("Class assigned successfully.");
+      }
     } catch (err) {
       const data = err?.response?.data;
       const message =
         data?.error ||
         data?.detail ||
         data?.current_class?.[0] ||
-        "Failed to assign class.";
+        "Failed to update class placement.";
       showToast(message, "error");
     } finally {
       setAssigning(false);
@@ -259,23 +281,43 @@ export default function StudentProfilePage() {
           <p className="sp-email">{student.email}</p>
         </div>
 
-        {/* Class assignment */}
+        {/* Current assignment or controlled transfer */}
         <div className="sp-assign-class">
-          <label className="sp-assign-label">Assign to Class</label>
+          <label className="sp-assign-label">
+            {student.current_class ? "Transfer to Class" : "Assign to Class"}
+          </label>
           <div className="sp-assign-row">
             <select className="sp-assign-select" value={assignVal}
-              onChange={e => setAssignVal(e.target.value)}>
+              onChange={e => setAssignVal(e.target.value)}
+              disabled={student.status !== "active"}>
               <option value="">Not Assigned</option>
               {classArms.map(a => (
                 <option key={a.id} value={a.id}>{a.full_name}</option>
               ))}
             </select>
             <button className="btn btn-accent btn-sm"
-              onClick={handleAssignClass}
-              disabled={assigning || !assignVal}>
-              {assigning ? "…" : "Assign"}
+              onClick={handleClassPlacement}
+              disabled={
+                assigning ||
+                !assignVal ||
+                student.status !== "active" ||
+                (student.current_class && String(assignVal) === String(student.current_class))
+              }>
+              {assigning ? "…" : student.current_class ? "Transfer" : "Assign"}
             </button>
           </div>
+          {student.current_class && student.status === "active" && (
+            <div>
+              <label>Transfer effective date
+                <input type="date" value={transferDate}
+                  onChange={e => setTransferDate(e.target.value)} />
+              </label>
+              <label>Transfer reason
+                <input type="text" maxLength="500" value={transferReason}
+                  onChange={e => setTransferReason(e.target.value)} />
+              </label>
+            </div>
+          )}
         </div>
       </div>
 
