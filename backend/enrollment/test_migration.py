@@ -159,6 +159,11 @@ class MigrationCentreTests(TestCase):
             self.assertTrue(next(step for step in readiness if step['key'] == key)['complete'])
 
     def test_partial_errors_and_cross_tenant_references(self):
+        AcademicSession.objects.create(
+            school=self.school, name='2026/27',
+            start_date=date(2026, 9, 1), end_date=date(2027, 7, 1),
+            is_current=True,
+        )
         self.upload('classes', 'import', 'class_level,class_arm\nJSS1,A')
         csv = ('student_ref,first_name,last_name,class_level,class_arm,dob\n'
                'ONE,Ada,One,JSS1,A,2013-01-02\nTWO,Bad,Date,JSS1,A,not-a-date\n'
@@ -206,6 +211,11 @@ class MigrationCentreTests(TestCase):
         self.assertEqual(response.data['counts']['CREATE'], 1)
 
     def test_subject_coverage_and_guardian_contact_do_not_grant_access(self):
+        AcademicSession.objects.create(
+            school=self.school, name='2026/27',
+            start_date=date(2026, 9, 1), end_date=date(2027, 7, 1),
+            is_current=True,
+        )
         self.upload('classes', 'import', 'class_level,class_arm\nJSS1,A\nJSS2,A')
         response = self.upload('subjects', 'import', 'code,name,class_levels\nMATH,Mathematics,JSS1;JSS2')
         self.assertEqual(response.data['counts']['CREATE'], 1)
