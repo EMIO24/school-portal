@@ -10,13 +10,13 @@ from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 from accounts.models import CustomUser
 from academics.models import AcademicSession, Term
 from attendance.models import AttendanceRecord, AttendanceSession
-from enrollment.models import ClassArm, ClassLevel, StudentProfile, Subject
+from enrollment.models import ClassArm, ClassLevel, SessionEnrollment, StudentProfile, Subject
 from gradebook.models import ScoreEntry
 from tenants.models import School
 
-from .models import PromotionCriteria
+from .models import PromotionCriteria, PromotionRecord
 from .services import evaluate_student
-from .views import PromotionCriteriaView
+from .views import PromotionCriteriaView, PromotionEvaluateView, PromotionExecuteView
 
 
 class PromotionReadinessTests(TestCase):
@@ -96,3 +96,244 @@ class PromotionReadinessTests(TestCase):
         result = evaluate_student(self.student, self.session, criteria)
         self.assertEqual(result['attendance_pct'], 100)
         self.assertTrue(result['criteria_met'])
+
+
+class PromotionEnrollmentHistoryTests(TestCase):
+    def setUp(self):
+        self.school = School.objects.create(
+            name='History School', slug='history-school',
+            subdomain='history-school', subscription_plan='premium'
+        )
+        self.other = School.objects.create(
+            name='Foreign History School', slug='foreign-history-school',
+            subdomain='foreign-history-school', subscription_plan='premium'
+        )
+        self.admin = CustomUser.objects.create_user(
+            'admin@history.test', 'Password!123',
+            school=self.school, role='school_admin'
+        )
+        self.student_user = CustomUser.objects.create_user(
+            'student@history.test', 'Password!123',
+            school=self.school, role='student'
+        )
+        self.level1 = ClassLevel.objects.create(
+            school=self.school, name='JSS1', order_index=1
+        )
+        self.level2 = ClassLevel.objects.create(
+            school=self.school, name='JSS2', order_index=2
+        )
+        self.arm1 = ClassArm.objects.create(
+            school=self.school, class_level=self.level1, name='A'
+        )
+        self.arm2 = ClassArm.objects.create(
+            school=self.school, class_level=self.level2, name='A'
+        )
+        self.student = StudentProfile.objects.create(
+            school=self.school, user=self.student_user,
+            current_class=self.arm1, admission_number='HIST001'
+        )
+        self.source = AcademicSession.objects.create(
+            school=self.school, name='2026/27',
+            start_date=date(2026, 9, 1), end_date=date(2027, 7, 31)
+        )
+        self.destination = AcademicSession.objects.create(
+            school=self.school, name='2027/28',
+            start_date=date(2027, 9, 1), end_date=date(2028, 7, 31)
+        )
+        self.source_enrollment = SessionEnrollment.objects.create(
+            school=self.school, student=self.student,
+            session=self.source, class_arm=self.arm1,
+            enrolled_on=self.source.start_date,
+            status='active', entry_reason='manual'
+        )
+        self.factory = APIRequestFactory()
+
+    def execute(self, body):
+        request = self.factory.post('/api/promotion/execute/', body, format='json')
+        request.tenant = self.school
+        force_authenticate(request, self.admin)
+        return PromotionExecuteView.as_view(permission_classes=[])(request)
+
+    def evaluate(self, session):
+        request = self.factory.post(
+            f'/api/promotion/evaluate/?session={session.pk}',
+            {},
+            format='json',
+        )
+        request.tenant = self.school
+        force_authenticate(request, self.admin)
+        return PromotionEvaluateView.as_view(permission_classes=[])(request)
+
+    def promoted_body(self, **changes):
+        item = {
+            'student_id': self.student.pk,
+            'session_id': self.source.pk,
+            'to_session_id': self.destination.pk,
+            'to_class_id': self.arm2.pk,
+            'decision': 'promoted',
+            'criteria_met': True,
+        }
+        item.update(changes)
+        return [item]
+
+    def test_promotion_closes_source_and_creates_destination_enrollment(self):
+        response = self.execute(self.promoted_body())
+        self.assertEqual(response.status_code, 200)
+
+        self.source_enrollment.refresh_from_db()
+        self.student.refresh_from_db()
+        destination = SessionEnrollment.objects.get(
+            student=self.student, session=self.destination
+        )
+        record = PromotionRecord.objects.get(
+            student=self.student, from_session=self.source
+        )
+
+        self.assertEqual(self.source_enrollment.status, 'completed')
+        self.assertEqual(self.source_enrollment.exited_on, self.source.end_date)
+        self.assertEqual(destination.class_arm, self.arm2)
+        self.assertEqual(destination.entry_reason, 'promotion')
+        self.assertEqual(destination.status, 'active')
+        self.assertEqual(record.from_class, self.arm1)
+        self.assertEqual(record.to_class, self.arm2)
+        self.assertEqual(self.student.current_class, self.arm2)
+
+    def test_repeat_creates_new_session_enrollment_in_same_class(self):
+        response = self.execute(self.promoted_body(
+            decision='repeated',
+            to_class_id=self.arm2.pk,
+            criteria_met=False,
+        ))
+        self.assertEqual(response.status_code, 200)
+        destination = SessionEnrollment.objects.get(
+            student=self.student, session=self.destination
+        )
+        self.student.refresh_from_db()
+        self.assertEqual(destination.class_arm, self.arm1)
+        self.assertEqual(destination.entry_reason, 'repeat')
+        self.assertEqual(self.student.current_class, self.arm1)
+
+    def test_graduation_closes_history_and_clears_current_class(self):
+        response = self.execute([{
+            'student_id': self.student.pk,
+            'session_id': self.source.pk,
+            'decision': 'graduated',
+            'criteria_met': True,
+        }])
+        self.assertEqual(response.status_code, 200)
+        self.source_enrollment.refresh_from_db()
+        self.student.refresh_from_db()
+        self.assertEqual(self.source_enrollment.status, 'graduated')
+        self.assertEqual(self.student.status, 'graduated')
+        self.assertIsNone(self.student.current_class)
+        self.assertFalse(
+            SessionEnrollment.objects.filter(
+                student=self.student, session=self.destination
+            ).exists()
+        )
+
+    def test_historical_evaluation_uses_session_enrollment_not_current_class(self):
+        self.student.current_class = self.arm2
+        self.student.save(update_fields=['current_class'])
+        response = self.evaluate(self.source)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['class'], self.arm1.full_name)
+        self.assertEqual(response.data[0]['class_arm_id'], self.arm1.pk)
+        self.assertEqual(response.data[0]['class_level_id'], self.level1.pk)
+
+    def test_missing_historical_enrollment_fails_closed(self):
+        self.source_enrollment.delete()
+        response = self.execute(self.promoted_body())
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Historical class membership is missing', str(response.data))
+        self.assertFalse(PromotionRecord.objects.exists())
+        self.assertFalse(
+            SessionEnrollment.objects.filter(
+                student=self.student, session=self.destination
+            ).exists()
+        )
+
+    def test_missing_current_session_enrollment_can_be_compatibility_created(self):
+        self.source_enrollment.delete()
+        self.source.is_current = True
+        self.source.save(update_fields=['is_current'])
+        response = self.execute(self.promoted_body())
+        self.assertEqual(response.status_code, 200)
+        old = SessionEnrollment.objects.get(
+            student=self.student, session=self.source
+        )
+        self.assertEqual(old.entry_reason, 'migration')
+        self.assertEqual(old.class_arm, self.arm1)
+        self.assertEqual(old.status, 'completed')
+
+    def test_foreign_destination_class_is_rejected(self):
+        foreign_level = ClassLevel.objects.create(
+            school=self.other, name='JSS2', order_index=2
+        )
+        foreign_arm = ClassArm.objects.create(
+            school=self.other, class_level=foreign_level, name='A'
+        )
+        response = self.execute(self.promoted_body(to_class_id=foreign_arm.pk))
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(PromotionRecord.objects.exists())
+        self.source_enrollment.refresh_from_db()
+        self.assertEqual(self.source_enrollment.status, 'active')
+
+    def test_existing_destination_enrollment_is_never_overwritten(self):
+        SessionEnrollment.objects.create(
+            school=self.school, student=self.student,
+            session=self.destination, class_arm=self.arm2,
+            enrolled_on=self.destination.start_date,
+            status='active', entry_reason='manual'
+        )
+        response = self.execute(self.promoted_body())
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('already has an enrollment', str(response.data))
+        self.assertFalse(PromotionRecord.objects.exists())
+        self.assertEqual(
+            SessionEnrollment.objects.get(
+                student=self.student, session=self.destination
+            ).class_arm,
+            self.arm2,
+        )
+
+    def test_one_invalid_student_rolls_back_entire_bulk_promotion(self):
+        second_user = CustomUser.objects.create_user(
+            'second@history.test', 'Password!123',
+            school=self.school, role='student'
+        )
+        second = StudentProfile.objects.create(
+            school=self.school, user=second_user,
+            current_class=self.arm1, admission_number='HIST002'
+        )
+        second_enrollment = SessionEnrollment.objects.create(
+            school=self.school, student=second,
+            session=self.source, class_arm=self.arm1,
+            enrolled_on=self.source.start_date,
+            status='active', entry_reason='manual'
+        )
+        body = self.promoted_body() + [{
+            'student_id': second.pk,
+            'session_id': self.source.pk,
+            'to_session_id': self.destination.pk,
+            'to_class_id': self.arm1.pk,
+            'decision': 'promoted',
+            'criteria_met': True,
+        }]
+
+        response = self.execute(body)
+        self.assertEqual(response.status_code, 400)
+        self.source_enrollment.refresh_from_db()
+        second_enrollment.refresh_from_db()
+        self.student.refresh_from_db()
+        second.refresh_from_db()
+
+        self.assertEqual(self.source_enrollment.status, 'active')
+        self.assertEqual(second_enrollment.status, 'active')
+        self.assertEqual(self.student.current_class, self.arm1)
+        self.assertEqual(second.current_class, self.arm1)
+        self.assertFalse(PromotionRecord.objects.exists())
+        self.assertFalse(
+            SessionEnrollment.objects.filter(session=self.destination).exists()
+        )
