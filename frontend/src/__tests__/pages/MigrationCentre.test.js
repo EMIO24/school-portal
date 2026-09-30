@@ -39,10 +39,11 @@ test('administrator maps columns, validates, confirms, and sees updated readines
   expect(await screen.findByText(/Total 2; create 1; reuse 0; reject 1/)).toBeVisible();
   expect(screen.getByText(/Row 3 — class_arm/)).toBeVisible();
   fireEvent.click(screen.getByRole('button', {name: 'Confirm import'}));
-  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(3));
   expect(confirm).toHaveBeenCalled();
   expect(await screen.findByText(/1 of 1 setup checks complete/)).toBeVisible();
-  expect(api.post.mock.calls[0][1].get('mapping')).toContain('"Class Level":"class_level"');
+  const validateCall = api.post.mock.calls.find(([url]) => url.endsWith('/validate/'));
+  expect(validateCall[1].get('mapping')).toContain('"Class Level":"class_level"');
   confirm.mockRestore();
 });
 
@@ -63,7 +64,7 @@ test('explicitly ignored column is sent as ignored rather than remapped', async 
   await screen.findByText(/Required: class_level, class_arm/);
   const file = new File(['Class Level,Class Arm\nJSS1,A'], 'classes.csv', {type: 'text/csv'});
   Object.defineProperty(file, 'text', {value: async () => 'Class Level,Class Arm\nJSS1,A'});
-  fireEvent.change(screen.getByLabelText('CSV file'), {target: {files: [file]}});
+  fireEvent.change(screen.getByLabelText('Spreadsheet file'), {target: {files: [file]}});
   await screen.findByText(/1 rows found/);
   fireEvent.change(screen.getByLabelText('Class Level'), {target: {value: ''}});
   fireEvent.click(screen.getByRole('button', {name: 'Validate file'}));
