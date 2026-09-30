@@ -123,3 +123,32 @@ test('unassigned student still uses initial assignment workflow', async () => {
     {class_arm: '21'},
   ));
 });
+
+
+test('transfer workflow surfaces safe backend validation message', async () => {
+  api.post.mockRejectedValue({
+    response: {
+      data: {
+        error: 'Transfer date must be after the current placement start date.',
+      },
+    },
+  });
+
+  const {container} = renderPage(<StudentProfilePage />, {
+    path: '/admin/students/1',
+    route: '/admin/students/:id',
+  });
+
+  await screen.findByRole('heading', {name: 'Ada Student', level: 1});
+  fireEvent.change(container.querySelector('.sp-assign-select'), {
+    target: {value: '22'},
+  });
+  fireEvent.change(screen.getByLabelText('Transfer effective date'), {
+    target: {value: '2026-09-01'},
+  });
+  fireEvent.click(screen.getByRole('button', {name: 'Transfer'}));
+
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Transfer date must be after the current placement start date.'
+  );
+});
