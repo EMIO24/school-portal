@@ -10,7 +10,7 @@ def compute_school_analytics(school_id, term_id):
     from enrollment.models import StudentProfile, ClassArm
     from gradebook.models import ScoreEntry, GradeScale
     from attendance.models import AttendanceRecord
-    from fees.models import FeeSchedule, FeePayment
+    from fees.models import StudentLedgerEntry
     from results.models import ResultRemark
     from .models import AnalyticsSnapshot
 
@@ -70,10 +70,12 @@ def compute_school_analytics(school_id, term_id):
     if attend_data['total']:
         attend_pct = round(attend_data['present'] / attend_data['total'] * 100, 1)
 
-    # Fee collection rate
-    fee_expected = sum((schedule.amount * StudentProfile.objects.filter(school=school, current_class__class_level=schedule.class_level, status='active').count() for schedule in FeeSchedule.objects.filter(school=school, term=term)), Decimal('0'))
-    fee_paid     = FeePayment.objects.filter(school=school, fee_schedule__term=term).aggregate(t=Sum('amount_paid'))['t'] or Decimal('0')
-    fee_rate     = round(float(fee_paid) / float(fee_expected) * 100, 1) if fee_expected else 0
+    # Fee collection rate: use immutable ledger facts, never live fee setup.
+    ledger = StudentLedgerEntry.objects.filter(school=school, term=term)
+    fee_expected = ledger.filter(kind='charge').aggregate(t=Sum('signed_amount'))['t'] or Decimal('0')
+    payment_signed = ledger.filter(kind='payment').aggregate(t=Sum('signed_amount'))['t'] or Decimal('0')
+    fee_paid = abs(payment_signed)
+    fee_rate = round(float(fee_paid) / float(fee_expected) * 100, 1) if fee_expected else 0
 
     # Top 10 students  (ResultRemark.student is FK to CustomUser)
     top_students = []
