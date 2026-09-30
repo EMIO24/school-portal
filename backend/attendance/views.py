@@ -1,5 +1,10 @@
 from accounts.school_access import assigned_classes
 from accounts.school_access import SchoolModulePermission, require_assignment
+from enrollment.enrollment_periods import (
+    EnrollmentResolutionError,
+    enrolled_user_ids_for_class_on_date,
+    enrollment_for_term,
+)
 """
 backend/attendance/views.py
 
@@ -64,11 +69,29 @@ def _build_student_summary(school, student_id, term_id):
         return None
 
     summary = AttendanceRecord.objects.summary(student_id, term_id)
+    profile = getattr(student, 'student_profile', None)
+    class_label = ''
+    if profile:
+        from academics.models import Term
+        term = Term.objects.select_related('session').filter(
+            pk=term_id,
+            session__school=school,
+        ).first()
+        if term:
+            try:
+                period = enrollment_for_term(
+                    school=school,
+                    student=profile,
+                    term=term,
+                )
+                class_label = period.class_arm.full_name if period else ''
+            except EnrollmentResolutionError:
+                class_label = 'Multiple classes'
     return {
         'student_id':   student.id,
         'student_name': student.get_full_name() or student.username,
-        'admission_no': getattr(getattr(student, 'student_profile', None), 'admission_number', ''),
-        'class_arm':    str(getattr(getattr(student, 'student_profile', None), 'current_class', '')),
+        'admission_no': getattr(profile, 'admission_number', ''),
+        'class_arm':    class_label,
         **summary,
     }
 
@@ -157,13 +180,16 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
         records_data = ser.validated_data['records']
         student_ids  = [r['student_id'] for r in records_data]
 
-        # Validate all students belong to this tenant
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        valid_ids = set(
-            User.objects.filter(pk__in=student_ids, school=self.school, role='student', student_profile__current_class=session.class_arm)
-            .values_list('id', flat=True)
+        # Validate membership against the class placement on this register's date.
+        roster_ids = set(
+            enrolled_user_ids_for_class_on_date(
+                school=self.school,
+                class_arm=session.class_arm,
+                session=session.term.session,
+                on_date=session.date,
+            )
         )
+        valid_ids = roster_ids.intersection(student_ids)
 
         if valid_ids != set(student_ids):
             return Response({'detail':'All students must belong to this class.'}, status=400)
@@ -203,9 +229,16 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
         if session.is_finalized:
             return Response({'detail': 'Session is already finalized.'})
 
-        # Guard: ensure every enrolled student has a record
-        enrolled = session.class_arm.students.filter(school=self.school, status='active').values_list('user_id', flat=True)
-        total_enrolled = enrolled.count()
+        # Guard: expected roster is the historical class membership on this date.
+        enrolled = list(
+            enrolled_user_ids_for_class_on_date(
+                school=self.school,
+                class_arm=session.class_arm,
+                session=session.term.session,
+                on_date=session.date,
+            )
+        )
+        total_enrolled = len(enrolled)
         total_marked = session.records.filter(student_id__in=enrolled).count()
 
         if total_marked < total_enrolled:
