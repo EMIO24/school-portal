@@ -133,6 +133,19 @@ def valid_fee_allocations(order):
     return normalized if total == order.amount_kobo else None
 
 
+def is_legacy_unlinked_subscription(order):
+    """Recognize pre-invoice subscription orders without confusing them with fee checkouts."""
+    return (
+        order.invoice_id is None and
+        order.kind == 'subscription' and
+        order.student_id is None and
+        order.allocations == [] and
+        not order.subaccount_code and
+        order.plan in ('basic', 'premium', 'enterprise') and
+        1 <= order.months <= 12
+    )
+
+
 def fee_checkout_reopen_issue(order):
     """Return a reason when an unfinished fee checkout is unsafe to reopen."""
     if order.kind != 'fees' or order.invoice_id is not None:
