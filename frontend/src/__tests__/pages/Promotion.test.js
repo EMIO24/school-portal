@@ -58,7 +58,7 @@ test('promotion requires and submits a higher destination class', async () => {
   fireEvent.click(screen.getByRole('button', {name: 'Confirm & Execute'}));
   expect(await screen.findByText('Select the destination academic session.')).toBeVisible();
 
-  const destinationSession = screen.getByLabelText('Destination session').querySelector('select');
+  const destinationSession = screen.getByLabelText('Destination session');
   fireEvent.change(destinationSession, {target: {value: '2'}});
   fireEvent.click(screen.getByRole('button', {name: 'Confirm & Execute'}));
   expect(await screen.findByText('Select a destination class for Ada Student.')).toBeVisible();
