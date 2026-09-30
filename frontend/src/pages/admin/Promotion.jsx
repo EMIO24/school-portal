@@ -9,6 +9,8 @@ export default function Promotion() {
   const [destinationSession, setDestinationSession] = useState('');
   const [sessions, setSessions]       = useState([]);
   const [levels, setLevels]           = useState([]);
+  const [classArms, setClassArms]     = useState([]);
+  const [destinations, setDestinations] = useState({});
   const [session, setSession]         = useState("");
   const [level, setLevel]             = useState("");
   const [results, setResults]         = useState([]);
@@ -25,6 +27,9 @@ export default function Promotion() {
     api.get("/api/class-levels/")
       .then(({ data: d }) => setLevels(Array.isArray(d) ? d : d.results || []))
       .catch(() => {});
+    api.get("/api/class-arms/")
+      .then(({ data: d }) => setClassArms(Array.isArray(d) ? d : d.results || []))
+      .catch(() => {});
   }, []);
 
   async function evaluate() {
@@ -36,6 +41,7 @@ export default function Promotion() {
       const { data } = await api.post(url);
       setResults(Array.isArray(data) ? data : []);
       setOverrides({});
+      setDestinations({});
     } catch {
       alert("Could not evaluate students. Please try again.");
     } finally {
@@ -45,6 +51,24 @@ export default function Promotion() {
 
   function setDecision(studentId, decision) {
     setOverrides(o => ({ ...o, [studentId]: decision }));
+    if (decision !== "promoted") {
+      setDestinations(current => {
+        const next = { ...current };
+        delete next[studentId];
+        return next;
+      });
+    }
+  }
+
+  function eligibleDestinationArms(result) {
+    const source = levels.find(l => Number(l.id) === Number(result.class_level_id));
+    if (!source) return [];
+    const higherLevelIds = new Set(
+      levels
+        .filter(l => Number(l.order_index) > Number(source.order_index))
+        .map(l => Number(l.id))
+    );
+    return classArms.filter(arm => higherLevelIds.has(Number(arm.class_level)));
   }
 
   function finalDecision(r) {
@@ -58,16 +82,35 @@ export default function Promotion() {
   };
 
   async function execute() {
-    if (!destinationSession) { setToast('Select the destination academic session.'); return; }
+    const continuing = results.some(r => ["promoted", "repeated"].includes(finalDecision(r)));
+    if (continuing && !destinationSession) {
+      setToast('Select the destination academic session.');
+      return;
+    }
+    const missingDestination = results.find(
+      r => finalDecision(r) === "promoted" && !destinations[r.student_id]
+    );
+    if (missingDestination) {
+      setToast(`Select a destination class for ${missingDestination.student_name}.`);
+      return;
+    }
     setExecuting(true);
     try {
-      const body = results.map(r => ({
-        student_id:   r.student_id,
-        session_id:   Number(session),
-        to_session_id: Number(destinationSession),
-        decision:     finalDecision(r),
-        criteria_met: r.criteria_met,
-      }));
+      const body = results.map(r => {
+        const decision = finalDecision(r);
+        return {
+          student_id: r.student_id,
+          session_id: Number(session),
+          to_session_id: ["promoted", "repeated"].includes(decision)
+            ? Number(destinationSession)
+            : undefined,
+          to_class_id: decision === "promoted"
+            ? Number(destinations[r.student_id])
+            : undefined,
+          decision,
+          criteria_met: r.criteria_met,
+        };
+      });
       const { data } = await api.post("/api/promotion/execute/", body);
       setPreview(false);
       setResults([]);
@@ -116,6 +159,7 @@ export default function Promotion() {
                   <th>Criteria</th>
                   <th>Recommended</th>
                   <th>Decision</th>
+                  <th>Destination</th>
                 </tr>
               </thead>
               <tbody>
@@ -147,6 +191,28 @@ export default function Promotion() {
                         ))}
                       </select>
                     </td>
+                    <td>
+                      {finalDecision(r) === "promoted" ? (
+                        <select
+                          aria-label={`Destination class for ${r.student_name}`}
+                          value={destinations[r.student_id] || ""}
+                          onChange={e => setDestinations(current => ({
+                            ...current,
+                            [r.student_id]: e.target.value,
+                          }))}
+                          className="decision-select"
+                        >
+                          <option value="">Select class</option>
+                          {eligibleDestinationArms(r).map(arm => (
+                            <option key={arm.id} value={arm.id}>{arm.full_name}</option>
+                          ))}
+                        </select>
+                      ) : finalDecision(r) === "repeated" ? (
+                        <span>{r.class} (repeat)</span>
+                      ) : (
+                        <span>—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -167,7 +233,7 @@ export default function Promotion() {
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <h2>Confirm Promotion Execution</h2>
             <p style={{ marginBottom: 16, color: "#555" }}>
-              This will update all student class placements. This action cannot be undone.
+              This will close the source-session enrollments and create the approved next-session placements. Historical records will be preserved.
             </p>
             <div className="promo-summary">
               <div className="ps-row green"><span>Promoted</span><strong>{summary.promoted}</strong></div>
