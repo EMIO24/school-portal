@@ -223,9 +223,11 @@ class PromotionEnrollmentHistoryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.source_enrollment.refresh_from_db()
         self.student.refresh_from_db()
+        self.student.user.refresh_from_db()
         self.assertEqual(self.source_enrollment.status, 'graduated')
         self.assertEqual(self.student.status, 'graduated')
         self.assertIsNone(self.student.current_class)
+        self.assertFalse(self.student.user.is_active)
         self.assertFalse(
             SessionEnrollment.objects.filter(
                 student=self.student, session=self.destination
@@ -356,11 +358,15 @@ class PromotionEnrollmentHistoryTests(TestCase):
         second_enrollment.refresh_from_db()
         self.student.refresh_from_db()
         second.refresh_from_db()
+        self.student.user.refresh_from_db()
+        second.user.refresh_from_db()
 
         self.assertEqual(self.source_enrollment.status, 'active')
         self.assertEqual(second_enrollment.status, 'active')
         self.assertEqual(self.student.current_class, self.arm1)
         self.assertEqual(second.current_class, self.arm1)
+        self.assertTrue(self.student.user.is_active)
+        self.assertTrue(second.user.is_active)
         self.assertFalse(PromotionRecord.objects.exists())
         self.assertFalse(
             SessionEnrollment.objects.filter(session=self.destination).exists()
