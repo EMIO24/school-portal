@@ -468,8 +468,8 @@ class OutstandingFeesView(APIView):
             )
         }
 
-        summary_expected = sum((row['charges'] or Decimal('0')) for row in aggregates.values(), Decimal('0'))
-        summary_collected = sum((abs(row['payments'] or Decimal('0'))) for row in aggregates.values(), Decimal('0'))
+        summary_expected = sum(((row['charges'] or Decimal('0')) for row in aggregates.values()), Decimal('0'))
+        summary_collected = sum((abs(row['payments'] or Decimal('0')) for row in aggregates.values()), Decimal('0'))
         summary_outstanding = sum(
             (max(row['balance'] or Decimal('0'), Decimal('0')) for row in aggregates.values()),
             Decimal('0'),
