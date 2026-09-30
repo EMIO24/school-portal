@@ -79,6 +79,56 @@ class PaystackTests(TestCase):
         self.assertEqual(FeePayment.objects.get(paystack_reference=order.reference).amount_paid, Decimal('2500.00'))
         self.assertEqual(account_balance(self.school, self.student)['outstanding'], Decimal('7500.00'))
 
+    def test_online_checkout_retry_key_reuses_identical_pending_order(self):
+        payload = {
+            'student_id': self.student.pk,
+            'allocations': [{'schedule_id': self.fee.pk, 'amount': '2500.00'}],
+        }
+        headers = {**self.headers, 'HTTP_IDEMPOTENCY_KEY': 'fee-checkout-retry-0001'}
+        with patch.object(
+            PaystackService, 'initialize',
+            side_effect=lambda email, amount, ref, callback, **kw:
+            ('https://checkout.paystack.com/test', ref),
+        ) as initialize:
+            first = self.client.post('/api/fees/pay/initiate/', payload, format='json', **headers)
+            second = self.client.post('/api/fees/pay/initiate/', payload, format='json', **headers)
+        self.assertEqual((first.status_code, second.status_code), (200, 200))
+        self.assertEqual(first.data['reference'], second.data['reference'])
+        self.assertEqual(first.data['authorization_url'], second.data['authorization_url'])
+        self.assertTrue(second.data['reused'])
+        self.assertEqual(PaymentOrder.objects.count(), 1)
+        self.assertEqual(initialize.call_count, 1)
+        order = PaymentOrder.objects.get()
+        self.assertEqual(order.request_key, 'fee-checkout-retry-0001')
+
+    def test_online_checkout_retry_key_cannot_change_payment_details(self):
+        headers = {**self.headers, 'HTTP_IDEMPOTENCY_KEY': 'fee-checkout-retry-0002'}
+        with patch.object(
+            PaystackService, 'initialize',
+            side_effect=lambda email, amount, ref, callback, **kw:
+            ('https://checkout.paystack.com/test', ref),
+        ):
+            first = self.client.post('/api/fees/pay/initiate/', {
+                'student_id': self.student.pk,
+                'allocations': [{'schedule_id': self.fee.pk, 'amount': '2500.00'}],
+            }, format='json', **headers)
+            second = self.client.post('/api/fees/pay/initiate/', {
+                'student_id': self.student.pk,
+                'allocations': [{'schedule_id': self.fee.pk, 'amount': '2000.00'}],
+            }, format='json', **headers)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 409)
+        self.assertIn('different checkout details', second.data['error'])
+        self.assertEqual(PaymentOrder.objects.count(), 1)
+
+    def test_online_checkout_rejects_invalid_retry_key(self):
+        response = self.client.post('/api/fees/pay/initiate/', {
+            'student_id': self.student.pk,
+            'allocations': [{'schedule_id': self.fee.pk, 'amount': '2500.00'}],
+        }, format='json', HTTP_IDEMPOTENCY_KEY='short', **self.headers)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(PaymentOrder.objects.exists())
+
     def test_partial_online_payment_cannot_exceed_frozen_outstanding(self):
         with patch.object(PaystackService, 'initialize',
                           side_effect=lambda email, amount, ref, callback, **kw:
