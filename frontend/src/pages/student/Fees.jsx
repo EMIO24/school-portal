@@ -5,6 +5,11 @@ import { downloadFile } from "../../services/download";
 import StudentLedger from "../../components/common/StudentLedger";
 import "./Fees.css";
 
+function checkoutRetryKey() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `fee-checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export default function Fees({ studentId: requestedStudentId }) {
   const { user } = useContext(AuthContext);
   const studentId = requestedStudentId ?? user?.student_id;
@@ -18,6 +23,7 @@ export default function Fees({ studentId: requestedStudentId }) {
   const [amounts, setAmounts] = useState({});
   const [feeError, setFeeError] = useState('');
   const loadVersion = useRef(0);
+  const checkoutAttempt = useRef({fingerprint: '', key: ''});
 
   useEffect(() => {
     api.get("/api/terms/").then(({ data }) => {
@@ -76,10 +82,15 @@ export default function Fees({ studentId: requestedStudentId }) {
     }
     setPaying(true);
     try {
+      const paymentAllocations = allocations.map(({schedule_id, amount}) => ({schedule_id, amount}));
+      const fingerprint = JSON.stringify({student_id: studentId, allocations: paymentAllocations});
+      if (checkoutAttempt.current.fingerprint !== fingerprint) {
+        checkoutAttempt.current = {fingerprint, key: checkoutRetryKey()};
+      }
       const { data } = await api.post("/api/fees/pay/initiate/", {
         student_id: studentId,
-        allocations: allocations.map(({schedule_id, amount}) => ({schedule_id, amount})),
-      });
+        allocations: paymentAllocations,
+      }, {headers: {'Idempotency-Key': checkoutAttempt.current.key}});
       if (data.authorization_url) {
         window.location.href = data.authorization_url;
       }
