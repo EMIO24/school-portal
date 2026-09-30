@@ -220,6 +220,8 @@ class CommercialSimulationTests(TestCase):
         self.assertEqual(self.client.get('/api/principal/?term=' + str(self.term.pk)).status_code, 200)
         card = ScratchCard.objects.create(school=self.school, term=self.term,
             serial_number='SIM-REPORT-001', pin_hash=make_password('1234567890'), batch_name='Simulation')
+        from django.core.cache import cache
+        cache.clear()
         public = APIClient()
         checked = public.post('/api/results/check/', {
             'admission_number': published.student.student_profile.admission_number,
