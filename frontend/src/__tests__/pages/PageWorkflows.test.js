@@ -86,6 +86,24 @@ test('ParentLogin requests an OTP, rejects invalid codes, then accepts a valid c
   expect(tokenStore.setTokens).toHaveBeenCalledWith({ access: 'access', refresh: 'refresh' });
 });
 
+test('ParentLogin returns to saved payment verification after successful login', async () => {
+  sessionStorage.setItem('payment_return', '/payments/return?reference=SCH-parent');
+  global.fetch.mockResolvedValue({ ok: true, json: async () => ({
+    access: 'access', refresh: 'refresh', role: 'parent', user: { id: 1, role: 'parent' },
+  }) });
+  const { container } = renderPage(<ParentLogin />, {
+    auth: { loadUser: jest.fn().mockResolvedValue() },
+    path: '/parent/login',
+  });
+  fireEvent.click(screen.getByRole('button', { name: /Email/i }));
+  fireEvent.change(screen.getByPlaceholderText('parent@email.com'), { target: { value: 'parent@example.com' } });
+  fireEvent.change(container.querySelector('input[type=password]'), { target: { value: 'Password1!' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Login', exact: true }));
+  expect(await screen.findByText('Navigation destination')).toBeVisible();
+  expect(window.location.pathname + window.location.search).toBe('/payments/return?reference=SCH-parent');
+  sessionStorage.removeItem('payment_return');
+});
+
 test('ParentLogin accepts the backend email-login response for a parent', async () => {
   global.fetch.mockResolvedValue({ ok: true, json: async () => ({
     access: 'access', refresh: 'refresh', role: 'parent', user: { id: 1, role: 'parent' },
