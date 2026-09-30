@@ -209,6 +209,15 @@ def settle(reference, data):
             event(None, 'payment.mismatch', order.reference, {'school_id': order.school_id})
             logger.warning("payment_review_required order_id=%s reference=%s reason=ownership_mismatch", order.pk, order.reference)
             return order
+        account = SchoolPaymentAccount.objects.filter(
+            school=school, mode=order.mode
+        ).first()
+        if not account or account.subaccount_code != order.subaccount_code:
+            order.status, order.note = 'review', 'School settlement account changed after checkout. Owner review is required before crediting this payment.'
+            order.save(update_fields=['status', 'note'])
+            event(None, 'payment.mismatch', order.reference, {'school_id': order.school_id})
+            logger.warning("payment_review_required order_id=%s reference=%s reason=subaccount_mismatch", order.pk, order.reference)
+            return order
         allocations = valid_fee_allocations(order)
         if allocations is None:
             order.status, order.note = 'review', 'Checkout allocation details are inconsistent. Contact the platform owner.'
