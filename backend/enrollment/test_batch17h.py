@@ -67,6 +67,13 @@ class Batch17HAssignmentAndPrivacyTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertTrue(SubjectAssignment.objects.filter(pk=self.assignment.pk).exists())
 
+    def test_direct_queryset_delete_cannot_bypass_historical_guard(self):
+        from django.core.exceptions import ValidationError
+        self.add_history()
+        with self.assertRaises(ValidationError):
+            SubjectAssignment.objects.filter(pk=self.assignment.pk).delete()
+        self.assertTrue(SubjectAssignment.objects.filter(pk=self.assignment.pk).exists())
+
     def test_bulk_replacement_cannot_remove_historical_assignment(self):
         self.add_history()
         response = self.client.post(f'/api/staff/{self.staff.pk}/assign-subjects/', {
