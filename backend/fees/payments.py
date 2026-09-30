@@ -170,8 +170,20 @@ def settle(reference, data):
         return order
     school = School.objects.select_for_update().get(pk=order.school_id)
     if order.invoice_id:
+        if order.kind != 'subscription':
+            order.status, order.note = 'review', 'Checkout type does not match its invoice. Contact the platform owner.'
+            order.save(update_fields=['status', 'note'])
+            event(None, 'payment.mismatch', order.reference, {'school_id': order.school_id})
+            logger.warning("payment_review_required order_id=%s reference=%s reason=order_kind_mismatch", order.pk, order.reference)
+            return order
         from .invoice_payments import settle_invoice_order
         return settle_invoice_order(order, school, data)
+    if order.kind != 'fees':
+        order.status, order.note = 'review', 'Checkout type is inconsistent. Contact the platform owner.'
+        order.save(update_fields=['status', 'note'])
+        event(None, 'payment.mismatch', order.reference, {'school_id': order.school_id})
+        logger.warning("payment_review_required order_id=%s reference=%s reason=order_kind_mismatch", order.pk, order.reference)
+        return order
     if order.kind == 'fees':
         if (order.student_id is None or order.student.school_id != school.pk or
                 order.payer.school_id != school.pk):
