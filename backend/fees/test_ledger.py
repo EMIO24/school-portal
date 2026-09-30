@@ -49,7 +49,11 @@ class StudentLedgerTests(LedgerFixture, TestCase):
         first = generate_charges(self.school, self.term, self.admin)
         again = generate_charges(self.school, self.term, self.admin)
         self.assertEqual((first['created'], again['created']), (1, 0))
-        self.schedule.amount = Decimal('1900.00'); self.schedule.save(update_fields=['amount'])
+        # Simulate out-of-band/legacy drift that bypasses FeeSchedule.save().
+        # Normal application writes are intentionally blocked by Batch 17H.
+        FeeSchedule.objects.filter(pk=self.schedule.pk).update(amount=Decimal('1900.00'))
+        self.schedule.refresh_from_db()
+        self.assertEqual(self.schedule.amount, Decimal('1900.00'))
         first_payment = self.payment('400.00')
         self.assertEqual(first_payment.status_code, 201, first_payment.content)
         self.assertEqual(self.payment('400.00').status_code, 200)
