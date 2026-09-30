@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 from django.test import TestCase, override_settings
+from django.db import IntegrityError, transaction
 from django.core.cache import cache
 from requests.exceptions import Timeout
 from rest_framework.test import APIClient
@@ -525,13 +526,14 @@ class PaystackTests(TestCase):
             )
         self.assertEqual(response.status_code, 200, response.data)
         invoice_order = PaymentOrder.objects.exclude(pk=fee_order.pk).get()
-        PaymentOrder.objects.filter(pk=invoice_order.pk).update(
-            kind='fees', status='pending', note=''
-        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                PaymentOrder.objects.filter(pk=invoice_order.pk).update(
+                    kind='fees', status='pending', note=''
+                )
         invoice_order.refresh_from_db()
-        settled = settle(invoice_order.reference, self.data(invoice_order))
-        self.assertEqual(settled.status, 'review')
-        self.assertIn('invoice', settled.note.lower())
+        self.assertEqual(invoice_order.kind, 'subscription')
+        self.assertEqual(invoice_order.status, 'pending')
         self.assertEqual(
             FeePayment.objects.filter(paystack_reference=invoice_order.reference).count(),
             0
