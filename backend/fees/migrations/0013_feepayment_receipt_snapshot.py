@@ -5,7 +5,7 @@ def backfill_receipt_snapshots(apps, schema_editor):
     Payment = apps.get_model('fees', 'FeePayment')
     alias = schema_editor.connection.alias
     rows = Payment.objects.using(alias).select_related(
-        'school', 'student__user', 'student__current_class',
+        'school', 'student__user', 'student__current_class__class_level',
         'fee_schedule__fee_category', 'fee_schedule__term__session', 'recorded_by'
     ).filter(receipt_snapshot={}).iterator(chunk_size=500)
     for payment in rows:
@@ -25,18 +25,27 @@ def backfill_receipt_snapshots(apps, schema_editor):
             'document_primary_color': theme.get('primary_color', '#173B56'),
             'document_secondary_color': theme.get('secondary_color', '#256D85'),
             'document_accent_color': theme.get('accent_color', '#D8A548'),
-            'student_name': student.user.get_full_name() or student.admission_number,
+            'student_name': (
+                f"{getattr(student.user, 'first_name', '')} {getattr(student.user, 'last_name', '')}".strip()
+                or student.admission_number
+            ),
             'admission_number': student.admission_number,
-            'class_name': student.current_class.full_name if student.current_class_id else '',
+            'class_name': (
+                f"{student.current_class.class_level.name}{student.current_class.name}"
+                if student.current_class_id else ''
+            ),
             'fee_category': schedule.fee_category.name,
-            'term_name': schedule.term.get_name_display(),
+            'term_name': str(schedule.term.name).replace('_', ' ').title(),
             'session_name': schedule.term.session.name,
             'amount_paid': str(payment.amount_paid),
             'payment_date': str(payment.payment_date),
             'method': payment.method,
             'method_label': dict([('cash','Cash'),('paystack','Paystack'),('bank_transfer','Bank Transfer')]).get(payment.method, payment.method),
             'paystack_reference': payment.paystack_reference or '',
-            'issued_by': actor.get_full_name() if actor else 'School Admin',
+            'issued_by': (
+                f"{getattr(actor, 'first_name', '')} {getattr(actor, 'last_name', '')}".strip()
+                if actor else 'School Admin'
+            ) or 'School Admin',
         }
         payment.save(update_fields=['receipt_snapshot'])
 
