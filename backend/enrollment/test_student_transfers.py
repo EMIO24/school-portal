@@ -2,13 +2,16 @@ from datetime import date
 
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from accounts.models import CustomUser
 from academics.models import AcademicSession
 from tenants.models import PlatformEvent, School
 
+from .lifecycle import transition_student
 from .models import ClassArm, ClassLevel, SessionEnrollment, StudentProfile
 from .transfers import StudentTransferError, transfer_student
+from .views import StudentViewSet
 
 
 class StudentTransferTests(TestCase):
@@ -70,6 +73,7 @@ class StudentTransferTests(TestCase):
             created_by=self.admin,
         )
         self.effective = date(2026, 9, 15)
+        self.factory = APIRequestFactory()
 
     def transfer(self, destination=None, effective=None):
         return transfer_student(
@@ -177,3 +181,81 @@ class StudentTransferTests(TestCase):
         self.assertEqual(second_source.exited_on, date(2026, 9, 19))
         self.assertEqual(final.class_arm, self.arm_jss2)
         self.assertEqual(final.status, "active")
+
+
+    def test_withdrawal_after_transfer_closes_only_active_destination_period(self):
+        self.transfer()
+        periods = list(
+            SessionEnrollment.objects.filter(
+                student=self.student, session=self.session
+            ).order_by("enrolled_on")
+        )
+        historical = periods[0]
+        active = periods[1]
+
+        transition_student(
+            school=self.school,
+            student=self.student,
+            action="withdraw",
+            actor=self.admin,
+            effective_date=date(2026, 9, 20),
+            reason="Relocated",
+        )
+
+        historical.refresh_from_db()
+        active.refresh_from_db()
+        self.assertEqual(historical.status, "transferred")
+        self.assertEqual(historical.exited_on, date(2026, 9, 14))
+        self.assertEqual(active.status, "withdrawn")
+        self.assertEqual(active.exited_on, date(2026, 9, 20))
+
+    def test_suspension_after_transfer_keeps_all_period_history_unchanged(self):
+        self.transfer()
+        before = list(
+            SessionEnrollment.objects.filter(
+                student=self.student, session=self.session
+            ).order_by("enrolled_on").values_list(
+                "pk", "status", "enrolled_on", "exited_on", "class_arm_id"
+            )
+        )
+
+        transition_student(
+            school=self.school,
+            student=self.student,
+            action="suspend",
+            actor=self.admin,
+        )
+
+        after = list(
+            SessionEnrollment.objects.filter(
+                student=self.student, session=self.session
+            ).order_by("enrolled_on").values_list(
+                "pk", "status", "enrolled_on", "exited_on", "class_arm_id"
+            )
+        )
+        self.assertEqual(after, before)
+
+    def test_transfer_endpoint_returns_both_periods_and_updated_student(self):
+        request = self.factory.post(
+            f"/api/students/{self.student.pk}/transfer-class/",
+            {
+                "class_arm": self.arm_b.pk,
+                "effective_date": str(self.effective),
+                "reason": "Class balancing",
+            },
+            format="json",
+        )
+        request.tenant = self.school
+        force_authenticate(request, self.admin)
+
+        response = StudentViewSet.as_view({"post": "transfer_class"})(
+            request, pk=self.student.pk
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["student"]["current_class"], self.arm_b.pk)
+        self.assertEqual(
+            response.data["source_enrollment"]["status"], "transferred"
+        )
+        self.assertEqual(
+            response.data["destination_enrollment"]["status"], "active"
+        )
