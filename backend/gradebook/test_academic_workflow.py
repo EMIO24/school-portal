@@ -9,7 +9,7 @@ from django.template.loader import render_to_string
 from accounts.models import ParentStudentLink
 from academics.models import Term
 from enrollment import test_operations as operations
-from enrollment.models import Subject, StudentProfile, StaffProfile
+from enrollment.models import ClassArm, Subject, StudentProfile, StaffProfile
 from .models import ScoreEntry, TermScoring, GradeScale
 from .scoring import ScoringInput
 
@@ -210,6 +210,30 @@ class AcademicWorkflowTests(TestCase):
         response=self.client.patch(f'/api/gradebook/entries/{entry.pk}/',{'term':future.pk},format='json')
         self.assertEqual(response.status_code,400)
         entry.refresh_from_db();self.assertEqual(entry.term,self.term)
+
+    def test_existing_draft_score_keeps_original_class_context_after_transfer(self):
+        self.configure()
+        self.assertEqual(self.save_scores().status_code, 200)
+        entry = ScoreEntry.objects.get()
+
+        destination = ClassArm.objects.create(
+            school=self.school,
+            class_level=self.arm.class_level,
+            name='B',
+        )
+        profile = StudentProfile.objects.get(user=self.student)
+        profile.current_class = destination
+        profile.save(update_fields=['current_class'])
+
+        response = self.client.patch(
+            f'/api/gradebook/entries/{entry.pk}/',
+            {'component_scores': {'c0': 9, 'c1': 9, 'c2': 7, 'c3': 48}},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        entry.refresh_from_db()
+        self.assertEqual(entry.class_arm, self.arm)
+        self.assertEqual(entry.component_scores['c0'], '9')
 
     def test_teacher_cannot_read_unassigned_subject_scores(self):
         self.configure();self.save_scores();entry=ScoreEntry.objects.get()
