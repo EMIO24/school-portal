@@ -242,6 +242,34 @@ class PromotionEnrollmentHistoryTests(TestCase):
         self.assertEqual(response.data[0]['class_arm_id'], self.arm1.pk)
         self.assertEqual(response.data[0]['class_level_id'], self.level1.pk)
 
+    def test_current_session_evaluation_can_use_bounded_compatibility_fallback(self):
+        self.source_enrollment.delete()
+        self.source.is_current = True
+        self.source.save(update_fields=['is_current'])
+
+        response = self.evaluate(self.source)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(
+            response.data[0]['membership_source'],
+            'current_class_compatibility',
+        )
+        self.assertEqual(response.data[0]['class_arm_id'], self.arm1.pk)
+        self.assertFalse(
+            SessionEnrollment.objects.filter(
+                student=self.student, session=self.source
+            ).exists()
+        )
+
+    def test_past_session_evaluation_does_not_infer_missing_history(self):
+        self.source_enrollment.delete()
+
+        response = self.evaluate(self.source)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
+
     def test_missing_historical_enrollment_fails_closed(self):
         self.source_enrollment.delete()
         response = self.execute(self.promoted_body())
