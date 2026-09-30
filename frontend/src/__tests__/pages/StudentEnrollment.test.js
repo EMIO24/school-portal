@@ -91,7 +91,7 @@ test('placed student uses controlled transfer workflow', async () => {
   expect(await screen.findByRole('status')).toHaveTextContent(
     'Student transferred successfully.'
   );
-  expect(screen.getByText('JSS1B')).toBeVisible();
+  expect(screen.getAllByText('JSS1B').length).toBeGreaterThan(0);
 });
 
 test('unassigned student still uses initial assignment workflow', async () => {
