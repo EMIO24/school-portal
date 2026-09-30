@@ -344,11 +344,14 @@ class PromotionExecuteView(APIView):
                 )
                 student.current_class = destination_arm
                 student.status = 'active'
+                student.user.is_active = True
             else:
                 new_enrollment = None
                 student.current_class = None
                 student.status = decision
+                student.user.is_active = False
 
+            student.user.save(update_fields=['is_active'])
             student.save(update_fields=['current_class', 'status'])
 
             PlatformEvent.objects.create(
