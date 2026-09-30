@@ -13,7 +13,6 @@ const initialForm = {
 export default function StudentForm() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [originalStatus,setOriginalStatus] = useState("active");
   const [form, setForm] = useState(initialForm);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +29,6 @@ export default function StudentForm() {
         if (!active) return;
         setClasses(Array.isArray(arms.data) ? arms.data : arms.data.results || []);
         const data = student?.data;
-        setOriginalStatus(data?.status || "active");
         setForm(data ? { ...initialForm, ...Object.fromEntries(Object.keys(initialForm).map(key => [key, data[key] ?? initialForm[key]])),
           new_first_name: data.first_name || "", new_last_name: data.last_name || "", new_email: data.email || "" } : initialForm);
       })
@@ -41,7 +39,6 @@ export default function StudentForm() {
 
   async function submit(event) {
     event.preventDefault();
-    if (id && form.status !== originalStatus && form.status !== "active" && !window.confirm("Deactivate this student account? Login will be disabled; academic and payment history will remain.")) return;
     setSaving(true); setErrors({}); setError("");
     const payload = { ...form, dob: form.dob || null, current_class: form.current_class ? Number(form.current_class) : null };
 
@@ -79,7 +76,6 @@ export default function StudentForm() {
           {field("gender", "Gender", "text", [["", "Select gender"], ["male", "Male"], ["female", "Female"]])}
           {field("current_class", "Class", "text", [["", "No class assigned"], ...classes.map(arm => [arm.id, arm.full_name || arm.name])])}
           {field("state_of_origin", "State of origin")}{field("religion", "Religion")}
-          {id && field("status", "Status", "text", ["active", "graduated", "withdrawn", "suspended"].map(value => [value, value]))}
         </div>
       </section>
       <section className="stf-section"><h2>Guardian details</h2><div className="stf-grid stf-grid--3">
