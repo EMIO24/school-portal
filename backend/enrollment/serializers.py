@@ -214,12 +214,18 @@ class StudentProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer
                 EnrollmentPlacementError,
                 ensure_current_enrollment,
             )
+            request = self.context.get("request")
+            actor = getattr(request, "user", None)
+            if actor is None:
+                actor = getattr(request, "_force_auth_user", None)
+            if not getattr(actor, "is_authenticated", False):
+                actor = None
             try:
                 ensure_current_enrollment(
                     school=school,
                     student=profile,
                     class_arm=initial_class,
-                    actor=self.context["request"].user,
+                    actor=actor,
                     entry_reason="admission",
                 )
             except EnrollmentPlacementError as exc:
