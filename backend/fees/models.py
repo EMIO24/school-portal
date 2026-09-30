@@ -50,6 +50,7 @@ class FeePayment(models.Model):
     paystack_reference = models.CharField(max_length=100, blank=True)
     paystack_status    = models.CharField(max_length=50,  blank=True)
     receipt_number     = models.CharField(max_length=30,  unique=True, blank=True)
+    receipt_snapshot   = models.JSONField(default=dict, blank=True)
     recorded_by        = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -61,10 +62,43 @@ class FeePayment(models.Model):
     class Meta:
         ordering = ['-created_at']
 
+    def _receipt_snapshot(self):
+        school = self.school
+        student = self.student
+        schedule = self.fee_schedule
+        theme = getattr(school, 'theme_config', {}) or {}
+        actor = self.recorded_by
+        return {
+            'school_name': getattr(school, 'name', ''),
+            'school_logo': getattr(school, 'logo', '') or '',
+            'school_motto': getattr(school, 'motto', '') or '',
+            'school_address': getattr(school, 'address', '') or '',
+            'school_phone': getattr(school, 'phone', '') or '',
+            'school_email': getattr(school, 'email', '') or '',
+            'school_registration_number': getattr(school, 'registration_number', '') or '',
+            'document_primary_color': theme.get('primary_color', '#173B56'),
+            'document_secondary_color': theme.get('secondary_color', '#256D85'),
+            'document_accent_color': theme.get('accent_color', '#D8A548'),
+            'student_name': student.user.full_name or student.admission_number,
+            'admission_number': student.admission_number,
+            'class_name': student.current_class.full_name if student.current_class_id else '',
+            'fee_category': schedule.fee_category.name,
+            'term_name': schedule.term.get_name_display(),
+            'session_name': schedule.term.session.name,
+            'amount_paid': str(self.amount_paid),
+            'payment_date': str(self.payment_date),
+            'method': self.method,
+            'method_label': dict(self.METHOD_CHOICES).get(self.method, self.method),
+            'paystack_reference': self.paystack_reference or '',
+            'issued_by': actor.full_name if actor else 'School Admin',
+        }
+
     def save(self, *args, **kwargs):
         if not self.receipt_number:
             import uuid
             self.receipt_number = 'REC-' + uuid.uuid4().hex[:26].upper()
+        if self._state.adding and not self.receipt_snapshot:
+            self.receipt_snapshot = self._receipt_snapshot()
         super().save(*args, **kwargs)
 
     def __str__(self):
