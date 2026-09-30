@@ -143,8 +143,14 @@ export default function StudentProfilePage() {
       });
       setStudent(data);
       showToast("Class assigned successfully.");
-    } catch {
-      showToast("Failed to assign class.", "error");
+    } catch (err) {
+      const data = err?.response?.data;
+      const message =
+        data?.error ||
+        data?.detail ||
+        data?.current_class?.[0] ||
+        "Failed to assign class.";
+      showToast(message, "error");
     } finally {
       setAssigning(false);
     }
