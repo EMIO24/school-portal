@@ -61,13 +61,13 @@
   <div class="receipt-top">
     <div class="meta">
       <div><label>Receipt No</label><span class="value">{{ payment.receipt_number }}</span></div>
-      <div><label>Payment Date</label><span class="value">{{ payment.payment_date }}</span></div>
-      <div><label>Payment Method</label><span class="value">{{ payment.get_method_display }}</span></div>
-      <div><label>Reference</label><span class="value">{{ payment.paystack_reference|default:"Manual payment" }}</span></div>
-      <div><label>Student</label><span class="value">{{ payment.student.user.get_full_name }}</span></div>
-      <div><label>Admission No</label><span class="value">{{ payment.student.admission_number }}</span></div>
-      <div><label>Class</label><span class="value">{{ payment.student.current_class.full_name }}</span></div>
-      <div><label>Issued By</label><span class="value">{{ payment.recorded_by.get_full_name|default:"School Admin" }}</span></div>
+      <div><label>Payment Date</label><span class="value">{{ receipt.payment_date }}</span></div>
+      <div><label>Payment Method</label><span class="value">{{ receipt.method_label }}</span></div>
+      <div><label>Reference</label><span class="value">{{ receipt.paystack_reference|default:"Manual payment" }}</span></div>
+      <div><label>Student</label><span class="value">{{ receipt.student_name }}</span></div>
+      <div><label>Admission No</label><span class="value">{{ receipt.admission_number }}</span></div>
+      <div><label>Class</label><span class="value">{{ receipt.class_name }}</span></div>
+      <div><label>Issued By</label><span class="value">{{ receipt.issued_by }}</span></div>
     </div>
     <div class="barcode-box">
       {% if receipt_barcode %}<img src="{{ receipt_barcode }}" alt="Receipt barcode">{% endif %}
@@ -85,13 +85,13 @@
     </thead>
     <tbody>
       <tr>
-        <td>{{ payment.fee_schedule.fee_category.name }}</td>
-        <td>{{ payment.fee_schedule.term.get_name_display }} {{ payment.fee_schedule.term.session.name }}</td>
-        <td style="text-align:right">{{ payment.amount_paid }}</td>
+        <td>{{ receipt.fee_category }}</td>
+        <td>{{ receipt.term_name }} {{ receipt.session_name }}</td>
+        <td style="text-align:right">{{ receipt.amount_paid }}</td>
       </tr>
       <tr class="total-row">
         <td colspan="2">Total Paid</td>
-        <td style="text-align:right">NGN {{ payment.amount_paid }}</td>
+        <td style="text-align:right">NGN {{ receipt.amount_paid }}</td>
       </tr>
     </tbody>
   </table>
