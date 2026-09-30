@@ -22,7 +22,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
-from accounts.permissions import IsSchoolAdmin, IsAuthenticatedTenantUser
+from accounts.permissions import IsSchoolAdmin, IsSchoolAdminOrTeacher
 from tenants.mixins import TenantMixin
 
 from .models import ClassArm, StaffProfile, Subject
@@ -61,7 +61,7 @@ class StaffViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ("list", "retrieve", "by_role"):
-            return [IsAuthenticatedTenantUser()]
+            return [IsSchoolAdminOrTeacher()]
         return [IsSchoolAdmin()]
 
     def get_queryset(self):
