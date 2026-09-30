@@ -140,16 +140,31 @@ class StudentProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        if (
-            self.instance
-            and "current_class" in attrs
-            and attrs["current_class"] != self.instance.current_class
-        ):
+        if self.instance:
+            if (
+                "current_class" in attrs
+                and attrs["current_class"] != self.instance.current_class
+            ):
+                raise serializers.ValidationError({
+                    "current_class": (
+                        "Use the controlled class-assignment workflow to change "
+                        "a student's current class."
+                    )
+                })
+            requested_status = self.initial_data.get("status")
+            if (
+                requested_status is not None
+                and requested_status != self.instance.status
+            ):
+                raise serializers.ValidationError({
+                    "status": (
+                        "Use the controlled student lifecycle workflow to change "
+                        "student status."
+                    )
+                })
+        elif attrs.get("status", "active") != "active":
             raise serializers.ValidationError({
-                "current_class": (
-                    "Use the controlled class-assignment workflow to change "
-                    "a student's current class."
-                )
+                "status": "New students must start with active status."
             })
         return attrs
 
@@ -166,8 +181,6 @@ class StudentProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer
     def update(self, instance, validated_data):
         from .account_editing import account_changes, edit_account
         changes = account_changes(validated_data)
-        if 'status' in validated_data:
-            changes['is_active'] = validated_data['status'] == 'active'
         edit_account(self.context['request'], instance.user, changes)
         return super().update(instance, validated_data)
 
