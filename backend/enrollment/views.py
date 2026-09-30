@@ -26,6 +26,7 @@ from tenants.mixins import TenantMixin
 from .safety import RetainAcademicHistoryMixin
 
 from .models import ClassArm, ClassLevel, StudentProfile, Subject
+from .session_enrollment import EnrollmentPlacementError, ensure_current_enrollment
 from .serializers import (
     ClassArmSerializer,
     ClassLevelSerializer,
@@ -223,11 +224,23 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        student.current_class = arm
-        student.save(update_fields=["current_class"])
+        try:
+            ensure_current_enrollment(
+                school=tenant,
+                student=student,
+                class_arm=arm,
+                actor=request.user,
+                entry_reason="manual",
+            )
+        except EnrollmentPlacementError as exc:
+            return Response(
+                {"error": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
+        student.refresh_from_db()
         return Response(
-            StudentProfileSerializer(student).data,
+            StudentProfileSerializer(student, context={"request": request}).data,
             status=status.HTTP_200_OK,
         )
 
@@ -312,6 +325,11 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
         for arm in ClassArm.objects.filter(school=tenant).select_related("class_level"):
             arm_map.setdefault(arm.class_level.name.lower(), []).append(arm)
 
+        from academics.models import AcademicSession
+        current_session = AcademicSession.objects.filter(
+            school=tenant, is_current=True
+        ).first()
+
         success_count = 0
         errors        = []
 
@@ -394,7 +412,7 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
                         school=tenant,
                         dob=dob,
                         gender=gender,
-                        current_class=class_arm,
+                        current_class=None,
                         state_of_origin=(row.get("state_of_origin") or "").strip(),
                         religion=(row.get("religion") or "").strip(),
                         guardian_name=(row.get("guardian_name") or "").strip(),
@@ -402,12 +420,23 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
                         guardian_email=(row.get("guardian_email") or "").strip().lower(),
                         guardian_relationship=(row.get("guardian_relationship") or "").strip().lower(),
                     )
+                    if class_arm:
+                        ensure_current_enrollment(
+                            school=tenant,
+                            student=profile,
+                            class_arm=class_arm,
+                            actor=request.user,
+                            entry_reason="admission",
+                            current_session=current_session,
+                        )
                     # Set password to admission number
                     user.set_password(profile.admission_number)
                     user.save(update_fields=["password"])
 
                 success_count += 1
 
+            except EnrollmentPlacementError as exc:
+                add_error(str(exc))
             except Exception:
                 add_error('This row could not be imported. Check its values and retry.')
 
