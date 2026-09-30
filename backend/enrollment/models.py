@@ -372,15 +372,15 @@ class SessionEnrollment(models.Model):
         indexes = [
             models.Index(
                 fields=["school", "session", "status"],
-                name="enrollment_s_school__71af38_idx",
+                name="enr_sess_school_status_idx",
             ),
             models.Index(
                 fields=["school", "class_arm", "session"],
-                name="enrollment_s_school__f2394d_idx",
+                name="enr_sess_school_class_idx",
             ),
             models.Index(
                 fields=["student", "session"],
-                name="enrollment_s_student_69bed0_idx",
+                name="enr_sess_student_sess_idx",
             ),
         ]
 
