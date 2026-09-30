@@ -495,6 +495,44 @@ class PaystackTests(TestCase):
                     paystack_reference=order.reference
                 ).exists())
 
+    def test_payment_order_kind_mismatch_never_routes_to_wrong_settlement_path(self):
+        self.assertEqual(self.start().status_code, 200)
+        fee_order = PaymentOrder.objects.get()
+        PaymentOrder.objects.filter(pk=fee_order.pk).update(
+            kind='subscription', status='pending', note=''
+        )
+        fee_order.refresh_from_db()
+        settled = settle(fee_order.reference, self.data(fee_order))
+        self.assertEqual(settled.status, 'review')
+        self.assertIn('type', settled.note.lower())
+        self.assertFalse(FeePayment.objects.exists())
+
+        self.client.force_authenticate(self.admin)
+        with patch.object(
+            PaystackService, 'initialize',
+            side_effect=lambda email, amount, ref, callback, **kw:
+            ('https://checkout.paystack.com/test', ref),
+        ):
+            response = self.client.post(
+                '/api/fees/subscription/',
+                {'invoice_id': self.subscription_invoice().pk},
+                format='json',
+                **self.headers
+            )
+        self.assertEqual(response.status_code, 200, response.data)
+        invoice_order = PaymentOrder.objects.exclude(pk=fee_order.pk).get()
+        PaymentOrder.objects.filter(pk=invoice_order.pk).update(
+            kind='fees', status='pending', note=''
+        )
+        invoice_order.refresh_from_db()
+        settled = settle(invoice_order.reference, self.data(invoice_order))
+        self.assertEqual(settled.status, 'review')
+        self.assertIn('invoice', settled.note.lower())
+        self.assertEqual(
+            FeePayment.objects.filter(paystack_reference=invoice_order.reference).count(),
+            0
+        )
+
     def test_cross_tenant_student_or_payer_on_checkout_never_credits(self):
         self.assertEqual(self.start().status_code, 200)
         order = PaymentOrder.objects.get()
