@@ -8,7 +8,7 @@ from academics.models import AcademicSession, Term
 from fees.billing import active_students
 from gradebook.models import ScoreEntry
 from tenants.models import School
-from .models import ClassLevel, ClassArm, Subject, StaffProfile, StudentProfile, SubjectAssignment
+from .models import ClassLevel, ClassArm, SessionEnrollment, Subject, StaffProfile, StudentProfile, SubjectAssignment
 
 
 class BasicOperationsTests(TestCase):
@@ -25,8 +25,26 @@ class BasicOperationsTests(TestCase):
         cls.foreign_level = ClassLevel.objects.create(school=cls.other, name='JSS1')
         cls.profile = StudentProfile.objects.create(school=cls.school, user=cls.student, current_class=cls.arm)
         cls.subject = Subject.objects.create(school=cls.school, name='Math', code='MATH')
-        cls.session = AcademicSession.objects.create(school=cls.school, name='2026/27', start_date=date(2026,9,1), end_date=date(2027,7,30))
-        cls.term = Term.objects.create(session=cls.session, name='first', start_date=date(2026,9,1), end_date=date(2026,12,18))
+        cls.session = AcademicSession.objects.create(
+            school=cls.school, name='2026/27',
+            start_date=date(2026,9,1), end_date=date(2027,7,30),
+            is_current=True,
+        )
+        cls.term = Term.objects.create(
+            session=cls.session, name='first',
+            start_date=date(2026,9,1), end_date=date(2026,12,18),
+            is_current=True,
+        )
+        SessionEnrollment.objects.create(
+            school=cls.school,
+            student=cls.profile,
+            session=cls.session,
+            class_arm=cls.arm,
+            status='active',
+            entry_reason='migration',
+            enrolled_on=cls.session.start_date,
+            created_by=cls.admin,
+        )
         cls.assignment = SubjectAssignment.objects.create(school=cls.school, teacher=cls.staff, class_arm=cls.arm, subject=cls.subject, session=cls.session, term=cls.term)
         cls.score = ScoreEntry.objects.create(school=cls.school, student=cls.student, class_arm=cls.arm, subject=cls.subject, session=cls.session, term=cls.term, exam_score=50)
 
@@ -67,8 +85,12 @@ class BasicOperationsTests(TestCase):
         self.assertTrue(ScoreEntry.objects.filter(pk=self.score.pk).exists())
 
     def test_withdrawal_preserves_scores_and_excludes_billing(self):
-        response = self.client.patch(f'/api/students/{self.profile.pk}/', {'status':'withdrawn'}, format='json')
-        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            f'/api/students/{self.profile.pk}/lifecycle/',
+            {'action':'withdraw', 'effective_date':'2026-09-30', 'reason':'Regression test'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertTrue(ScoreEntry.objects.filter(pk=self.score.pk).exists())
         self.assertEqual(active_students(self.school).count(), 0)
 
