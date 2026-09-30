@@ -69,7 +69,12 @@ class SchoolModulePermission(BasePermission):
 
 def assigned_classes(request):
     from enrollment.models import SubjectAssignment
-    return SubjectAssignment.objects.filter(school=request.tenant, teacher__user=request.user).values_list('class_arm_id', flat=True)
+    return SubjectAssignment.objects.filter(
+        school=request.tenant,
+        teacher__user=request.user,
+        teacher__employment_status='active',
+        teacher__user__is_active=True,
+    ).values_list('class_arm_id', flat=True)
 
 class TenantRelationsMixin:
     def validate(self, attrs):
