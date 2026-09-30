@@ -575,7 +575,12 @@ class PlatformPayments(APIView):
                         'school_id': order.school_id, 'reason': 'checkout_integrity'
                     })
                     raise ValidationError(order.note)
-            elif order.kind != 'subscription':
+            elif order.kind == 'subscription':
+                if not is_legacy_unlinked_subscription(order):
+                    order.status, order.note = 'review', 'Checkout type is inconsistent. Verify the payment before taking further action.'
+                    order.save(update_fields=['status', 'note'])
+                    raise ValidationError(order.note)
+            else:
                 order.status, order.note = 'review', 'Checkout type is inconsistent. Verify the payment before taking further action.'
                 order.save(update_fields=['status', 'note'])
                 raise ValidationError(order.note)
