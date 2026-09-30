@@ -219,6 +219,7 @@ class PaymentOrder(models.Model):
     student = models.ForeignKey('enrollment.StudentProfile', on_delete=models.PROTECT, null=True, blank=True)
     kind = models.CharField(max_length=20, choices=[('fees', 'School fees'), ('subscription', 'Portal subscription')])
     reference = models.CharField(max_length=100, unique=True)
+    request_key = models.CharField(max_length=100, blank=True)
     mode = models.CharField(max_length=4)
     amount_kobo = models.PositiveBigIntegerField()
     currency = models.CharField(max_length=3, default='NGN')
@@ -237,6 +238,8 @@ class PaymentOrder(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=['invoice'], condition=models.Q(invoice__isnull=False, status__in=['initializing', 'pending']), name='one_open_invoice_checkout'),
+            models.UniqueConstraint(fields=['school', 'request_key'],
+                condition=~models.Q(request_key=''), name='unique_school_payment_order_request_key'),
             models.CheckConstraint(check=models.Q(invoice__isnull=True) | models.Q(kind='subscription'), name='invoice_subscription_only'),
         ]
 
