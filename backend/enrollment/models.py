@@ -308,6 +308,7 @@ class SessionEnrollment(models.Model):
         ("repeat", "Repeat"),
         ("migration", "Migration"),
         ("manual", "Manual"),
+        ("transfer", "Transfer"),
     ]
 
     school = models.ForeignKey(
@@ -359,7 +360,8 @@ class SessionEnrollment(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["student", "session"],
-                name="unique_student_session_enrollment",
+                condition=models.Q(status="active"),
+                name="one_active_student_session_enrollment",
             ),
             models.CheckConstraint(
                 condition=(
@@ -382,6 +384,10 @@ class SessionEnrollment(models.Model):
                 fields=["student", "session"],
                 name="enr_sess_student_sess_idx",
             ),
+            models.Index(
+                fields=["student", "session", "enrolled_on"],
+                name="enr_sess_student_period_idx",
+            ),
         ]
 
     def clean(self):
@@ -401,6 +407,26 @@ class SessionEnrollment(models.Model):
             errors["exited_on"] = "An active enrollment cannot have an exit date."
         if self.status != "active" and not self.exited_on:
             errors["exited_on"] = "A closed enrollment requires an exit date."
+        if (
+            self.student_id
+            and self.session_id
+            and self.enrolled_on
+            and "enrolled_on" not in errors
+            and "exited_on" not in errors
+        ):
+            period_end = self.exited_on or self.session.end_date
+            overlap = SessionEnrollment.objects.filter(
+                student_id=self.student_id,
+                session_id=self.session_id,
+                enrolled_on__lte=period_end,
+            ).exclude(pk=self.pk).filter(
+                models.Q(exited_on__isnull=True) |
+                models.Q(exited_on__gte=self.enrolled_on)
+            )
+            if overlap.exists():
+                errors["enrolled_on"] = (
+                    "Enrollment period overlaps another placement for this student and session."
+                )
         if errors:
             raise ValidationError(errors)
 
