@@ -27,6 +27,7 @@ from .safety import RetainAcademicHistoryMixin
 
 from .models import ClassArm, ClassLevel, StudentProfile, Subject
 from .session_enrollment import EnrollmentPlacementError, ensure_current_enrollment
+from .lifecycle import StudentLifecycleError, transition_student
 from .serializers import (
     ClassArmSerializer,
     ClassLevelSerializer,
@@ -197,6 +198,49 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
             "count":   students.count(),
             "results": serializer.data,
         })
+
+    # ── Controlled lifecycle ──────────────────────────────────────────────
+
+    @action(detail=True, methods=["post"], url_path="lifecycle")
+    def lifecycle(self, request, pk=None):
+        student = self.get_object()
+        action_name = request.data.get("action")
+        reason = request.data.get("reason", "")
+        effective_date = request.data.get("effective_date")
+
+        if effective_date not in (None, ""):
+            effective_date = _parse_date(str(effective_date))
+            if not effective_date:
+                return Response(
+                    {"error": "Enter a valid effective_date in YYYY-MM-DD format."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            effective_date = None
+
+        try:
+            updated = transition_student(
+                school=self._get_tenant(),
+                student=student,
+                action=action_name,
+                actor=request.user,
+                effective_date=effective_date,
+                reason=reason,
+            )
+        except StudentLifecycleError as exc:
+            return Response(
+                {"error": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        updated.refresh_from_db()
+        return Response(
+            StudentProfileSerializer(
+                updated,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
     # ── Assign class ─────────────────────────────────────────────────────
 
