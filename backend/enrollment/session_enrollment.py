@@ -2,6 +2,7 @@ from django.db import transaction
 
 from academics.models import AcademicSession
 
+from .enrollment_periods import active_enrollment
 from .models import ClassArm, SessionEnrollment, StudentProfile
 
 
@@ -56,11 +57,12 @@ def ensure_current_enrollment(
             "Set the school's current academic session before assigning a student to a class."
         )
 
-    enrollment = SessionEnrollment.objects.select_for_update().filter(
+    enrollment = active_enrollment(
         school=school,
         student=locked_student,
         session=session,
-    ).first()
+        lock=True,
+    )
 
     if enrollment:
         if enrollment.status != "active":
