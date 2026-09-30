@@ -20,7 +20,7 @@ from rest_framework.views import APIView
 from accounts.models import ParentStudentLink
 from accounts.parent_auth import phone_value
 from accounts.permissions import IsSchoolAdmin
-from academics.models import Term
+from academics.models import AcademicSession, Term
 from fees.ledger import money, post_adjustment
 from fees.models import FeeCategory, FeeSchedule, StudentFinanceAccount, StudentLedgerEntry
 from timetable.models import Period, TimetableEntry
@@ -28,6 +28,7 @@ from curriculum.models import AcademicStandardObjective, AcademicStandardTopic, 
 from tenants.models import PlatformEvent, School
 from .models import (ClassArm, ClassLevel, MigrationStudentReference, StaffProfile,
                      StudentProfile, Subject, SubjectAssignment)
+from .session_enrollment import EnrollmentPlacementError, ensure_current_enrollment
 
 User = get_user_model()
 DOMAINS = {
@@ -141,7 +142,7 @@ def identify(domain, row):
         return row['code'].casefold()
     return (row['teacher_email'].casefold(), row['class_level'].casefold(),
             row['class_arm'].casefold(), row['subject_code'].casefold())
-def assess(domain, row, school):
+def assess(domain, row, school, current_session=None):
     """Return (action, resolved data); perform no writes."""
     if domain == 'opening_balances':
         identity = MigrationStudentReference.objects.filter(school=school,
@@ -356,7 +357,18 @@ def assess(domain, row, school):
         if StudentProfile.objects.filter(school=school, user__first_name__iexact=row['first_name'],
                 user__last_name__iexact=row['last_name'], dob=dob, current_class=arm).exists():
             raise ValueError('student_ref', 'A matching student already exists; review before linking a source reference.')
-        return 'CREATE', {'arm': arm, 'dob': dob, 'gender': {'m': 'male', 'f': 'female'}.get(gender, gender), 'email': student_email}
+        if arm and not current_session:
+            raise ValueError(
+                'class_arm',
+                "Set the school's current academic session before importing students into classes.",
+            )
+        return 'CREATE', {
+            'arm': arm,
+            'dob': dob,
+            'gender': {'m': 'male', 'f': 'female'}.get(gender, gender),
+            'email': student_email,
+            'current_session': current_session,
+        }
     if domain == 'staff':
         if len(row.get('phone', '')) > 20: raise ValueError('phone', 'Use at most 20 characters.')
         if len(row.get('specialization', '')) > 150 or len(row.get('state_of_origin', '')) > 50:
@@ -465,11 +477,27 @@ def create(domain, row, school, data):
         user = User.objects.create_user(email=data['email'], password=None,
             first_name=row['first_name'], last_name=row['last_name'], role='student',
             school=school, must_change_password=True)
-        student = StudentProfile.objects.create(user=user, school=school, current_class=data['arm'],
-            dob=data['dob'], gender=data['gender'], state_of_origin=row.get('state_of_origin', ''),
-            guardian_name=row.get('guardian_name', ''), guardian_phone=row.get('guardian_phone', ''),
+        student = StudentProfile.objects.create(
+            user=user,
+            school=school,
+            current_class=None,
+            dob=data['dob'],
+            gender=data['gender'],
+            state_of_origin=row.get('state_of_origin', ''),
+            guardian_name=row.get('guardian_name', ''),
+            guardian_phone=row.get('guardian_phone', ''),
             guardian_email=row.get('guardian_email', '').lower(),
-            guardian_relationship=row.get('guardian_relationship', '').lower())
+            guardian_relationship=row.get('guardian_relationship', '').lower(),
+        )
+        if data['arm']:
+            ensure_current_enrollment(
+                school=school,
+                student=student,
+                class_arm=data['arm'],
+                actor=data.get('actor'),
+                entry_reason='admission',
+                current_session=data.get('current_session'),
+            )
         user.set_password(student.admission_number)
         user.save(update_fields=['password'])
         MigrationStudentReference.objects.create(school=school, reference=row['student_ref'], student=student)
@@ -654,6 +682,11 @@ class MigrationCentre(APIView):
             return Response(inspect_upload(request, domain))
         rows, ignored, mapping = parse_upload(request, domain)
         school = request.tenant
+        current_session = (
+            AcademicSession.objects.filter(school=school, is_current=True).first()
+            if domain == 'students'
+            else None
+        )
         results, seen, seen_emails, seen_people = [], set(), set(), set()
         seen_phones, seen_assignment_slots = set(), set()
         seen_timetable_teacher_slots = set()
@@ -673,7 +706,12 @@ class MigrationCentre(APIView):
                         key = identify(domain, row)
                         if key in seen: raise ValueError('file', 'Duplicate reference in this file.')
                         seen.add(key)
-                        action, data = assess(domain, row, school)
+                        action, data = assess(
+                            domain,
+                            row,
+                            school,
+                            current_session=current_session,
+                        )
                         if domain == 'parents' and action == 'CREATE':
                             if data['phone'] in seen_phones:
                                 raise ValueError('phone', 'Duplicate parent phone in this file.')
@@ -700,7 +738,8 @@ class MigrationCentre(APIView):
                             seen_people.add(person)
                         if operation == 'import' and action == 'CREATE':
                             with transaction.atomic():
-                                if domain == 'opening_balances': data['actor'] = request.user
+                                if domain in ('opening_balances', 'students'):
+                                    data['actor'] = request.user
                                 create(domain, row, school, data)
                         outcome = {'row': number, 'action': action}
                     except ValueError as exc:
