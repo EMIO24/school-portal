@@ -33,6 +33,9 @@ beforeEach(() => {
         {id: 22, full_name: 'JSS2A'},
       ]};
     }
+    if (url === '/api/students/1/parents/') {
+      return {data: []};
+    }
     return {data: {}};
   });
 });
