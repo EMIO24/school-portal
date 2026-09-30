@@ -30,6 +30,29 @@ class FeeSchedule(models.Model):
         unique_together = [('term', 'class_level', 'fee_category')]
         ordering        = ['class_level__order_index', 'fee_category__name']
 
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                'school_id', 'term_id', 'class_level_id', 'fee_category_id', 'amount', 'due_date'
+            ).first()
+            if previous:
+                changed = any([
+                    previous['school_id'] != self.school_id,
+                    previous['term_id'] != self.term_id,
+                    previous['class_level_id'] != self.class_level_id,
+                    previous['fee_category_id'] != self.fee_category_id,
+                    previous['amount'] != self.amount,
+                    previous['due_date'] != self.due_date,
+                ])
+                if changed:
+                    from django.core.exceptions import ValidationError
+                    from .history import fee_schedule_has_history
+                    if fee_schedule_has_history(self.pk, previous['school_id']):
+                        raise ValidationError(
+                            'This fee schedule has financial history and cannot be rewritten.'
+                        )
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.fee_category.name} / {self.class_level.name} â€” â‚¦{self.amount}"
 
