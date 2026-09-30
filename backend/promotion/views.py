@@ -96,6 +96,7 @@ class PromotionEvaluateView(APIView):
         enrollments = SessionEnrollment.objects.filter(
             school=school,
             session=session,
+            status='active',
         ).select_related(
             'student__user',
             'class_arm__class_level',
@@ -218,6 +219,7 @@ class PromotionExecuteView(APIView):
                 school=school,
                 student=student,
                 session=session,
+                status='active',
             ).first()
 
             if not source_enrollment:
