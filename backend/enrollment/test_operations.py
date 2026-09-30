@@ -87,15 +87,20 @@ class BasicOperationsTests(TestCase):
         self.assertFalse(ScoreEntry.objects.filter(subject=subject).exists())
 
     def test_class_sheet_includes_more_than_one_page_and_checks_assignment(self):
+        subject = Subject.objects.create(school=self.school, name='Access Check', code='ACCESS')
+        assignment = SubjectAssignment.objects.create(
+            school=self.school, teacher=self.staff, class_arm=self.arm,
+            subject=subject, session=self.session, term=self.term,
+        )
         for i in range(23):
             user = self.user('classmate'+str(i),'student')
             StudentProfile.objects.create(school=self.school,user=user,current_class=self.arm)
         self.client.force_authenticate(self.teacher)
-        url = f'/api/gradebook/entries/sheet/?class_arm={self.arm.pk}&subject={self.subject.pk}&term={self.term.pk}'
+        url = f'/api/gradebook/entries/sheet/?class_arm={self.arm.pk}&subject={subject.pk}&term={self.term.pk}'
         response = self.client.get(url)
         self.assertEqual(response.status_code,200)
         self.assertEqual(len(response.data['students']),24)
-        SubjectAssignment.objects.filter(pk=self.assignment.pk).delete()
+        SubjectAssignment.objects.filter(pk=assignment.pk).delete()
         self.assertEqual(self.client.get(url).status_code,403)
 
     def test_basic_import_and_current_term_cbt_are_available_but_premium_assessments_are_not(self):
