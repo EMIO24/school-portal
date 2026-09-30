@@ -208,7 +208,13 @@ def settle(reference, data):
             return order
         from .invoice_payments import settle_invoice_order
         return settle_invoice_order(order, school, data)
-    if order.kind != 'fees':
+    if order.kind == 'subscription' and not is_legacy_unlinked_subscription(order):
+        order.status, order.note = 'review', 'Checkout type is inconsistent. Contact the platform owner.'
+        order.save(update_fields=['status', 'note'])
+        event(None, 'payment.mismatch', order.reference, {'school_id': order.school_id})
+        logger.warning("payment_review_required order_id=%s reference=%s reason=order_kind_mismatch", order.pk, order.reference)
+        return order
+    if order.kind not in ('fees', 'subscription'):
         order.status, order.note = 'review', 'Checkout type is inconsistent. Contact the platform owner.'
         order.save(update_fields=['status', 'note'])
         event(None, 'payment.mismatch', order.reference, {'school_id': order.school_id})
