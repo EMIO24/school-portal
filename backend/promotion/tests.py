@@ -234,6 +234,22 @@ class PromotionEnrollmentHistoryTests(TestCase):
             ).exists()
         )
 
+    def test_withdrawal_decision_disables_student_login(self):
+        response = self.execute([{
+            'student_id': self.student.pk,
+            'session_id': self.source.pk,
+            'decision': 'withdrawn',
+            'criteria_met': False,
+        }])
+        self.assertEqual(response.status_code, 200)
+        self.student.refresh_from_db()
+        self.student.user.refresh_from_db()
+        self.source_enrollment.refresh_from_db()
+        self.assertEqual(self.student.status, 'withdrawn')
+        self.assertIsNone(self.student.current_class)
+        self.assertEqual(self.source_enrollment.status, 'withdrawn')
+        self.assertFalse(self.student.user.is_active)
+
     def test_historical_evaluation_uses_session_enrollment_not_current_class(self):
         self.student.current_class = self.arm2
         self.student.save(update_fields=['current_class'])
