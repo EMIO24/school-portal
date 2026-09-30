@@ -109,6 +109,30 @@ def payable_fee_amount(school, student, schedule):
     return max(schedule.amount - paid, Decimal('0.00'))
 
 
+def valid_fee_allocations(order):
+    """Return normalized stored allocations or None when checkout state is inconsistent."""
+    allocations = order.allocations
+    if not isinstance(allocations, list) or not 1 <= len(allocations) <= 100 or order.student_id is None:
+        return None
+    normalized = []
+    seen = set()
+    total = 0
+    for item in allocations:
+        if not isinstance(item, dict):
+            return None
+        schedule_id = item.get('schedule_id')
+        amount_kobo = item.get('amount_kobo')
+        if (type(schedule_id) is not int or schedule_id <= 0 or schedule_id in seen or
+                type(amount_kobo) is not int or amount_kobo <= 0):
+            return None
+        seen.add(schedule_id)
+        total += amount_kobo
+        if total > order.amount_kobo:
+            return None
+        normalized.append({'schedule_id': schedule_id, 'amount_kobo': amount_kobo})
+    return normalized if total == order.amount_kobo else None
+
+
 @transaction.atomic
 def settle(reference, data):
     school_id = PaymentOrder.objects.values_list('school_id', flat=True).get(reference=reference)
@@ -149,7 +173,14 @@ def settle(reference, data):
         from .invoice_payments import settle_invoice_order
         return settle_invoice_order(order, school, data)
     if order.kind == 'fees':
-        for allocation in order.allocations:
+        allocations = valid_fee_allocations(order)
+        if allocations is None:
+            order.status, order.note = 'review', 'Checkout allocation details are inconsistent. Contact the platform owner.'
+            order.save(update_fields=['status', 'note'])
+            event(None, 'payment.mismatch', order.reference, {'school_id': order.school_id})
+            logger.warning("payment_review_required order_id=%s reference=%s reason=allocation_mismatch", order.pk, order.reference)
+            return order
+        for allocation in allocations:
             schedule = FeeSchedule.objects.filter(pk=allocation['schedule_id'], school=school).first()
             remaining = payable_fee_amount(school, order.student, schedule) if schedule else None
             if remaining is None or int(remaining * 100) < allocation['amount_kobo']:
@@ -157,7 +188,7 @@ def settle(reference, data):
                 order.save(update_fields=['status', 'note'])
                 logger.warning("payment_review_required order_id=%s reference=%s reason=balance_changed", order.pk, order.reference)
                 return order
-        for allocation in order.allocations:
+        for allocation in allocations:
             payment = FeePayment.objects.create(school=school, student=order.student,
                 fee_schedule_id=allocation['schedule_id'], amount_paid=Decimal(allocation['amount_kobo']) / 100,
                 payment_date=timezone.localdate(), method='paystack', paystack_reference=reference,
