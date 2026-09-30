@@ -11,6 +11,7 @@ from accounts.models import CustomUser
 from academics.models import AcademicSession, Term
 from attendance.models import AttendanceRecord, AttendanceSession
 from enrollment.models import ClassArm, ClassLevel, SessionEnrollment, StudentProfile, Subject
+from enrollment.transfers import transfer_student
 from gradebook.models import ScoreEntry
 from tenants.models import School
 
@@ -197,6 +198,38 @@ class PromotionEnrollmentHistoryTests(TestCase):
         self.assertEqual(record.from_class, self.arm1)
         self.assertEqual(record.to_class, self.arm2)
         self.assertEqual(self.student.current_class, self.arm2)
+
+    def test_promotion_uses_final_active_placement_after_mid_session_transfer(self):
+        self.source.is_current = True
+        self.source.save(update_fields=['is_current'])
+        arm_b = ClassArm.objects.create(
+            school=self.school, class_level=self.level1, name='B'
+        )
+        transfer_student(
+            school=self.school,
+            student=self.student,
+            destination_class=arm_b,
+            effective_date=date(2026, 9, 15),
+            actor=self.admin,
+            reason='Class balancing',
+        )
+
+        response = self.execute(self.promoted_body())
+        self.assertEqual(response.status_code, 200)
+        record = PromotionRecord.objects.get(
+            student=self.student, from_session=self.source
+        )
+        periods = list(
+            SessionEnrollment.objects.filter(
+                student=self.student, session=self.source
+            ).order_by('enrolled_on')
+        )
+        self.assertEqual(len(periods), 2)
+        self.assertEqual(periods[0].class_arm, self.arm1)
+        self.assertEqual(periods[0].status, 'transferred')
+        self.assertEqual(periods[1].class_arm, arm_b)
+        self.assertEqual(periods[1].status, 'completed')
+        self.assertEqual(record.from_class, arm_b)
 
     def test_repeat_creates_new_session_enrollment_in_same_class(self):
         response = self.execute(self.promoted_body(
