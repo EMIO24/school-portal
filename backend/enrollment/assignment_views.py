@@ -26,36 +26,7 @@ from tenants.mixins import TenantMixin
 from .models import ClassArm, StaffProfile, Subject, SubjectAssignment
 
 
-def assignment_has_history(assignment):
-    """A teaching responsibility becomes historical once school operations depend on it."""
-    from gradebook.models import ScoreEntry
-    from timetable.models import LessonRecord
-    from curriculum.models import LessonPlan
-    from cbt.models import OnlineAssignment, CBTExam
-
-    scope = {
-        'school': assignment.school,
-        'term': assignment.term,
-        'class_arm': assignment.class_arm,
-        'subject': assignment.subject,
-    }
-    if ScoreEntry.objects.filter(**scope).exists():
-        return True
-    if LessonPlan.objects.filter(**scope).exists():
-        return True
-    if OnlineAssignment.objects.filter(**scope).exists():
-        return True
-    if LessonRecord.objects.filter(
-        school=assignment.school,
-        term=assignment.term,
-        class_arm_id_snapshot=assignment.class_arm_id,
-        subject_id_snapshot=assignment.subject_id,
-    ).exists():
-        return True
-    return CBTExam.objects.filter(
-        school=assignment.school, term=assignment.term, subject=assignment.subject,
-        class_arms=assignment.class_arm,
-    ).exists()
+from .history import assignment_has_history
 from .assignment_serializers import (
     AssignmentGridSerializer,
     BulkAssignSerializer,
