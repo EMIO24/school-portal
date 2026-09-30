@@ -13,6 +13,12 @@ test('administrator maps columns, validates, confirms, and sees updated readines
     ? {domains: [{key: 'classes', required: ['class_level', 'class_arm'], columns: ['class_level', 'class_arm']}]}
     : setup}));
   api.post.mockImplementation(async url => {
+    if (url.endsWith('/inspect/')) return {data: {
+      headers: ['Class Level', 'Class Arm'],
+      rows: [{'Class Level': 'JSS1', 'Class Arm': 'A'}, {'Class Level': 'JSS1', 'Class Arm': ''}],
+      row_numbers: [2, 3], total_rows: 2, format: 'csv',
+      suggested_mapping: {'Class Level': 'class_level', 'Class Arm': 'class_arm'},
+    }};
     if (url.endsWith('/validate/')) return {data: {mode: 'validate', total_rows: 2,
       counts: {CREATE: 1, REUSE: 0, REJECT: 1}, warnings: [],
       rows: [{row: 2, action: 'CREATE'}, {row: 3, action: 'REJECT', field: 'class_arm', reason: 'Required value is empty.'}]}};
@@ -25,7 +31,7 @@ test('administrator maps columns, validates, confirms, and sees updated readines
   expect(await screen.findByText(/Required: class_level, class_arm/)).toBeVisible();
   const file = new File(['Class Level,Class Arm\nJSS1,A\nJSS1,'], 'classes.csv', {type: 'text/csv'});
   Object.defineProperty(file, 'text', {value: async () => 'Class Level,Class Arm\nJSS1,A\nJSS1,'});
-  fireEvent.change(screen.getByLabelText('CSV file'), {target: {files: [file]}});
+  fireEvent.change(screen.getByLabelText('Spreadsheet file'), {target: {files: [file]}});
   await screen.findByText(/2 rows found/);
   expect(screen.getByLabelText('Class Level')).toHaveValue('class_level');
   expect(screen.getByLabelText('Class Arm')).toHaveValue('class_arm');
@@ -44,7 +50,15 @@ test('explicitly ignored column is sent as ignored rather than remapped', async 
   api.get.mockImplementation(async url => ({data: url === '/api/migration/'
     ? {domains: [{key: 'classes', required: ['class_level', 'class_arm'], columns: ['class_level', 'class_arm']}]}
     : {steps: [], missing_assignments: 0}}));
-  api.post.mockRejectedValue({response: {data: {error: 'Map required columns: class_level'}}});
+  api.post.mockImplementation(async url => {
+    if (url.endsWith('/inspect/')) return {data: {
+      headers: ['Class Level', 'Class Arm'],
+      rows: [{'Class Level': 'JSS1', 'Class Arm': 'A'}],
+      row_numbers: [2], total_rows: 1, format: 'csv',
+      suggested_mapping: {'Class Level': 'class_level', 'Class Arm': 'class_arm'},
+    }};
+    throw {response: {data: {error: 'Map required columns: class_level'}}};
+  });
   renderPage(<MigrationCentre />);
   await screen.findByText(/Required: class_level, class_arm/);
   const file = new File(['Class Level,Class Arm\nJSS1,A'], 'classes.csv', {type: 'text/csv'});
@@ -54,7 +68,8 @@ test('explicitly ignored column is sent as ignored rather than remapped', async 
   fireEvent.change(screen.getByLabelText('Class Level'), {target: {value: ''}});
   fireEvent.click(screen.getByRole('button', {name: 'Validate file'}));
   expect(await screen.findByRole('alert')).toHaveTextContent('Map required columns');
-  expect(JSON.parse(api.post.mock.calls[0][1].get('mapping'))['Class Level']).toBeNull();
+  const validateCall = api.post.mock.calls.find(([url]) => url.endsWith('/validate/'));
+  expect(JSON.parse(validateCall[1].get('mapping'))['Class Level']).toBeNull();
 });
 
 
