@@ -93,8 +93,11 @@ class PaystackTests(TestCase):
     def test_paystack_uses_frozen_charge_after_fee_structure_edit(self):
         from .ledger import generate_charges, account_balance
         generate_charges(self.school, self.fee.term, self.admin)
-        self.fee.amount = Decimal('20000.00')
-        self.fee.save(update_fields=['amount'])
+        # Simulate out-of-band/legacy drift that bypasses FeeSchedule.save().
+        # Normal application writes are intentionally blocked by Batch 17H.
+        FeeSchedule.objects.filter(pk=self.fee.pk).update(amount=Decimal('20000.00'))
+        self.fee.refresh_from_db()
+        self.assertEqual(self.fee.amount, Decimal('20000.00'))
         self.assertEqual(self.start().status_code, 200)
         order = PaymentOrder.objects.get()
         self.assertEqual(order.amount_kobo, 1000000)
