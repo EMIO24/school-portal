@@ -507,6 +507,10 @@ class PaystackTests(TestCase):
         self.assertIn('type', settled.note.lower())
         self.assertFalse(FeePayment.objects.exists())
 
+        # Isolate the second corruption scenario. A review order must correctly
+        # block a parallel subscription checkout until an operator resolves it.
+        PaymentOrder.objects.filter(pk=fee_order.pk).update(status='failed')
+
         self.client.force_authenticate(self.admin)
         with patch.object(
             PaystackService, 'initialize',
