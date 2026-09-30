@@ -7,7 +7,7 @@ import "./StaffForm.css";
 const initialForm = {
   new_first_name: "", new_last_name: "", new_email: "", dob: "", gender: "",
   current_class: "", state_of_origin: "", religion: "", guardian_name: "",
-  guardian_phone: "", guardian_email: "", guardian_relationship: "guardian", status: "active",
+  guardian_phone: "", guardian_email: "", guardian_relationship: "guardian",
 };
 
 export default function StudentForm() {
