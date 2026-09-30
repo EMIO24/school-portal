@@ -6,6 +6,8 @@ from .models import DemoRequest, School
 
 class DemoRequestTests(TestCase):
     def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
         self.client = APIClient()
         self.data = {'school_name':'Demo School', 'contact_name':'Ada Owner', 'email':'ada@example.test', 'phone':'08012345678', 'student_population':120, 'location':'Lagos', 'message':'Please show us the portal.'}
         self.owner = CustomUser.objects.create_superuser('owner@demo.test', 'Password!123')
