@@ -11,6 +11,8 @@ class PublicResultCardAvailabilityTests(TestCase):
     setUpTestData = classmethod(operations.BasicOperationsTests.setUpTestData.__func__)
 
     def test_unpublished_result_does_not_consume_card(self):
+        from django.core.cache import cache
+        cache.clear()
         card = ScratchCard.objects.create(school=self.school, term=self.term, serial_number='CURRICULUM-CARD-1',
             pin_hash=make_password('12345678'), batch_name='Test')
         client = APIClient()
