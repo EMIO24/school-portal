@@ -1,6 +1,6 @@
 # Batch 17H — Historical Integrity & Access Hardening
 
-Status: **IMPLEMENTED — AWAITING REGRESSION CONFIRMATION**
+Status: **COMPLETE — REGRESSION CONFIRMED 2026-09-30**
 
 Batch 17H was inserted after Batch 17 after a full-project regression scan found places where later capabilities had made older mutable setup records more consequential.
 
@@ -87,6 +87,20 @@ The administrator outstanding-fees report now derives charges, payments and bala
 - parent timetable limited to linked child;
 - teacher timetable limited to own entries;
 - teacher-load restricted to school admin.
+
+## Final regression confirmation
+
+Batch 17H was closed after the complete regression sequence passed on `complete-version`:
+
+- targeted Batch 17H backend suite: 15/15 passed;
+- broader backend regression: 117/117 passed;
+- focused post-fix backend verification: 42/42 passed;
+- full backend suite: 390/390 passed;
+- focused Migration Centre frontend suite: 3/3 passed;
+- full frontend suite: 49/49 suites and 334/334 tests passed;
+- production frontend build compiled successfully.
+
+Regression fixes made during confirmation were test-harness or stale-expectation corrections only. Historical assignment deletion protection, staff-directory restrictions, used FeeSchedule immutability, receipt snapshots, ledger-backed reporting, timetable scoping and payment fail-closed behavior were retained.
 
 ## Deliberately deferred lifecycle work
 
