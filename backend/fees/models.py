@@ -36,13 +36,15 @@ class FeeSchedule(models.Model):
                 'school_id', 'term_id', 'class_level_id', 'fee_category_id', 'amount', 'due_date'
             ).first()
             if previous:
+                amount_value = self._meta.get_field('amount').to_python(self.amount)
+                due_value = self._meta.get_field('due_date').to_python(self.due_date)
                 changed = any([
                     previous['school_id'] != self.school_id,
                     previous['term_id'] != self.term_id,
                     previous['class_level_id'] != self.class_level_id,
                     previous['fee_category_id'] != self.fee_category_id,
-                    previous['amount'] != self.amount,
-                    previous['due_date'] != self.due_date,
+                    previous['amount'] != amount_value,
+                    previous['due_date'] != due_value,
                 ])
                 if changed:
                     from django.core.exceptions import ValidationError
