@@ -61,12 +61,24 @@ class SessionEnrollmentTests(TestCase):
         self.assertEqual(self.student.current_class, self.arm)
         self.assertEqual(enrollment.class_name, "JSS1A")
 
-    def test_student_can_have_only_one_enrollment_per_session(self):
-        self.create_enrollment()
-        with self.assertRaises(ValidationError):
-            self.create_enrollment(entry_reason="manual")
+    def test_student_can_have_multiple_periods_but_only_one_active_per_session(self):
+        first = self.create_enrollment(
+            status="transferred",
+            exited_on=date(2026, 12, 31),
+        )
+        second = self.create_enrollment(
+            enrolled_on=date(2027, 1, 1),
+            entry_reason="transfer",
+        )
+        self.assertNotEqual(first.pk, second.pk)
 
-        # The database constraint also survives paths that bypass model.save().
+        with self.assertRaises(ValidationError):
+            self.create_enrollment(
+                enrolled_on=date(2027, 2, 1),
+                entry_reason="manual",
+            )
+
+        # The partial database constraint also survives paths that bypass model.save().
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 SessionEnrollment.objects.bulk_create([
@@ -75,9 +87,21 @@ class SessionEnrollmentTests(TestCase):
                         student=self.student,
                         session=self.session,
                         class_arm=self.arm,
-                        enrolled_on=date(2026, 9, 2),
+                        enrolled_on=date(2027, 2, 1),
                     )
                 ])
+
+    def test_overlapping_closed_periods_are_rejected(self):
+        self.create_enrollment(
+            status="transferred",
+            exited_on=date(2026, 12, 31),
+        )
+        with self.assertRaises(ValidationError):
+            self.create_enrollment(
+                status="completed",
+                enrolled_on=date(2026, 12, 15),
+                exited_on=date(2027, 1, 15),
+            )
 
     def test_cross_tenant_student_session_or_class_is_rejected(self):
         other_level = ClassLevel.objects.create(
