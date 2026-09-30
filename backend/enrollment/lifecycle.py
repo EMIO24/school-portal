@@ -6,7 +6,8 @@ from django.utils import timezone
 from academics.models import AcademicSession
 from tenants.models import PlatformEvent
 
-from .models import SessionEnrollment, StudentProfile
+from .enrollment_periods import active_enrollment
+from .models import StudentProfile
 
 
 class StudentLifecycleError(ValueError):
@@ -45,14 +46,11 @@ def transition_student(
     ).first()
     enrollment = None
     if current_session:
-        enrollment = (
-            SessionEnrollment.objects.select_for_update()
-            .filter(
-                school=school,
-                student=locked,
-                session=current_session,
-            )
-            .first()
+        enrollment = active_enrollment(
+            school=school,
+            student=locked,
+            session=current_session,
+            lock=True,
         )
 
     previous_status = locked.status
