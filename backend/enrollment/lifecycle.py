@@ -135,7 +135,11 @@ def transition_student(
     PlatformEvent.objects.create(
         actor=actor,
         actor_email=getattr(actor, "email", "") or "",
-        action=f"school.student_{action}ed" if action != "reactivate" else "school.student_reactivated",
+        action={
+            "suspend": "school.student_suspended",
+            "reactivate": "school.student_reactivated",
+            "withdraw": "school.student_withdrawn",
+        }[action],
         target=str(locked.pk),
         details={
             "school_id": school.pk,
