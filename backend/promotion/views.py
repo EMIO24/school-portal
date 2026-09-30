@@ -86,7 +86,7 @@ class PromotionEvaluateView(APIView):
         session_id     = request.query_params.get('session')
         class_level_id = request.query_params.get('class_level')
         from academics.models import AcademicSession
-        from enrollment.models import SessionEnrollment
+        from enrollment.models import SessionEnrollment, StudentProfile
 
         try:
             session = AcademicSession.objects.get(pk=session_id, school=school)
@@ -113,8 +113,10 @@ class PromotionEvaluateView(APIView):
         }
 
         results = []
+        enrolled_student_ids = set()
         for enrollment in enrollments:
             student = enrollment.student
+            enrolled_student_ids.add(student.pk)
             if student.status != 'active' or enrollment.status != 'active':
                 continue
             level = enrollment.class_arm.class_level
@@ -122,12 +124,45 @@ class PromotionEvaluateView(APIView):
                 school=school,
                 class_level=level,
             )
-            results.append(evaluate_student(
+            row = evaluate_student(
                 student,
                 session,
                 criteria,
                 class_arm=enrollment.class_arm,
-            ))
+            )
+            row['membership_source'] = 'session_enrollment'
+            results.append(row)
+
+        # Compatibility is intentionally limited to the current session.
+        # Older sessions must have explicit SessionEnrollment history.
+        if session.is_current:
+            missing = StudentProfile.objects.filter(
+                school=school,
+                status='active',
+                current_class__isnull=False,
+            ).exclude(pk__in=enrolled_student_ids).select_related(
+                'user',
+                'current_class__class_level',
+            )
+            if class_level_id:
+                missing = missing.filter(
+                    current_class__class_level_id=class_level_id
+                )
+            for student in missing:
+                level = student.current_class.class_level
+                criteria = criteria_map.get(level.pk) or PromotionCriteria(
+                    school=school,
+                    class_level=level,
+                )
+                row = evaluate_student(
+                    student,
+                    session,
+                    criteria,
+                    class_arm=student.current_class,
+                )
+                row['membership_source'] = 'current_class_compatibility'
+                results.append(row)
+
         return Response(results)
 
 
@@ -197,7 +232,7 @@ class PromotionExecuteView(APIView):
                     class_arm=student.current_class,
                     status='active',
                     entry_reason='migration',
-                    enrolled_on=max(student.admission_date, session.start_date),
+                    enrolled_on=min(max(student.admission_date, session.start_date), session.end_date),
                     notes='Compatibility enrollment created during Batch 19 promotion.',
                     created_by=request.user,
                 )
