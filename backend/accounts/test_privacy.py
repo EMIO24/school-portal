@@ -60,10 +60,9 @@ class PrivacyTests(TestCase):
         url = f"/api/staff/{self.staff.pk}/"
         for user in (self.peer, self.parent):
             response = self.client_for(user, self.b).get(url)
-            self.assertEqual(response.status_code, 200)
-            for field in ("religion", "address", "dob", "phone", "state_of_origin"):
-                self.assertNotIn(field, response.data)
+            self.assertIn(response.status_code, (403, 404))
         own = self.client_for(self.teacher, self.b).get(url)
+        self.assertEqual(own.status_code, 200)
         self.assertEqual(own.data["religion"], self.staff.religion)
 
     def test_student_details_deny_students_parents_and_foreign_users(self):
@@ -156,8 +155,7 @@ class PrivacyTests(TestCase):
         client = APIClient(HTTP_X_SCHOOL_SLUG=self.b.slug)
         client.force_authenticate(viewer)
         response = client.get(f"/api/staff/{self.staff.pk}/")
-        self.assertEqual(response.status_code, 200)
-        self.assertNotIn("religion", response.data)
+        self.assertIn(response.status_code, (403, 404))
         for path, profile in (("students", self.profile), ("staff", self.staff)):
             response = client.patch(f"/api/{path}/{profile.pk}/", {"religion": "changed"}, format="json")
             self.assertEqual(response.status_code, 403)
