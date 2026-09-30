@@ -359,6 +359,50 @@ class PaystackTests(TestCase):
         self.assertEqual(r.status_code,200)
         PlatformSecurity.objects.create(user=self.owner,access_level='viewer')
         self.assertEqual(self.client.post('/api/platform/payments/',{},format='json').status_code,403)
+    def test_platform_checkout_reopen_blocks_integrity_drift_before_paystack(self):
+        self.start()
+        order = PaymentOrder.objects.get()
+        PaymentOrder.objects.filter(pk=order.pk).update(
+            authorization_url='',
+            subaccount_code='ACCT_wrong',
+            status='initializing',
+        )
+        order.refresh_from_db()
+        self.client.force_authenticate(self.owner)
+        with patch.object(PaystackService, 'initialize') as initialize:
+            response = self.client.post(
+                '/api/platform/payments/',
+                {'reference': order.reference, 'action': 'retry_checkout'},
+                format='json',
+            )
+        self.assertEqual(response.status_code, 400)
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'review')
+        self.assertIn('settlement account', order.note.lower())
+        initialize.assert_not_called()
+
+    def test_platform_checkout_reopen_blocks_malformed_fee_allocations(self):
+        self.start()
+        order = PaymentOrder.objects.get()
+        PaymentOrder.objects.filter(pk=order.pk).update(
+            authorization_url='',
+            allocations=[],
+            status='initializing',
+        )
+        order.refresh_from_db()
+        self.client.force_authenticate(self.owner)
+        with patch.object(PaystackService, 'initialize') as initialize:
+            response = self.client.post(
+                '/api/platform/payments/',
+                {'reference': order.reference, 'action': 'retry_checkout'},
+                format='json',
+            )
+        self.assertEqual(response.status_code, 400)
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'review')
+        self.assertIn('allocation', order.note.lower())
+        initialize.assert_not_called()
+
     def test_platform_reconciliation_marks_failed_without_credit(self):
         self.start(); order = PaymentOrder.objects.get(); self.client.force_authenticate(self.owner)
         with patch.object(PaystackService, 'verify', return_value=self.data(order, status='failed')):
