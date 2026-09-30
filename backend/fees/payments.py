@@ -133,6 +133,23 @@ def valid_fee_allocations(order):
     return normalized if total == order.amount_kobo else None
 
 
+def fee_checkout_reopen_issue(order):
+    """Return a reason when an unfinished fee checkout is unsafe to reopen."""
+    if order.kind != 'fees' or order.invoice_id is not None:
+        return 'Checkout type is inconsistent.'
+    if (order.student_id is None or order.student.school_id != order.school_id or
+            order.payer.school_id != order.school_id):
+        return 'Checkout ownership details are inconsistent.'
+    if valid_fee_allocations(order) is None:
+        return 'Checkout allocation details are inconsistent.'
+    account = SchoolPaymentAccount.objects.filter(
+        school_id=order.school_id, mode=order.mode
+    ).first()
+    if not account or account.subaccount_code != order.subaccount_code:
+        return 'School settlement account changed or is no longer connected.'
+    return ''
+
+
 @transaction.atomic
 def settle(reference, data):
     school_id = PaymentOrder.objects.values_list('school_id', flat=True).get(reference=reference)
@@ -521,6 +538,19 @@ class PlatformPayments(APIView):
                 raise ValidationError('Use the school invoice checkout to reopen this payment safely.')
             if order.status not in ('initializing','pending'):
                 raise ValidationError('Only unfinished checkouts can be reopened.')
+            if order.kind == 'fees':
+                issue = fee_checkout_reopen_issue(order)
+                if issue:
+                    order.status, order.note = 'review', issue + ' Verify the payment before taking further action.'
+                    order.save(update_fields=['status', 'note'])
+                    event(request.user, 'payment.reopen_blocked', order.reference, {
+                        'school_id': order.school_id, 'reason': 'checkout_integrity'
+                    })
+                    raise ValidationError(order.note)
+            elif order.kind != 'subscription':
+                order.status, order.note = 'review', 'Checkout type is inconsistent. Verify the payment before taking further action.'
+                order.save(update_fields=['status', 'note'])
+                raise ValidationError(order.note)
             if order.authorization_url:
                 return Response({'authorization_url':order.authorization_url,'reference':order.reference})
             try:
