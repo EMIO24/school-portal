@@ -231,7 +231,11 @@ class AssignSubjectsMixin:
         # Validate the full replacement before removing any current assignments.
         rows = []
         for item in assignments:
-            row = SubjectAssignmentSerializer(data={
+            current = SubjectAssignment.objects.filter(
+                school=tenant, teacher=teacher, term=term,
+                subject_id=item['subject_id'], class_arm_id=item['class_arm_id'],
+            ).first()
+            row = SubjectAssignmentSerializer(instance=current, data={
                 'teacher': teacher.pk, 'subject': item['subject_id'],
                 'class_arm': item['class_arm_id'], 'session': session.pk, 'term': term.pk,
             }, context=self.get_serializer_context())
