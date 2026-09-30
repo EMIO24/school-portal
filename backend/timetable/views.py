@@ -92,11 +92,28 @@ class TimetableEntryViewSet(TenantMixin, viewsets.ModelViewSet):
     # ── default queryset (all entries for tenant, optional ?term= filter) ────
 
     def get_queryset(self):
-        qs   = _base_entry_qs(self.school)
+        qs = _base_entry_qs(self.school)
         term = self.request.query_params.get('term')
         if term:
             qs = qs.filter(term_id=term)
-        return qs
+
+        user = self.request.user
+        if user.role == 'school_admin':
+            return qs
+        if user.role == 'teacher':
+            return qs.filter(teacher=user)
+        if user.role == 'student':
+            arm_id = getattr(getattr(user, 'student_profile', None), 'current_class_id', None)
+            return qs.filter(class_arm_id=arm_id) if arm_id else qs.none()
+        if user.role == 'parent':
+            from accounts.models import ParentStudentLink
+            arm_ids = ParentStudentLink.objects.filter(
+                school=self.school, parent=user, student__status='active'
+            ).exclude(student__current_class__isnull=True).values_list(
+                'student__current_class_id', flat=True
+            )
+            return qs.filter(class_arm_id__in=arm_ids)
+        return qs.none()
 
     # ── write responses: return expanded data + surface warning ──────────────
 
@@ -196,6 +213,9 @@ class TimetableEntryViewSet(TenantMixin, viewsets.ModelViewSet):
         Query params: teacher (required), term (required)
         Response:  { "MON": 3, "TUE": 5, ... }
         """
+        if request.user.role != 'school_admin':
+            return Response({'detail': 'Only school administrators can view teacher load.'},
+                            status=status.HTTP_403_FORBIDDEN)
         teacher_id = request.query_params.get('teacher')
         term_id    = request.query_params.get('term')
 
