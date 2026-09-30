@@ -82,3 +82,14 @@ def terminal_enrollment(*, school, student, session, lock=False):
                 "Overlapping enrollment periods make final placement ambiguous."
             )
     return latest
+
+
+def enrolled_user_ids_for_class_on_date(*, school, class_arm, session, on_date):
+    return SessionEnrollment.objects.filter(
+        school=school,
+        class_arm=class_arm,
+        session=session,
+        enrolled_on__lte=on_date,
+    ).filter(
+        Q(exited_on__isnull=True) | Q(exited_on__gte=on_date)
+    ).values_list("student__user_id", flat=True)
