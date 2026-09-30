@@ -86,32 +86,48 @@ class PromotionEvaluateView(APIView):
         session_id     = request.query_params.get('session')
         class_level_id = request.query_params.get('class_level')
         from academics.models import AcademicSession
-        from enrollment.models import StudentProfile
+        from enrollment.models import SessionEnrollment
 
         try:
             session = AcademicSession.objects.get(pk=session_id, school=school)
         except AcademicSession.DoesNotExist:
             return Response({'error': 'Session not found'}, status=404)
 
-        students = StudentProfile.objects.filter(school=school, status='active').select_related('user', 'current_class__class_level')
+        enrollments = SessionEnrollment.objects.filter(
+            school=school,
+            session=session,
+        ).select_related(
+            'student__user',
+            'class_arm__class_level',
+        )
         if class_level_id:
-            students = students.filter(current_class__class_level_id=class_level_id)
+            enrollments = enrollments.filter(
+                class_arm__class_level_id=class_level_id
+            )
 
-        # Pre-load all criteria for this school in one query to avoid N+1
         criteria_map = {
             c.class_level_id: c
-            for c in PromotionCriteria.objects.filter(school=school).select_related('class_level')
+            for c in PromotionCriteria.objects.filter(
+                school=school
+            ).select_related('class_level')
         }
 
         results = []
-        for student in students:
-            if not student.current_class:
+        for enrollment in enrollments:
+            student = enrollment.student
+            if student.status != 'active' or enrollment.status != 'active':
                 continue
-            level_id = student.current_class.class_level_id
-            criteria = criteria_map.get(level_id) or PromotionCriteria(
-                school=school, class_level=student.current_class.class_level
+            level = enrollment.class_arm.class_level
+            criteria = criteria_map.get(level.pk) or PromotionCriteria(
+                school=school,
+                class_level=level,
             )
-            results.append(evaluate_student(student, session, criteria))
+            results.append(evaluate_student(
+                student,
+                session,
+                criteria,
+                class_arm=enrollment.class_arm,
+            ))
         return Response(results)
 
 
@@ -120,42 +136,206 @@ class PromotionExecuteView(APIView):
 
     @transaction.atomic
     def post(self, request):
-        from enrollment.models import StudentProfile, ClassArm
+        from enrollment.models import StudentProfile, ClassArm, SessionEnrollment
         from academics.models import AcademicSession
         from tenants.models import School, PlatformEvent
         from rest_framework.exceptions import ValidationError
+
         school = School.objects.select_for_update().get(pk=request.tenant.pk)
         decisions = request.data
         if not isinstance(decisions, list) or not decisions or len(decisions) > 1000:
             raise ValidationError('Provide between 1 and 1000 decisions.')
+
         seen, prepared = set(), []
         for item in decisions:
             if not isinstance(item, dict) or item.get('decision') not in dict(PromotionRecord.DECISION_CHOICES):
                 raise ValidationError('Select a valid promotion decision.')
+
             sid = item.get('student_id')
-            if sid in seen: raise ValidationError('A student occurs more than once.')
+            if sid in seen:
+                raise ValidationError('A student occurs more than once.')
             seen.add(sid)
-            student = StudentProfile.objects.select_for_update().filter(pk=sid, school=school, status='active').first()
-            session = AcademicSession.objects.filter(pk=item.get('session_id'), school=school).first()
-            if not student or not student.current_class or not session:
-                raise ValidationError('Select an active student, current class and source session from this school.')
-            existing = PromotionRecord.objects.filter(school=school, student=student, from_session=session).first()
-            if existing:
-                raise ValidationError('A decision already exists for this student and session. Review it before changing records.')
-            destination = AcademicSession.objects.filter(pk=item.get('to_session_id'), school=school, start_date__gt=session.end_date).first()
-            arm = ClassArm.objects.filter(pk=item.get('to_class_id'), school=school).first()
+
+            student = StudentProfile.objects.select_for_update().filter(
+                pk=sid,
+                school=school,
+                status='active',
+            ).first()
+            session = AcademicSession.objects.filter(
+                pk=item.get('session_id'),
+                school=school,
+            ).first()
+            if not student or not session:
+                raise ValidationError(
+                    'Select an active student and source session from this school.'
+                )
+
+            if PromotionRecord.objects.filter(
+                school=school,
+                student=student,
+                from_session=session,
+            ).exists():
+                raise ValidationError(
+                    'A decision already exists for this student and session. Review it before changing records.'
+                )
+
+            source_enrollment = SessionEnrollment.objects.select_for_update().filter(
+                school=school,
+                student=student,
+                session=session,
+            ).first()
+
+            if not source_enrollment:
+                if not session.is_current or not student.current_class:
+                    raise ValidationError(
+                        'Historical class membership is missing for this session. Restore the session enrollment before promotion.'
+                    )
+                source_enrollment = SessionEnrollment.objects.create(
+                    school=school,
+                    student=student,
+                    session=session,
+                    class_arm=student.current_class,
+                    status='active',
+                    entry_reason='migration',
+                    enrolled_on=max(student.admission_date, session.start_date),
+                    notes='Compatibility enrollment created during Batch 19 promotion.',
+                    created_by=request.user,
+                )
+
+            if source_enrollment.status != 'active':
+                raise ValidationError('The source session enrollment is already closed.')
+
+            source_arm = source_enrollment.class_arm
             decision = item['decision']
-            if decision in ('promoted','repeated') and not destination:
-                raise ValidationError('Select an explicit destination session after the source session ends.')
-            if decision == 'promoted' and (not arm or arm.class_level.order_index <= student.current_class.class_level.order_index):
-                raise ValidationError('Promotion requires a higher destination class.')
-            if decision == 'repeated': arm = student.current_class
-            if decision in ('graduated','withdrawn'): arm, destination = None, None
-            prepared.append((student, session, destination, arm, item))
-        for student, session, destination, arm, item in prepared:
-            record = PromotionRecord.objects.create(school=school, student=student, from_session=session, to_session=destination, from_class=student.current_class, to_class=arm, decision=item['decision'], criteria_met=bool(item.get('criteria_met',False)), decided_by=request.user, notes=str(item.get('notes',''))[:2000])
-            if item['decision'] in ('promoted','repeated'): student.current_class = arm
-            else: student.status = item['decision']
-            student.save(update_fields=['current_class','status'])
-            PlatformEvent.objects.create(actor=request.user, actor_email=request.user.email, action='school.promotion', target=str(record.pk), details={'school_id':school.pk,'student_id':student.pk,'decision':item['decision']})
-        return Response({'executed':len(prepared),'graduated':sum(item['decision']=='graduated' for *_,item in prepared),'skipped':[]})
+            destination = None
+            destination_arm = None
+
+            if decision in ('promoted', 'repeated'):
+                destination = AcademicSession.objects.filter(
+                    pk=item.get('to_session_id'),
+                    school=school,
+                    start_date__gt=session.end_date,
+                ).first()
+                if not destination:
+                    raise ValidationError(
+                        'Select an explicit destination session after the source session ends.'
+                    )
+
+                if SessionEnrollment.objects.filter(
+                    student=student,
+                    session=destination,
+                ).exists():
+                    raise ValidationError(
+                        'This student already has an enrollment in the destination session.'
+                    )
+
+                if decision == 'promoted':
+                    destination_arm = ClassArm.objects.select_related(
+                        'class_level'
+                    ).filter(
+                        pk=item.get('to_class_id'),
+                        school=school,
+                    ).first()
+                    if (
+                        not destination_arm
+                        or destination_arm.class_level.order_index
+                        <= source_arm.class_level.order_index
+                    ):
+                        raise ValidationError(
+                            'Promotion requires a higher destination class belonging to this school.'
+                        )
+                else:
+                    destination_arm = source_arm
+
+            prepared.append({
+                'student': student,
+                'session': session,
+                'source_enrollment': source_enrollment,
+                'source_arm': source_arm,
+                'destination': destination,
+                'destination_arm': destination_arm,
+                'item': item,
+            })
+
+        for change in prepared:
+            student = change['student']
+            session = change['session']
+            source_enrollment = change['source_enrollment']
+            source_arm = change['source_arm']
+            destination = change['destination']
+            destination_arm = change['destination_arm']
+            item = change['item']
+            decision = item['decision']
+
+            record = PromotionRecord.objects.create(
+                school=school,
+                student=student,
+                from_session=session,
+                to_session=destination,
+                from_class=source_arm,
+                to_class=destination_arm,
+                decision=decision,
+                criteria_met=bool(item.get('criteria_met', False)),
+                decided_by=request.user,
+                notes=str(item.get('notes', ''))[:2000],
+            )
+
+            source_enrollment.status = (
+                'graduated' if decision == 'graduated'
+                else 'withdrawn' if decision == 'withdrawn'
+                else 'completed'
+            )
+            source_enrollment.exited_on = session.end_date
+            source_enrollment.notes = (
+                source_enrollment.notes
+                + (' ' if source_enrollment.notes else '')
+                + f'Closed by promotion decision {record.pk}: {decision}.'
+            )[:500]
+            source_enrollment.save(
+                update_fields=['status', 'exited_on', 'notes', 'updated_at']
+            )
+
+            if decision in ('promoted', 'repeated'):
+                new_enrollment = SessionEnrollment.objects.create(
+                    school=school,
+                    student=student,
+                    session=destination,
+                    class_arm=destination_arm,
+                    status='active',
+                    entry_reason='promotion' if decision == 'promoted' else 'repeat',
+                    enrolled_on=destination.start_date,
+                    notes=f'Created by promotion decision {record.pk}.',
+                    created_by=request.user,
+                )
+                student.current_class = destination_arm
+                student.status = 'active'
+            else:
+                new_enrollment = None
+                student.current_class = None
+                student.status = decision
+
+            student.save(update_fields=['current_class', 'status'])
+
+            PlatformEvent.objects.create(
+                actor=request.user,
+                actor_email=request.user.email,
+                action='school.promotion',
+                target=str(record.pk),
+                details={
+                    'school_id': school.pk,
+                    'student_id': student.pk,
+                    'decision': decision,
+                    'from_enrollment_id': source_enrollment.pk,
+                    'to_enrollment_id': new_enrollment.pk if new_enrollment else None,
+                },
+            )
+
+        return Response({
+            'executed': len(prepared),
+            'graduated': sum(
+                change['item']['decision'] == 'graduated'
+                for change in prepared
+            ),
+            'skipped': [],
+        })
+
