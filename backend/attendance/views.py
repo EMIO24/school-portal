@@ -203,7 +203,7 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
             _, was_created = AttendanceRecord.objects.update_or_create(
                 attendance_session=session,
                 student_id=sid,
-                defaults={'school':self.school, 'status': item['status'], 'remark': item.get('remark', '')},
+                defaults={'status': item['status'], 'remark': item.get('remark', '')},
             )
             if was_created:
                 created += 1
