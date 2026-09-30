@@ -292,6 +292,121 @@ class StudentProfile(models.Model):
         return f"{self.admission_number} — {self.full_name}"
 
 
+class SessionEnrollment(models.Model):
+    """Historical class placement for one student in one academic session."""
+
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("completed", "Completed"),
+        ("withdrawn", "Withdrawn"),
+        ("transferred", "Transferred"),
+        ("graduated", "Graduated"),
+    ]
+    ENTRY_REASON_CHOICES = [
+        ("admission", "Admission"),
+        ("promotion", "Promotion"),
+        ("repeat", "Repeat"),
+        ("migration", "Migration"),
+        ("manual", "Manual"),
+    ]
+
+    school = models.ForeignKey(
+        "tenants.School",
+        on_delete=models.CASCADE,
+        related_name="session_enrollments",
+    )
+    student = models.ForeignKey(
+        StudentProfile,
+        on_delete=models.CASCADE,
+        related_name="session_enrollments",
+    )
+    session = models.ForeignKey(
+        "academics.AcademicSession",
+        on_delete=models.PROTECT,
+        related_name="student_enrollments",
+    )
+    class_arm = models.ForeignKey(
+        ClassArm,
+        on_delete=models.PROTECT,
+        related_name="session_enrollments",
+    )
+    status = models.CharField(
+        max_length=15,
+        choices=STATUS_CHOICES,
+        default="active",
+        db_index=True,
+    )
+    entry_reason = models.CharField(
+        max_length=15,
+        choices=ENTRY_REASON_CHOICES,
+        default="manual",
+    )
+    enrolled_on = models.DateField()
+    exited_on = models.DateField(null=True, blank=True)
+    notes = models.CharField(max_length=500, blank=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_session_enrollments",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["session__start_date", "class_arm__class_level__order_index", "student__admission_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["student", "session"],
+                name="unique_student_session_enrollment",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(exited_on__isnull=True) |
+                    models.Q(exited_on__gte=models.F("enrolled_on"))
+                ),
+                name="session_enrollment_exit_not_before_entry",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["school", "session", "status"]),
+            models.Index(fields=["school", "class_arm", "session"]),
+            models.Index(fields=["student", "session"]),
+        ]
+
+    def clean(self):
+        errors = {}
+        if self.student_id and self.school_id and self.student.school_id != self.school_id:
+            errors["student"] = "Student must belong to the enrollment school."
+        if self.session_id and self.school_id and self.session.school_id != self.school_id:
+            errors["session"] = "Academic session must belong to the enrollment school."
+        if self.class_arm_id and self.school_id and self.class_arm.school_id != self.school_id:
+            errors["class_arm"] = "Class must belong to the enrollment school."
+        if self.enrolled_on and self.session_id:
+            if not self.session.start_date <= self.enrolled_on <= self.session.end_date:
+                errors["enrolled_on"] = "Enrollment date must fall within the academic session."
+        if self.exited_on and self.session_id and self.exited_on > self.session.end_date:
+            errors["exited_on"] = "Exit date cannot be after the academic session."
+        if self.status == "active" and self.exited_on:
+            errors["exited_on"] = "An active enrollment cannot have an exit date."
+        if self.status != "active" and not self.exited_on:
+            errors["exited_on"] = "A closed enrollment requires an exit date."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    @property
+    def class_name(self):
+        return self.class_arm.full_name
+
+    def __str__(self):
+        return f"{self.student} — {self.session.name} / {self.class_arm.full_name}"
+
+
 class MigrationStudentReference(models.Model):
     """School's stable source reference for a migrated student, never a login ID."""
     school = models.ForeignKey("tenants.School", on_delete=models.CASCADE)
