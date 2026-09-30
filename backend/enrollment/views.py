@@ -28,6 +28,7 @@ from .safety import RetainAcademicHistoryMixin
 from .models import ClassArm, ClassLevel, StudentProfile, Subject
 from .session_enrollment import EnrollmentPlacementError, ensure_current_enrollment
 from .lifecycle import StudentLifecycleError, transition_student
+from .transfers import StudentTransferError, transfer_student
 from .serializers import (
     ClassArmSerializer,
     ClassLevelSerializer,
@@ -239,6 +240,85 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
                 updated,
                 context={"request": request},
             ).data,
+            status=status.HTTP_200_OK,
+        )
+
+    # ── Mid-session class transfer ───────────────────────────────────────
+
+    @action(detail=True, methods=["post"], url_path="transfer-class")
+    def transfer_class(self, request, pk=None):
+        student = self.get_object()
+        tenant = self._get_tenant()
+        class_arm_id = request.data.get("class_arm")
+        effective_raw = request.data.get("effective_date")
+        reason = request.data.get("reason", "")
+
+        if not class_arm_id:
+            return Response(
+                {"error": "class_arm is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not effective_raw:
+            return Response(
+                {"error": "effective_date is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        effective_date = _parse_date(str(effective_raw))
+        if not effective_date:
+            return Response(
+                {"error": "Enter a valid effective_date in YYYY-MM-DD format."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            destination = ClassArm.objects.get(
+                pk=class_arm_id,
+                school=tenant,
+            )
+        except ClassArm.DoesNotExist:
+            return Response(
+                {"error": "Destination class not found for this school."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            updated, source, destination_enrollment = transfer_student(
+                school=tenant,
+                student=student,
+                destination_class=destination,
+                effective_date=effective_date,
+                actor=request.user,
+                reason=reason,
+            )
+        except StudentTransferError as exc:
+            return Response(
+                {"error": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        updated.refresh_from_db()
+        return Response(
+            {
+                "student": StudentProfileSerializer(
+                    updated,
+                    context={"request": request},
+                ).data,
+                "source_enrollment": {
+                    "id": source.pk,
+                    "class_arm": source.class_arm_id,
+                    "status": source.status,
+                    "enrolled_on": source.enrolled_on,
+                    "exited_on": source.exited_on,
+                },
+                "destination_enrollment": {
+                    "id": destination_enrollment.pk,
+                    "class_arm": destination_enrollment.class_arm_id,
+                    "status": destination_enrollment.status,
+                    "enrolled_on": destination_enrollment.enrolled_on,
+                    "exited_on": destination_enrollment.exited_on,
+                },
+            },
             status=status.HTTP_200_OK,
         )
 
