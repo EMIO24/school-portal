@@ -68,6 +68,26 @@ class Batch17HFinanceHistoryTests(TestCase):
         self.assertEqual(str(self.schedule.amount), '10000.00')
         self.assertIn('financial history', response.data['errors'][0]['detail'])
 
+    def test_direct_model_save_cannot_rewrite_used_schedule(self):
+        from django.core.exceptions import ValidationError
+        self.pay()
+        self.schedule.amount = '15000.00'
+        with self.assertRaises(ValidationError):
+            self.schedule.save()
+        self.schedule.refresh_from_db()
+        self.assertEqual(str(self.schedule.amount), '10000.00')
+
+    def test_outstanding_report_uses_frozen_ledger_not_live_schedule(self):
+        self.pay()
+        FeeSchedule.objects.filter(pk=self.schedule.pk).update(amount='99999.00')
+        response = self.client.get(f'/api/fees/outstanding/?term={self.term.pk}')
+        self.assertEqual(response.status_code, 200, response.data)
+        row = response.data['results'][0]
+        self.assertEqual(str(row['total_fees']), '10000.00')
+        self.assertEqual(str(row['paid']), '4000.00')
+        self.assertEqual(str(row['outstanding']), '6000.00')
+        self.assertEqual(str(response.data['summary']['total_expected']), '10000.00')
+
     def test_unused_fee_schedule_remains_editable(self):
         response = self.client.post('/api/fees/schedule/', {
             'term_id': self.term.pk,
