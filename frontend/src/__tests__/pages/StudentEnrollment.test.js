@@ -54,7 +54,7 @@ test('student profile surfaces safe server message when same-session class chang
     route: '/admin/students/:id',
   });
 
-  expect(await screen.findByText('Ada Student')).toBeVisible();
+  expect(await screen.findByRole('heading', {name: 'Ada Student', level: 1})).toBeVisible();
 
   const select = container.querySelector('.sp-assign-select');
   fireEvent.change(select, {target: {value: '22'}});
