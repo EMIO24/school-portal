@@ -9,28 +9,32 @@ jest.mock('../../services/api', () => ({
   default: {get: jest.fn(), post: jest.fn()},
 }));
 
+let studentData;
+
 beforeEach(() => {
   jest.resetAllMocks();
+  jest.spyOn(window, 'confirm').mockReturnValue(true);
+  studentData = {
+    id: 1,
+    full_name: 'Ada Student',
+    admission_number: 'WF0001',
+    email: 'ada@student.test',
+    status: 'active',
+    current_class: 21,
+    current_class_name: 'JSS1A',
+    guardian_name: '',
+    guardian_phone: '',
+    guardian_email: '',
+    guardian_relationship: '',
+  };
   api.get.mockImplementation(async url => {
     if (url === '/api/students/1/') {
-      return {data: {
-        id: 1,
-        full_name: 'Ada Student',
-        admission_number: 'WF0001',
-        email: 'ada@student.test',
-        status: 'active',
-        current_class: 21,
-        current_class_name: 'JSS1A',
-        guardian_name: '',
-        guardian_phone: '',
-        guardian_email: '',
-        guardian_relationship: '',
-      }};
+      return {data: studentData};
     }
     if (url === '/api/class-arms/') {
       return {data: [
         {id: 21, full_name: 'JSS1A'},
-        {id: 22, full_name: 'JSS2A'},
+        {id: 22, full_name: 'JSS1B'},
       ]};
     }
     if (url === '/api/students/1/parents/') {
@@ -40,12 +44,20 @@ beforeEach(() => {
   });
 });
 
-test('student profile surfaces safe server message when same-session class change is blocked', async () => {
-  api.post.mockRejectedValue({
-    response: {
-      data: {
-        error: 'This student already has a current-session class placement. Use the class-transfer workflow to change classes safely.',
+afterEach(() => {
+  window.confirm.mockRestore();
+});
+
+test('placed student uses controlled transfer workflow', async () => {
+  api.post.mockResolvedValue({
+    data: {
+      student: {
+        ...studentData,
+        current_class: 22,
+        current_class_name: 'JSS1B',
       },
+      source_enrollment: {status: 'transferred'},
+      destination_enrollment: {status: 'active'},
     },
   });
 
@@ -55,17 +67,59 @@ test('student profile surfaces safe server message when same-session class chang
   });
 
   expect(await screen.findByRole('heading', {name: 'Ada Student', level: 1})).toBeVisible();
+  expect(screen.getByRole('button', {name: 'Transfer'})).toBeDisabled();
 
   const select = container.querySelector('.sp-assign-select');
   fireEvent.change(select, {target: {value: '22'}});
+  fireEvent.change(screen.getByLabelText('Transfer effective date'), {
+    target: {value: '2026-09-30'},
+  });
+  fireEvent.change(screen.getByLabelText('Transfer reason'), {
+    target: {value: 'Class balancing'},
+  });
+  fireEvent.click(screen.getByRole('button', {name: 'Transfer'}));
+
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+    '/api/students/1/transfer-class/',
+    {
+      class_arm: '22',
+      effective_date: '2026-09-30',
+      reason: 'Class balancing',
+    },
+  ));
+
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Student transferred successfully.'
+  );
+  expect(screen.getByText('JSS1B')).toBeVisible();
+});
+
+test('unassigned student still uses initial assignment workflow', async () => {
+  studentData = {
+    ...studentData,
+    current_class: null,
+    current_class_name: null,
+  };
+  api.post.mockResolvedValue({
+    data: {
+      ...studentData,
+      current_class: 21,
+      current_class_name: 'JSS1A',
+    },
+  });
+
+  const {container} = renderPage(<StudentProfilePage />, {
+    path: '/admin/students/1',
+    route: '/admin/students/:id',
+  });
+
+  expect(await screen.findByRole('button', {name: 'Assign'})).toBeVisible();
+  const select = container.querySelector('.sp-assign-select');
+  fireEvent.change(select, {target: {value: '21'}});
   fireEvent.click(screen.getByRole('button', {name: 'Assign'}));
 
   await waitFor(() => expect(api.post).toHaveBeenCalledWith(
     '/api/students/1/assign-class/',
-    {class_arm: '22'},
+    {class_arm: '21'},
   ));
-
-  expect(await screen.findByRole('status')).toHaveTextContent(
-    'Use the class-transfer workflow to change classes safely.'
-  );
 });
