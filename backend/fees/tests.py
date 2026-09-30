@@ -470,6 +470,63 @@ class PaystackTests(TestCase):
         self.assertEqual(self.client.post('/api/fees/pay/manual/', payload, format='json', **self.headers).status_code, 400)
         payload.update(method='cash', amount_paid=20000)
         self.assertEqual(self.client.post('/api/fees/pay/manual/', payload, format='json', **self.headers).status_code, 400)
+    def test_malformed_checkout_allocations_fail_closed_without_credit(self):
+        response = self.start()
+        self.assertEqual(response.status_code, 200)
+        order = PaymentOrder.objects.get()
+        cases = [
+            [],
+            [{'schedule_id': self.fee.pk, 'amount_kobo': 500000},
+             {'schedule_id': self.fee.pk, 'amount_kobo': 500000}],
+            [{'schedule_id': self.fee.pk, 'amount_kobo': 999999}],
+            [{'schedule_id': str(self.fee.pk), 'amount_kobo': 1000000}],
+            [{'schedule_id': self.fee.pk, 'amount_kobo': True}],
+        ]
+        for index, allocations in enumerate(cases):
+            with self.subTest(index=index, allocations=allocations):
+                PaymentOrder.objects.filter(pk=order.pk).update(
+                    status='pending', note='', allocations=allocations
+                )
+                order.refresh_from_db()
+                settled = settle(order.reference, self.data(order))
+                self.assertEqual(settled.status, 'review')
+                self.assertIn('allocation', settled.note.lower())
+                self.assertFalse(FeePayment.objects.filter(
+                    paystack_reference=order.reference
+                ).exists())
+
+    def test_foreign_school_schedule_in_checkout_allocation_never_credits(self):
+        other_level = ClassLevel.objects.create(
+            school=self.other, name='JSS1', order_index=1
+        )
+        other_session = AcademicSession.objects.create(
+            school=self.other, name='2026/27',
+            start_date='2026-09-01', end_date='2027-07-31'
+        )
+        other_term = Term.objects.create(
+            session=other_session, name='first',
+            start_date='2026-09-01', end_date='2026-12-31'
+        )
+        other_category = FeeCategory.objects.create(
+            school=self.other, name='Tuition'
+        )
+        foreign_schedule = FeeSchedule.objects.create(
+            school=self.other, term=other_term, class_level=other_level,
+            fee_category=other_category, amount=10000
+        )
+        self.assertEqual(self.start().status_code, 200)
+        order = PaymentOrder.objects.get()
+        PaymentOrder.objects.filter(pk=order.pk).update(
+            allocations=[{
+                'schedule_id': foreign_schedule.pk,
+                'amount_kobo': order.amount_kobo,
+            }]
+        )
+        order.refresh_from_db()
+        settled = settle(order.reference, self.data(order))
+        self.assertEqual(settled.status, 'review')
+        self.assertFalse(FeePayment.objects.exists())
+
     def test_balance_change_requires_review_instead_of_double_credit(self):
         self.start(); order = PaymentOrder.objects.get()
         # Simulate an out-of-band/legacy payment record that bypassed ledger posting.
