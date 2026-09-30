@@ -495,6 +495,43 @@ class PaystackTests(TestCase):
                     paystack_reference=order.reference
                 ).exists())
 
+    def test_cross_tenant_student_or_payer_on_checkout_never_credits(self):
+        self.assertEqual(self.start().status_code, 200)
+        order = PaymentOrder.objects.get()
+
+        foreign_level = ClassLevel.objects.create(
+            school=self.other, name='JSS2', order_index=2
+        )
+        foreign_arm = ClassArm.objects.create(
+            school=self.other, class_level=foreign_level, name='A'
+        )
+        foreign_user = CustomUser.objects.create_user(
+            'foreign-student@pay.test', 'Password!123',
+            school=self.other, role='student'
+        )
+        foreign_student = StudentProfile.objects.create(
+            school=self.other, user=foreign_user, current_class=foreign_arm,
+            admission_number='OTHER001'
+        )
+
+        PaymentOrder.objects.filter(pk=order.pk).update(
+            student=foreign_student, status='pending', note=''
+        )
+        order.refresh_from_db()
+        settled = settle(order.reference, self.data(order))
+        self.assertEqual(settled.status, 'review')
+        self.assertIn('ownership', settled.note.lower())
+        self.assertFalse(FeePayment.objects.exists())
+
+        PaymentOrder.objects.filter(pk=order.pk).update(
+            student=self.student, payer=foreign_user, status='pending', note=''
+        )
+        order.refresh_from_db()
+        settled = settle(order.reference, self.data(order))
+        self.assertEqual(settled.status, 'review')
+        self.assertIn('ownership', settled.note.lower())
+        self.assertFalse(FeePayment.objects.exists())
+
     def test_foreign_school_schedule_in_checkout_allocation_never_credits(self):
         other_level = ClassLevel.objects.create(
             school=self.other, name='JSS1', order_index=1
