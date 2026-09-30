@@ -59,13 +59,27 @@ class BasicCompletionTests(TestCase):
         payment=FeePayment.objects.create(school=self.school,student=self.profile,fee_schedule=schedule,amount_paid=4000,payment_date=self.term.start_date,method='cash',recorded_by=self.admin)
         register=AttendanceSession.objects.create(school=self.school,class_arm=self.arm,teacher=self.teacher,term=self.term,date=self.term.start_date)
         attendance=AttendanceRecord.objects.create(attendance_session=register,student=self.student,status='present')
-        for state,active in [('withdrawn',False),('active',True)]:
-            response=self.client.patch(f'/api/students/{self.profile.pk}/',{'status':state},format='json')
-            self.assertEqual(response.status_code,200,response.data)
-            self.student.refresh_from_db();self.assertEqual(self.student.is_active,active)
-            self.assertTrue(ScoreEntry.objects.filter(pk=self.score.pk).exists())
-            payment.refresh_from_db();attendance.refresh_from_db()
-            self.assertEqual(payment.amount_paid,4000);self.assertEqual(attendance.status,'present')
+        response=self.client.post(
+            f'/api/students/{self.profile.pk}/lifecycle/',
+            {'action':'suspend','reason':'Regression test'},
+            format='json',
+        )
+        self.assertEqual(response.status_code,200,response.data)
+        self.student.refresh_from_db();self.assertFalse(self.student.is_active)
+        self.assertTrue(ScoreEntry.objects.filter(pk=self.score.pk).exists())
+        payment.refresh_from_db();attendance.refresh_from_db()
+        self.assertEqual(payment.amount_paid,4000);self.assertEqual(attendance.status,'present')
+
+        response=self.client.post(
+            f'/api/students/{self.profile.pk}/lifecycle/',
+            {'action':'reactivate','reason':'Regression test'},
+            format='json',
+        )
+        self.assertEqual(response.status_code,200,response.data)
+        self.student.refresh_from_db();self.assertTrue(self.student.is_active)
+        self.assertTrue(ScoreEntry.objects.filter(pk=self.score.pk).exists())
+        payment.refresh_from_db();attendance.refresh_from_db()
+        self.assertEqual(payment.amount_paid,4000);self.assertEqual(attendance.status,'present')
 
     def test_foreign_profile_edit_and_deactivation_rejected(self):
         foreign=CustomUser.objects.create_user(email='other-student@example.test',role='student',school=self.other)
