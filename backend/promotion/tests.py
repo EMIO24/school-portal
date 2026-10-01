@@ -433,3 +433,41 @@ class PromotionEnrollmentHistoryTests(TestCase):
         self.assertFalse(
             SessionEnrollment.objects.filter(session=self.destination).exists()
         )
+
+
+    def test_staged_decision_can_be_corrected_before_rollover_without_mutation(self):
+        first = self.execute(self.promoted_body())
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(first.data["staged"], 1)
+        self.assertEqual(first.data["updated"], 0)
+
+        corrected = self.execute(self.promoted_body(
+            decision="repeated",
+            to_class_id=self.arm1.pk,
+            criteria_met=False,
+        ))
+        self.assertEqual(corrected.status_code, 200, corrected.data)
+        self.assertEqual(corrected.data["staged"], 1)
+        self.assertEqual(corrected.data["updated"], 1)
+
+        record = PromotionRecord.objects.get(
+            student=self.student,
+            from_session=self.source,
+        )
+        self.assertEqual(record.decision, "repeated")
+        self.assertEqual(record.to_session, self.destination)
+        self.assertEqual(record.to_class, self.arm1)
+
+        self.source_enrollment.refresh_from_db()
+        self.student.refresh_from_db()
+        self.student.user.refresh_from_db()
+        self.assertEqual(self.source_enrollment.status, "active")
+        self.assertEqual(self.student.current_class, self.arm1)
+        self.assertEqual(self.student.status, "active")
+        self.assertTrue(self.student.user.is_active)
+        self.assertFalse(
+            SessionEnrollment.objects.filter(
+                student=self.student,
+                session=self.destination,
+            ).exists()
+        )
