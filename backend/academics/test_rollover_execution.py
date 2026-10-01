@@ -25,6 +25,7 @@ class AcademicRolloverExecutionTests(TestCase):
             "Password!123",
             school=self.school,
             role="school_admin",
+            must_change_password=False,
         )
         self.teacher = CustomUser.objects.create_user(
             "teacher@execution.test",
