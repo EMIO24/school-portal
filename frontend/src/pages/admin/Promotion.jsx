@@ -39,9 +39,20 @@ export default function Promotion() {
       let url = `/api/promotion/evaluate/?session=${session}`;
       if (level) url += `&class_level=${level}`;
       const { data } = await api.post(url);
-      setResults(Array.isArray(data) ? data : []);
+      const rows = Array.isArray(data) ? data : [];
+      setResults(rows);
       setOverrides({});
-      setDestinations({});
+      setDestinations(Object.fromEntries(
+        rows
+          .filter(row => row.saved_to_class_id)
+          .map(row => [row.student_id, String(row.saved_to_class_id)])
+      ));
+      const savedDestinationSessions = [...new Set(
+        rows.map(row => row.saved_to_session_id).filter(Boolean)
+      )];
+      if (savedDestinationSessions.length === 1) {
+        setDestinationSession(String(savedDestinationSessions[0]));
+      }
     } catch {
       alert("Could not evaluate students. Please try again.");
     } finally {
@@ -72,13 +83,14 @@ export default function Promotion() {
   }
 
   function finalDecision(r) {
-    return overrides[r.student_id] || r.recommended;
+    return overrides[r.student_id] || r.saved_decision || r.recommended;
   }
 
   const summary = {
     promoted:  results.filter(r => finalDecision(r) === "promoted").length,
     repeated:  results.filter(r => finalDecision(r) === "repeated").length,
     graduated: results.filter(r => finalDecision(r) === "graduated").length,
+    withdrawn: results.filter(r => finalDecision(r) === "withdrawn").length,
   };
 
   async function execute() {
@@ -114,7 +126,7 @@ export default function Promotion() {
       const { data } = await api.post("/api/promotion/execute/", body);
       setPreview(false);
       setResults([]);
-      setToast(`Saved — ${data.staged ?? data.executed} year-end decisions staged. Run Academic Rollover from Calendar to apply them.`);
+      setToast(`Saved — ${data.staged ?? data.executed} year-end decisions staged${data.updated ? ` (${data.updated} corrected)` : ""}. Run Academic Rollover from Calendar to apply them.`);
       setTimeout(() => setToast(null), 5000);
     } catch {
       setToast('Could not execute promotions. Check the destination session and class; a previous decision cannot be repeated.');
@@ -239,6 +251,7 @@ export default function Promotion() {
               <div className="ps-row green"><span>Promoted</span><strong>{summary.promoted}</strong></div>
               <div className="ps-row amber"><span>Repeated</span><strong>{summary.repeated}</strong></div>
               <div className="ps-row blue"><span>Graduated</span><strong>{summary.graduated}</strong></div>
+              <div className="ps-row red"><span>Withdrawn</span><strong>{summary.withdrawn}</strong></div>
             </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setPreview(false)}>Cancel</button>
