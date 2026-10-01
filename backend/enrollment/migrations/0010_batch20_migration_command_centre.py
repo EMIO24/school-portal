@@ -27,6 +27,7 @@ class Migration(migrations.Migration):
                 ("reuse_count", models.PositiveIntegerField(default=0)),
                 ("reject_count", models.PositiveIntegerField(default=0)),
                 ("review_count", models.PositiveIntegerField(default=0)),
+                ("last_processed_row", models.PositiveIntegerField(default=0)),
                 ("validated_at", models.DateTimeField(blank=True, null=True)),
                 ("started_at", models.DateTimeField(blank=True, null=True)),
                 ("completed_at", models.DateTimeField(blank=True, null=True)),
@@ -36,6 +37,20 @@ class Migration(migrations.Migration):
                 ("school", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="migration_jobs", to="tenants.school")),
             ],
             options={"ordering": ["-created_at", "-id"]},
+        ),
+        migrations.CreateModel(
+            name="MigrationRowRecord",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("row_number", models.PositiveIntegerField()),
+                ("action", models.CharField(choices=[("CREATE", "Create"), ("REUSE", "Reuse"), ("REVIEW", "Review"), ("REJECT", "Reject")], max_length=8)),
+                ("source_identity", models.CharField(blank=True, default="", max_length=255)),
+                ("target_model", models.CharField(blank=True, default="", max_length=120)),
+                ("target_pk", models.CharField(blank=True, default="", max_length=80)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("job", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="row_records", to="enrollment.migrationjob")),
+            ],
+            options={"ordering": ["job_id", "row_number"]},
         ),
         migrations.CreateModel(
             name="MigrationMappingProfile",
@@ -74,6 +89,10 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="migrationjob",
             constraint=models.UniqueConstraint(fields=("school", "domain", "file_fingerprint"), name="unique_migration_file_per_school_domain"),
+        ),
+        migrations.AddConstraint(
+            model_name="migrationrowrecord",
+            constraint=models.UniqueConstraint(fields=("job", "row_number"), name="unique_migration_job_row_record"),
         ),
         migrations.AddConstraint(
             model_name="migrationmappingprofile",
