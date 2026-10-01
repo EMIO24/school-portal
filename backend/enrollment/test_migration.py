@@ -14,7 +14,8 @@ from tenants.models import PlatformEvent, School
 from timetable.models import Period, TimetableEntry
 from fees.models import FeeCategory, FeeSchedule
 from curriculum.models import CurriculumSource, CurriculumVersion, SchoolAcademicStandard, AcademicStandardTopic
-from .models import (ClassArm, ClassLevel, MigrationStudentReference, StaffProfile, StudentProfile,
+from .models import (ClassArm, ClassLevel, MigrationConflict, MigrationJob, MigrationMappingProfile,
+                     MigrationStudentReference, SessionEnrollment, StaffProfile, StudentProfile,
                      Subject, SubjectAssignment)
 
 
@@ -387,3 +388,180 @@ class MigrationCentreTests(TestCase):
         self.assertEqual(ParentStudentLink.objects.filter(school=self.school).count(), 40)
         self.assertEqual(SubjectAssignment.objects.filter(school=self.school).count(), 20)
         print(f'MIGRATION_SIMULATION_SQLITE students=400 teachers=40 parents=40 arms=20 subjects=15 assignments=20 total_seconds={time.perf_counter()-started:.2f}')
+
+
+    def test_batch20_exact_file_replay_keeps_one_provenance_job(self):
+        body = 'class_level,class_arm\nJSS1,A'
+        first = self.upload('classes', 'import', body)
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(first.data['counts']['CREATE'], 1)
+        self.assertFalse(first.data['idempotent_replay'])
+
+        job = MigrationJob.objects.get(
+            school=self.school,
+            domain='classes',
+            file_fingerprint=first.data['file_fingerprint'],
+        )
+        self.assertEqual(job.status, 'completed')
+        self.assertEqual(job.create_count, 1)
+        event_count = PlatformEvent.objects.filter(
+            action='school.migration_completed',
+            details__migration_job_id=job.pk,
+        ).count()
+
+        retry = self.upload('classes', 'import', body)
+        self.assertEqual(retry.status_code, 200, retry.data)
+        self.assertTrue(retry.data['idempotent_replay'])
+        self.assertEqual(retry.data['counts']['REUSE'], 1)
+        self.assertEqual(MigrationJob.objects.filter(pk=job.pk).count(), 1)
+        job.refresh_from_db()
+        self.assertEqual(job.create_count, 1)
+        self.assertEqual(job.reuse_count, 0)
+        self.assertEqual(
+            PlatformEvent.objects.filter(
+                action='school.migration_completed',
+                details__migration_job_id=job.pk,
+            ).count(),
+            event_count,
+        )
+
+    def test_batch20_historical_evidence_import_preserves_current_placement(self):
+        current = AcademicSession.objects.create(
+            school=self.school, name='2026/27',
+            start_date=date(2026, 9, 1), end_date=date(2027, 7, 18), is_current=True,
+        )
+        Term.objects.create(
+            session=current, name='first',
+            start_date=date(2026, 9, 1), end_date=date(2026, 12, 18), is_current=True,
+        )
+        self.assertEqual(
+            self.upload('classes', 'import', 'class_level,class_arm\nJSS1,A\nJSS2,A').data['counts']['CREATE'],
+            2,
+        )
+        self.assertEqual(
+            self.upload('subjects', 'import', 'code,name,class_level\nMATH,Mathematics,JSS1').data['counts']['CREATE'],
+            1,
+        )
+        student_import = self.upload(
+            'students', 'import',
+            'student_ref,first_name,last_name,class_level,class_arm,dob\nOLD-20,Ada,Legacy,JSS2,A,2013-01-02',
+        )
+        self.assertEqual(student_import.data['counts']['CREATE'], 1, student_import.data)
+        student = StudentProfile.objects.get(school=self.school)
+        current_arm_id = student.current_class_id
+
+        old_session = self.upload(
+            'historical_sessions', 'import',
+            'session,start_date,end_date\n2025/26,2025-09-08,2026-07-17',
+        )
+        self.assertEqual(old_session.data['counts']['CREATE'], 1, old_session.data)
+        old_term = self.upload(
+            'historical_terms', 'import',
+            'session,term,start_date,end_date\n2025/26,first,2025-09-08,2025-12-19',
+        )
+        self.assertEqual(old_term.data['counts']['CREATE'], 1, old_term.data)
+        placement = self.upload(
+            'historical_enrollments', 'import',
+            'student_ref,session,class_level,class_arm,enrolled_on,exited_on,status,entry_reason\n'
+            'OLD-20,2025/26,JSS1,A,2025-09-08,2026-07-17,completed,migration',
+        )
+        self.assertEqual(placement.data['counts']['CREATE'], 1, placement.data)
+
+        result = self.upload(
+            'historical_results', 'import',
+            'student_ref,session,term,subject_code,class_level,class_arm,first_test,second_test,assignment,project,practical,exam_score,is_published\n'
+            'OLD-20,2025/26,first,MATH,JSS1,A,8,7,7,4,4,50,true',
+        )
+        self.assertEqual(result.data['counts']['CREATE'], 1, result.data)
+        attendance = self.upload(
+            'historical_attendance', 'import',
+            'student_ref,session,term,class_level,class_arm,date,status,remark\n'
+            'OLD-20,2025/26,first,JSS1,A,2025-10-10,present,Imported register',
+        )
+        self.assertEqual(attendance.data['counts']['CREATE'], 1, attendance.data)
+
+        student.refresh_from_db()
+        self.assertEqual(student.current_class_id, current_arm_id)
+        historical = AcademicSession.objects.get(school=self.school, name='2025/26')
+        self.assertFalse(historical.is_current)
+        old_enrollment = SessionEnrollment.objects.get(
+            school=self.school, student=student, session=historical
+        )
+        self.assertEqual(old_enrollment.status, 'completed')
+        self.assertEqual(old_enrollment.class_arm.class_level.name, 'JSS1')
+
+        from gradebook.models import ScoreEntry
+        score = ScoreEntry.objects.get(school=self.school, student=student.user, session=historical)
+        self.assertEqual(score.total_score, Decimal('80.00'))
+        self.assertTrue(score.is_published)
+        self.assertEqual(score.class_arm.class_level.name, 'JSS1')
+
+        from attendance.models import AttendanceRecord
+        record = AttendanceRecord.objects.get(
+            attendance_session__school=self.school,
+            attendance_session__term__session=historical,
+            student=student.user,
+        )
+        self.assertEqual(record.status, 'present')
+        self.assertTrue(record.attendance_session.is_finalized)
+
+    def test_batch20_conflicts_are_reviewed_not_overwritten(self):
+        first = self.upload(
+            'historical_sessions', 'import',
+            'session,start_date,end_date\n2024/25,2024-09-09,2025-07-18',
+        )
+        self.assertEqual(first.data['counts']['CREATE'], 1, first.data)
+        conflicting = self.upload(
+            'historical_sessions', 'import',
+            'session,start_date,end_date\n2024/25,2024-09-16,2025-07-25',
+        )
+        self.assertEqual(conflicting.data['counts']['REVIEW'], 1, conflicting.data)
+        self.assertEqual(conflicting.data['counts']['REJECT'], 0)
+        session = AcademicSession.objects.get(school=self.school, name='2024/25')
+        self.assertEqual(session.start_date, date(2024, 9, 9))
+
+        conflict = MigrationConflict.objects.get(job_id=conflicting.data['job_id'])
+        self.assertEqual(conflict.status, 'open')
+        listing = self.client.get('/api/migration/conflicts/?status=open')
+        self.assertEqual(listing.status_code, 200, listing.data)
+        self.assertEqual(listing.data[0]['conflict_type'], 'session_dates')
+
+        resolved = self.client.patch(
+            '/api/migration/conflicts/',
+            {'id': conflict.pk, 'action': 'resolved', 'resolution': {'decision': 'keep_existing'}},
+            format='json',
+        )
+        self.assertEqual(resolved.status_code, 200, resolved.data)
+        conflict.refresh_from_db()
+        self.assertEqual(conflict.status, 'resolved')
+        self.assertEqual(conflict.resolved_by, self.admin)
+
+    def test_batch20_mapping_profiles_and_job_history_are_tenant_scoped(self):
+        saved = self.client.post('/api/migration/mappings/', {
+            'domain': 'students',
+            'name': 'Legacy SIS students',
+            'source_system': 'Legacy SIS',
+            'mappings': {'Registration Number': 'student_ref', 'Surname': 'last_name'},
+        }, format='json')
+        self.assertEqual(saved.status_code, 201, saved.data)
+        self.assertEqual(MigrationMappingProfile.objects.filter(school=self.school).count(), 1)
+
+        mappings = self.client.get('/api/migration/mappings/?domain=students')
+        self.assertEqual(mappings.status_code, 200, mappings.data)
+        self.assertEqual(len(mappings.data), 1)
+        self.assertEqual(mappings.data[0]['source_system'], 'Legacy SIS')
+
+        self.upload('classes', 'import', 'class_level,class_arm\nJSS1,A')
+        jobs = self.client.get('/api/migration/jobs/')
+        self.assertEqual(jobs.status_code, 200, jobs.data)
+        self.assertTrue(any(row['domain'] == 'classes' for row in jobs.data))
+
+        foreign_admin = CustomUser.objects.create_user(
+            email='admin@migration-other.test', password='test',
+            school=self.other, role='school_admin', must_change_password=False,
+        )
+        foreign_client = APIClient(HTTP_X_SCHOOL_SLUG=self.other.slug)
+        foreign_client.force_authenticate(foreign_admin)
+        self.assertEqual(foreign_client.get('/api/migration/jobs/').data, [])
+        self.assertEqual(foreign_client.get('/api/migration/mappings/').data, [])
+        self.assertEqual(foreign_client.get('/api/migration/conflicts/').data, [])
