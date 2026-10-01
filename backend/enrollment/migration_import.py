@@ -941,8 +941,13 @@ class MigrationCentre(APIView):
                     'migration_job_id': job.pk, 'file_fingerprint': fingerprint,
                 },
             )
+        response_counts = counts if domain in BATCH20_DOMAINS else {
+            'CREATE': counts['CREATE'],
+            'REUSE': counts['REUSE'],
+            'REJECT': counts['REJECT'],
+        }
         return Response({'domain': domain, 'mode': operation, 'total_rows': len(rows),
-                         'counts': counts, 'rows': results,
+                         'counts': response_counts, 'rows': results,
                          'warnings': [f'Ignored column: {header}' for header in ignored],
                          'mapping': mapping, 'job_id': job.pk,
                          'file_fingerprint': fingerprint, 'status': job.status,
