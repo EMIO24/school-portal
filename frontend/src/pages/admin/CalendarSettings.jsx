@@ -21,6 +21,7 @@ const calAPI = {
   deleteSession:  (id)     => api.delete(`/api/sessions/${id}/`),
   setCurrentSession: (id)  => api.post(`/api/sessions/${id}/set-current/`),
   previewRollover: (sourceId, destinationId) => api.post(`/api/sessions/${sourceId}/rollover-preview/`, { destination_session_id: destinationId }),
+  executeRollover: (sourceId, destinationId) => api.post(`/api/sessions/${sourceId}/rollover-execute/`, { destination_session_id: destinationId, idempotency_key: `rollover-${sourceId}-${destinationId}` }),
   createTerm:     (data)   => api.post("/api/terms/", data),
   deleteTerm:     (id)     => api.delete(`/api/terms/${id}/`),
   setCurrentTerm: (id)     => api.post(`/api/terms/${id}/set-current/`),
@@ -283,7 +284,7 @@ function CreateTermForm({ session, onSave, onClose, loading }) {
 
 // ── Rollover Preview ───────────────────────────────────────────────────────
 
-function RolloverPreview({ preview, onClose }) {
+function RolloverPreview({ preview, onClose, onExecute, executing }) {
   const summary = preview.summary || {};
   const studentIssues = (preview.students || []).filter(student => !student.ready);
 
@@ -341,7 +342,12 @@ function RolloverPreview({ preview, onClose }) {
         Preview only. No student placement, result, attendance, fee, timetable, or historical record is changed here.
       </p>
       <div className="cs-form-actions">
-        <button type="button" className="btn btn-primary" onClick={onClose}>Close Preview</button>
+        <button type="button" className="btn btn-ghost" onClick={onClose} disabled={executing}>Close Preview</button>
+        {preview.ready && (
+          <button type="button" className="btn btn-primary" onClick={onExecute} disabled={executing}>
+            {executing ? "Executing…" : "Execute Rollover"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -565,6 +571,29 @@ export default function CalendarSettings() {
     }
   }
 
+  async function handleExecuteRollover() {
+    if (!rolloverPreview?.ready) return;
+    const sourceId = rolloverPreview.source_session?.id;
+    const destinationId = rolloverPreview.destination_session?.id;
+    if (!sourceId || !destinationId) {
+      showToast("Refresh the rollover preview before execution.", "error");
+      return;
+    }
+    if (!window.confirm("Execute this academic rollover? Student placements and the active academic session will be updated together. This action is intended to be final.")) return;
+
+    setBusy(true);
+    try {
+      await calAPI.executeRollover(sourceId, destinationId);
+      setRolloverPreview(null);
+      await load();
+      showToast("Academic rollover completed successfully.");
+    } catch (err) {
+      showToast(apiErrorMessage(err, "Academic rollover could not be completed."), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleCreateTerm(formData) {
     setBusy(true);
     try {
@@ -754,7 +783,12 @@ export default function CalendarSettings() {
 
       {rolloverPreview && (
         <Modal title="Academic Rollover Preview" onClose={() => setRolloverPreview(null)}>
-          <RolloverPreview preview={rolloverPreview} onClose={() => setRolloverPreview(null)} />
+          <RolloverPreview
+            preview={rolloverPreview}
+            onClose={() => setRolloverPreview(null)}
+            onExecute={handleExecuteRollover}
+            executing={busy}
+          />
         </Modal>
       )}
 
