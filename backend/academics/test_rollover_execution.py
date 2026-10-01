@@ -18,6 +18,7 @@ class AcademicRolloverExecutionTests(TestCase):
             name="Execution School",
             slug="execution-school",
             subdomain="execution-school",
+            subscription_plan="premium",
         )
         self.admin = CustomUser.objects.create_user(
             "admin@execution.test",
@@ -253,14 +254,14 @@ class AcademicRolloverExecutionTests(TestCase):
         )
         self.assertTrue(preview["ready"])
 
-        # Simulate an out-of-band pointer change after preview. The fresh readiness
-        # check still sees valid historical placement, but the executor must fail closed.
+        # Simulate an out-of-band pointer change after preview. The executor
+        # regenerates readiness inside the transaction and must fail closed.
         self.student.current_class = self.arm1b
         self.student.save(update_fields=["current_class"])
 
         response = self.execute()
         self.assertEqual(response.status_code, 400, response.data)
-        self.assertIn("current class changed", str(response.data).lower())
+        self.assertIn("current-class pointers", str(response.data).lower())
 
         self.source.refresh_from_db()
         self.destination.refresh_from_db()
