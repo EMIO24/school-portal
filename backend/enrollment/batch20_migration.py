@@ -50,7 +50,7 @@ BATCH20_DOMAINS = {
         ("student_ref", "session", "term", "class_level", "class_arm", "date", "status", "remark"),
     ),
     "historical_finance": (
-        ("student_ref", "effective_date", "description", "debit", "credit", "reference"),
+        ("student_ref", "effective_date", "description", "reference"),
         ("student_ref", "effective_date", "description", "debit", "credit", "reference", "session", "term"),
     ),
 }
