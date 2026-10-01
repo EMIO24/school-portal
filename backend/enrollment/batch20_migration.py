@@ -14,6 +14,8 @@ from django.db import models, transaction
 from academics.models import AcademicSession, Term
 from attendance.models import AttendanceRecord, AttendanceSession
 from gradebook.models import ScoreEntry
+from fees.ledger import post_adjustment
+from fees.models import StudentFinanceAccount, StudentLedgerEntry
 from .models import (
     ClassArm,
     MigrationConflict,
@@ -46,6 +48,10 @@ BATCH20_DOMAINS = {
     "historical_attendance": (
         ("student_ref", "session", "term", "class_level", "class_arm", "date", "status"),
         ("student_ref", "session", "term", "class_level", "class_arm", "date", "status", "remark"),
+    ),
+    "historical_finance": (
+        ("student_ref", "effective_date", "description", "debit", "credit", "reference"),
+        ("student_ref", "effective_date", "description", "debit", "credit", "reference", "session", "term"),
     ),
 }
 
@@ -262,6 +268,63 @@ def assess_batch20(domain, row, school):
         return "CREATE", {"student": student, "session": session, "term": term, "arm": arm,
                           "subject": subject, "values": values, "published": published}
 
+    if domain == "historical_finance":
+        student = _student_for(school, row["student_ref"])
+        effective = _date(row["effective_date"], "effective_date")
+        description = row["description"].strip()
+        reference = row["reference"].strip()
+        if not description or len(description) > 500:
+            raise ValueError("description", "Provide a description of up to 500 characters.")
+        if not reference or len(reference) > 100:
+            raise ValueError("reference", "Provide a source reference of up to 100 characters.")
+        try:
+            debit = Decimal(str(row.get("debit") or "0"))
+            credit = Decimal(str(row.get("credit") or "0"))
+        except Exception:
+            raise ValueError("debit", "Debit and credit must be valid amounts.")
+        for field, amount in (("debit", debit), ("credit", credit)):
+            if not amount.is_finite() or amount < 0 or amount != amount.quantize(Decimal("0.01")):
+                raise ValueError(field, "Use a nonnegative amount with at most two decimal places.")
+        if (debit > 0) == (credit > 0):
+            raise ValueError("debit", "Enter exactly one positive debit or credit amount.")
+        account = StudentFinanceAccount.objects.filter(school=school, student=student).first()
+        if not account or account.state != "active":
+            raise MigrationReview(
+                "student_ref",
+                "Verify this student's opening balance before importing historical finance adjustments.",
+                conflict_type="finance_account_not_ready",
+            )
+        term = None
+        if row.get("session") or row.get("term"):
+            if not row.get("session") or not row.get("term"):
+                raise ValueError("term", "Provide both session and term, or leave both blank.")
+            session = _session_for(school, row["session"])
+            term = _term_for(session, row["term"])
+        signed = debit if debit > 0 else -credit
+        key = f"migration-finance:{school.pk}:{student.pk}:{reference}"[:100]
+        existing = StudentLedgerEntry.objects.filter(school=school, idempotency_key=key).first()
+        if existing:
+            if (
+                existing.student_id == student.pk
+                and existing.kind == "adjustment"
+                and existing.signed_amount == signed
+                and existing.reason == description
+                and existing.reference == reference
+                and existing.effective_date == effective
+                and existing.term_id == (term.pk if term else None)
+            ):
+                return "REUSE", {}
+            raise MigrationReview(
+                "reference",
+                "This source reference already exists with different financial details.",
+                conflict_type="finance_reference_conflict",
+                candidates=[{"id": existing.pk, "signed_amount": str(existing.signed_amount)}],
+            )
+        return "CREATE", {
+            "student": student, "effective": effective, "description": description,
+            "reference": reference, "signed": signed, "term": term, "key": key,
+        }
+
     if domain == "historical_attendance":
         student = _student_for(school, row["student_ref"])
         session = _session_for(school, row["session"])
@@ -330,6 +393,13 @@ def create_batch20(domain, row, school, data, *, actor=None):
             class_arm=data["arm"], session=data["session"], term=data["term"],
             is_published=data["published"], **data["values"]
         )
+    elif domain == "historical_finance":
+        entry, _ = post_adjustment(
+            school, data["student"], actor, kind="adjustment",
+            amount=data["signed"], reason=data["description"], key=data["key"],
+            term=data["term"], reference=data["reference"], effective_date=data["effective"],
+        )
+        return entry
     elif domain == "historical_attendance":
         attendance_session, _ = AttendanceSession.objects.get_or_create(
             school=school, class_arm=data["arm"], term=data["term"], date=data["day"],
