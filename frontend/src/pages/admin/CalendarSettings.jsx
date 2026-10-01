@@ -20,6 +20,7 @@ const calAPI = {
   createSession:  (data)   => api.post("/api/sessions/", data),
   deleteSession:  (id)     => api.delete(`/api/sessions/${id}/`),
   setCurrentSession: (id)  => api.post(`/api/sessions/${id}/set-current/`),
+  previewRollover: (sourceId, destinationId) => api.post(`/api/sessions/${sourceId}/rollover-preview/`, { destination_session_id: destinationId }),
   createTerm:     (data)   => api.post("/api/terms/", data),
   deleteTerm:     (id)     => api.delete(`/api/terms/${id}/`),
   setCurrentTerm: (id)     => api.post(`/api/terms/${id}/set-current/`),
@@ -39,6 +40,20 @@ function fmt(dateStr) {
 
 function weeksApart(a, b) {
   return Math.round((new Date(b) - new Date(a)) / (1000 * 60 * 60 * 24 * 7));
+}
+
+function apiErrorMessage(err, fallback) {
+  const data = err?.response?.data;
+  if (typeof data === "string") return data;
+  if (Array.isArray(data) && data.length) return String(data[0]);
+  if (data && typeof data === "object") {
+    if (data.detail) return Array.isArray(data.detail) ? String(data.detail[0]) : String(data.detail);
+    for (const value of Object.values(data)) {
+      if (Array.isArray(value) && value.length) return String(value[0]);
+      if (typeof value === "string") return value;
+    }
+  }
+  return fallback;
 }
 
 // ── Modal ──────────────────────────────────────────────────────────────────
@@ -266,6 +281,72 @@ function CreateTermForm({ session, onSave, onClose, loading }) {
   );
 }
 
+// ── Rollover Preview ───────────────────────────────────────────────────────
+
+function RolloverPreview({ preview, onClose }) {
+  const summary = preview.summary || {};
+  const studentIssues = (preview.students || []).filter(student => !student.ready);
+
+  return (
+    <div className="cs-rollover-preview">
+      <div className={`cs-rollover-state ${preview.ready ? "is-ready" : "is-blocked"}`}>
+        <strong>{preview.ready ? "Ready for rollover" : "Rollover is not ready"}</strong>
+        <span>{preview.source_session?.name} → {preview.destination_session?.name}</span>
+      </div>
+      <div className="cs-rollover-summary" aria-label="Rollover summary">
+        <div><strong>{summary.source_students ?? 0}</strong><span>Students</span></div>
+        <div><strong>{summary.decided ?? 0}</strong><span>Decided</span></div>
+        <div><strong>{summary.unresolved ?? 0}</strong><span>Unresolved</span></div>
+        <div><strong>{summary.promoted ?? 0}</strong><span>Promoted</span></div>
+        <div><strong>{summary.repeated ?? 0}</strong><span>Repeated</span></div>
+        <div><strong>{summary.graduated ?? 0}</strong><span>Graduated</span></div>
+        <div><strong>{summary.withdrawn ?? 0}</strong><span>Withdrawn</span></div>
+      </div>
+      {(preview.blockers || []).length > 0 && (
+        <section className="cs-rollover-section">
+          <h4>Must be resolved</h4>
+          <ul className="cs-rollover-list cs-rollover-list--blockers">
+            {preview.blockers.map(item => (
+              <li key={item.code}><strong>{item.message}</strong>{item.count != null && <span>{item.count} affected</span>}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {(preview.warnings || []).length > 0 && (
+        <section className="cs-rollover-section">
+          <h4>Preparation warnings</h4>
+          <ul className="cs-rollover-list">
+            {preview.warnings.map(item => (
+              <li key={item.code}><span>{item.message}</span>{item.count != null && <span>{item.count} affected</span>}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {studentIssues.length > 0 && (
+        <section className="cs-rollover-section">
+          <h4>Students needing attention</h4>
+          <div className="cs-rollover-students">
+            {studentIssues.slice(0, 20).map(student => (
+              <div key={student.student_id} className="cs-rollover-student">
+                <strong>{student.student_name || student.admission_number}</strong>
+                <span>{student.source_class}</span>
+                <small>{student.issues.map(issue => issue.message).join(" ")}</small>
+              </div>
+            ))}
+            {studentIssues.length > 20 && <p className="cs-form-hint">+ {studentIssues.length - 20} more students need attention.</p>}
+          </div>
+        </section>
+      )}
+      <p className="cs-rollover-note">
+        Preview only. No student placement, result, attendance, fee, timetable, or historical record is changed here.
+      </p>
+      <div className="cs-form-actions">
+        <button type="button" className="btn btn-primary" onClick={onClose}>Close Preview</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Term Row ───────────────────────────────────────────────────────────────
 
 function HolidayForm({ term, holiday, onSave, onClose, loading }) {
@@ -327,8 +408,9 @@ function TermRow({ term, onSetCurrent, onDelete, onHoliday, onDeleteHoliday, bus
 
 // ── Session Card ───────────────────────────────────────────────────────────
 
-function SessionCard({ session, onSetCurrent, onSetCurrentTerm, onDeleteTerm, onAddTerm, onHoliday, onDeleteHoliday, busy }) {
+function SessionCard({ session, currentSession, onPreview, onSetCurrent, onSetCurrentTerm, onDeleteTerm, onAddTerm, onHoliday, onDeleteHoliday, busy }) {
   const [expanded, setExpanded] = useState(session.is_current);
+  const canPreviewRollover = currentSession && !session.is_current && session.start_date > currentSession.end_date;
 
   return (
     <div className={`cs-session-card ${session.is_current ? "cs-session-card--current" : ""}`}>
@@ -351,6 +433,11 @@ function SessionCard({ session, onSetCurrent, onSetCurrentTerm, onDeleteTerm, on
           </div>
         </div>
         <div className="cs-session-header-actions" onClick={e => e.stopPropagation()}>
+          {canPreviewRollover && (
+            <button className="btn btn-sm btn-secondary" onClick={() => onPreview(session)} disabled={busy}>
+              Rollover Preview
+            </button>
+          )}
           {!session.is_current && (
             <button
               className="btn btn-sm btn-primary"
@@ -412,6 +499,7 @@ export default function CalendarSettings() {
   const [showNewSession, setShowNewSession] = useState(false);
   const [addTermTarget,  setAddTermTarget]  = useState(null);  // session obj
   const [holidayTarget,  setHolidayTarget]  = useState(null);
+  const [rolloverPreview, setRolloverPreview] = useState(null);
 
   function showToast(msg, type = "success") {
     setToast({ msg, type });
@@ -454,8 +542,24 @@ export default function CalendarSettings() {
       await calAPI.setCurrentSession(id);
       await load();
       showToast("Active session updated.");
-    } catch {
-      showToast("Failed to update active session.", "error");
+    } catch (err) {
+      showToast(apiErrorMessage(err, "Failed to update active session."), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handlePreviewRollover(destination) {
+    if (!currentSession) {
+      showToast("Set a current source session before preparing rollover.", "error");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data } = await calAPI.previewRollover(currentSession.id, destination.id);
+      setRolloverPreview(data);
+    } catch (err) {
+      showToast(apiErrorMessage(err, "Failed to prepare rollover preview."), "error");
     } finally {
       setBusy(false);
     }
@@ -610,6 +714,8 @@ export default function CalendarSettings() {
             <SessionCard
               key={session.id}
               session={session}
+              currentSession={currentSession}
+              onPreview={handlePreviewRollover}
               onSetCurrent={handleSetCurrentSession}
               onSetCurrentTerm={handleSetCurrentTerm}
               onDeleteTerm={handleDeleteTerm}
@@ -645,6 +751,12 @@ export default function CalendarSettings() {
       )}
 
       {holidayTarget && <Modal title={holidayTarget.holiday ? "Correct Holiday" : "Add Holiday"} onClose={()=>setHolidayTarget(null)}><HolidayForm term={holidayTarget.term} holiday={holidayTarget.holiday} onSave={handleSaveHoliday} onClose={()=>setHolidayTarget(null)} loading={busy}/></Modal>}
+
+      {rolloverPreview && (
+        <Modal title="Academic Rollover Preview" onClose={() => setRolloverPreview(null)}>
+          <RolloverPreview preview={rolloverPreview} onClose={() => setRolloverPreview(null)} />
+        </Modal>
+      )}
 
     </div>
   );
