@@ -77,6 +77,8 @@ test('previews rollover readiness without executing it',async()=>{
   await waitFor(()=>expect(api.post).toHaveBeenCalledWith('/api/sessions/1/rollover-preview/',{destination_session_id:3}));
   expect(await screen.findByText('Rollover is not ready')).toBeVisible();
   expect(screen.getByText('Students are still missing year-end decisions.')).toBeVisible();
+  expect(screen.getByText('Year-end checklist')).toBeVisible();
+  expect(screen.getByRole('link',{name:'Review promotion decisions'})).toHaveAttribute('href','/admin/promotion');
   expect(screen.getByText(/Preview only/)).toBeVisible();
   expect(api.post).not.toHaveBeenCalledWith('/api/sessions/3/set-current/');
 });
@@ -130,5 +132,29 @@ test('executes a ready rollover only after confirmation',async()=>{
     {destination_session_id:3,idempotency_key:'rollover-1-3'}
   ));
   expect(await screen.findByText(/Academic rollover completed successfully/)).toBeVisible();
+  expect(screen.getByText('Academic rollover completed')).toBeVisible();
+  expect(screen.getByRole('button',{name:'Close Receipt'})).toBeVisible();
   expect(api.get).toHaveBeenCalledTimes(2);
+});
+
+test('loads auditable rollover history on demand',async()=>{
+  api.get.mockImplementation(async url=>{
+    if(url==='/api/sessions/rollover-history/') return {data:[{
+      id:11,status:'completed',
+      source_session:{id:1,name:'2026/27'},
+      destination_session:{id:3,name:'2027/28'},
+      student_count:120,promoted_count:100,repeated_count:10,graduated_count:8,withdrawn_count:2,
+      created_at:'2027-08-01T10:00:00Z',completed_at:'2027-08-01T10:05:00Z',
+      completed_by:'admin@school.test',snapshot_fingerprint:'a'.repeat(64),
+    }]};
+    return {data:sessions};
+  });
+
+  renderPage(<CalendarSettings/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Rollover History'}));
+
+  await waitFor(()=>expect(api.get).toHaveBeenCalledWith('/api/sessions/rollover-history/'));
+  expect(await screen.findByText('2026/27 → 2027/28')).toBeVisible();
+  expect(screen.getByText(/120 students/)).toBeVisible();
+  expect(screen.getByText(/admin@school.test/)).toBeVisible();
 });
