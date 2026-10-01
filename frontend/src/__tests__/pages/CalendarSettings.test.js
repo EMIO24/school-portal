@@ -47,3 +47,47 @@ test('shows term-boundary validation instead of a generic holiday failure',async
   fireEvent.click(screen.getByRole('button',{name:'Add holiday'}));
   expect(await screen.findByText(/Holiday dates must stay within the selected term/)).toBeVisible();
 });
+
+
+test('previews rollover readiness without executing it',async()=>{
+  const destination={
+    id:3,name:'2027/28',start_date:'2027-09-01',end_date:'2028-07-31',is_current:false,
+    terms:[{id:4,session:3,name:'first',name_display:'First Term',start_date:'2027-09-01',end_date:'2027-12-17',is_current:false,holidays:[]}],
+  };
+  api.get.mockResolvedValue({data:[...sessions,destination]});
+  api.post.mockImplementation((url)=>{
+    if(url.includes('/rollover-preview/')){
+      return Promise.resolve({data:{
+        rollover_id:11,status:'preparing',ready:false,
+        source_session:{id:1,name:'2026/27'},
+        destination_session:{id:3,name:'2027/28'},
+        summary:{source_students:1,decided:0,unresolved:1,promoted:0,repeated:0,graduated:0,withdrawn:0},
+        blockers:[{code:'MISSING_PROMOTION_DECISION',message:'Students are still missing year-end decisions.',count:1}],
+        warnings:[],
+        students:[{student_id:5,student_name:'Ada Student',source_class:'JSS1A',ready:false,issues:[{code:'MISSING_PROMOTION_DECISION',message:'A year-end promotion, repeat, graduation, or withdrawal decision is required.'}]}],
+      }});
+    }
+    return Promise.resolve({data:holiday});
+  });
+
+  renderPage(<CalendarSettings/>);
+  const previewButton=await screen.findByRole('button',{name:'Rollover Preview'});
+  fireEvent.click(previewButton);
+
+  await waitFor(()=>expect(api.post).toHaveBeenCalledWith('/api/sessions/1/rollover-preview/',{destination_session_id:3}));
+  expect(await screen.findByText('Rollover is not ready')).toBeVisible();
+  expect(screen.getByText('Students are still missing year-end decisions.')).toBeVisible();
+  expect(screen.getByText(/Preview only/)).toBeVisible();
+  expect(api.post).not.toHaveBeenCalledWith('/api/sessions/3/set-current/');
+});
+
+test('shows the backend rollover blocker when direct session activation is refused',async()=>{
+  const destination={id:3,name:'2027/28',start_date:'2027-09-01',end_date:'2028-07-31',is_current:false,terms:[]};
+  api.get.mockResolvedValue({data:[...sessions,destination]});
+  api.post.mockRejectedValueOnce({response:{status:400,data:['The current session still has active student placements. Complete the academic rollover before activating the next session.']}});
+
+  renderPage(<CalendarSettings/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Set Active'}));
+
+  expect(await screen.findByText(/Complete the academic rollover before activating the next session/)).toBeVisible();
+});
