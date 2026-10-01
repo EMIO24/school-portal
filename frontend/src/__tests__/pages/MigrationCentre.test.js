@@ -4,7 +4,7 @@ import {renderPage} from '../../testSupport/renderPage';
 import MigrationCentre from '../../pages/admin/MigrationCentre';
 import api from '../../services/api';
 
-jest.mock('../../services/api', () => ({__esModule: true, default: {get: jest.fn(), post: jest.fn()}}));
+jest.mock('../../services/api', () => ({__esModule: true, default: {get: jest.fn(), post: jest.fn(), patch: jest.fn()}}));
 beforeEach(() => jest.resetAllMocks());
 
 test('administrator maps columns, validates, confirms, and sees updated readiness', async () => {
@@ -87,4 +87,62 @@ test('query parameter opens the requested high-volume import domain', async () =
   expect(screen.getByLabelText('Data type')).toHaveValue('timetable');
   expect(screen.getByText(/Uses the current term/)).toBeVisible();
   expect(screen.getByText(/Required: class_level, class_arm, subject_code, teacher_email, day, period/)).toBeVisible();
+});
+
+
+test('Batch 20 exposes historical migration domains and provenance history', async () => {
+  api.get.mockImplementation(async url => {
+    if (url === '/api/migration/') return {data: {domains: [
+      {key: 'classes', required: ['class_level', 'class_arm'], columns: ['class_level', 'class_arm']},
+      {key: 'historical_enrollments',
+       required: ['student_ref', 'session', 'class_level', 'class_arm', 'enrolled_on', 'status'],
+       columns: ['student_ref', 'session', 'class_level', 'class_arm', 'enrolled_on', 'exited_on', 'status', 'entry_reason']},
+    ]}};
+    if (url === '/api/migration/jobs/') return {data: [{
+      id: 41, domain: 'historical_enrollments', original_filename: 'placements.csv',
+      status: 'completed', total_rows: 418, create_count: 418, reuse_count: 0,
+      review_count: 0, reject_count: 0,
+    }]};
+    if (url === '/api/migration/mappings/') return {data: []};
+    if (url === '/api/migration/conflicts/?status=open') return {data: []};
+    return {data: {steps: [], missing_assignments: 0}};
+  });
+
+  renderPage(<MigrationCentre />, {
+    path: '/admin/migration?type=historical_enrollments',
+    route: '/admin/migration',
+  });
+
+  expect(await screen.findByRole('heading', {name: 'Migration command centre'})).toBeVisible();
+  expect(screen.getByLabelText('Data type')).toHaveValue('historical_enrollments');
+  expect(screen.getByText(/Past placements never rewrite current_class/)).toBeVisible();
+  expect(await screen.findByText(/#41 Historical student placements/)).toBeVisible();
+  expect(screen.getByText(/418 created/)).toBeVisible();
+});
+
+test('Batch 20 shows reconciliation conflicts and allows a human resolution', async () => {
+  api.get.mockImplementation(async url => {
+    if (url === '/api/migration/') return {data: {domains: [
+      {key: 'classes', required: ['class_level', 'class_arm'], columns: ['class_level', 'class_arm']},
+    ]}};
+    if (url === '/api/migration/jobs/') return {data: []};
+    if (url === '/api/migration/mappings/') return {data: []};
+    if (url === '/api/migration/conflicts/?status=open') return {data: [{
+      id: 9, job_id: 3, domain: 'historical_sessions', row_number: 2,
+      source_identity: '2024/25', conflict_type: 'session_dates',
+      candidate_matches: [{id: 2, name: '2024/25'}], status: 'open',
+    }]};
+    return {data: {steps: [], missing_assignments: 0}};
+  });
+  api.patch.mockResolvedValue({data: {id: 9, status: 'resolved'}});
+
+  renderPage(<MigrationCentre />);
+  expect(await screen.findByText(/Row 2 · session dates/)).toBeVisible();
+  expect(screen.getByText('2024/25')).toBeVisible();
+
+  fireEvent.click(screen.getByRole('button', {name: 'Mark resolved'}));
+  await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+    '/api/migration/conflicts/',
+    {id: 9, action: 'resolved', resolution: {reviewed_in: 'migration_centre'}},
+  ));
 });
