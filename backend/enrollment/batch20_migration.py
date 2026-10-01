@@ -365,16 +365,16 @@ def assess_batch20(domain, row, school):
 
 def create_batch20(domain, row, school, data, *, actor=None):
     if domain == "historical_sessions":
-        AcademicSession.objects.create(
+        return AcademicSession.objects.create(
             school=school, name=data["name"], start_date=data["start"], end_date=data["end"], is_current=False
         )
     elif domain == "historical_terms":
-        Term.objects.create(
+        return Term.objects.create(
             session=data["session"], name=data["name"], start_date=data["start"],
             end_date=data["end"], next_term_begins=data["next"], is_current=False
         )
     elif domain == "historical_enrollments":
-        SessionEnrollment.objects.create(
+        enrollment = SessionEnrollment.objects.create(
             school=school, student=data["student"], session=data["session"], class_arm=data["arm"],
             status=data["status"], entry_reason=data["reason"], enrolled_on=data["enrolled"],
             exited_on=data["exited"], notes="Imported historical placement.", created_by=actor
@@ -387,8 +387,9 @@ def create_batch20(domain, row, school, data, *, actor=None):
                                       conflict_type="current_class_conflict")
             student.current_class = data["arm"]
             student.save(update_fields=["current_class"])
+        return enrollment
     elif domain == "historical_results":
-        ScoreEntry.objects.create(
+        return ScoreEntry.objects.create(
             school=school, student=data["student"].user, subject=data["subject"],
             class_arm=data["arm"], session=data["session"], term=data["term"],
             is_published=data["published"], **data["values"]
@@ -406,7 +407,7 @@ def create_batch20(domain, row, school, data, *, actor=None):
             mode=AttendanceSession.Mode.DAILY, period=None,
             defaults={"teacher": None, "is_finalized": True},
         )
-        AttendanceRecord.objects.create(
+        return AttendanceRecord.objects.create(
             attendance_session=attendance_session, student=data["student"].user,
             status=data["status"], remark=data["remark"]
         )
