@@ -1,4 +1,6 @@
 from collections import defaultdict
+import hashlib
+import json
 
 from django.db import transaction
 from django.utils import timezone
@@ -15,6 +17,51 @@ def _issue(code, message, *, count=None):
     if count is not None:
         item["count"] = count
     return item
+
+
+def _carry_forward_policy():
+    return {
+        "reuse": [
+            "class_levels",
+            "class_arms",
+            "subjects",
+            "periods",
+            "staff_profiles",
+            "fee_categories",
+            "promotion_criteria",
+            "approved_academic_standards",
+            "approved_learning_resources",
+            "reusable_question_bank",
+        ],
+        "review_or_create": [
+            "curriculum_plans",
+            "subject_assignments",
+            "timetable_entries",
+            "term_scoring",
+            "fee_schedules",
+            "class_teachers",
+            "assessment_modes",
+        ],
+        "never_copy": [
+            "scores",
+            "attendance_records",
+            "lesson_records",
+            "topic_coverage",
+            "promotion_records",
+            "fee_payments",
+            "ledger_history",
+            "invoices",
+            "payment_orders",
+            "cbt_attempts",
+            "assignment_submissions",
+            "published_communications",
+        ],
+    }
+
+
+def _snapshot_fingerprint(payload):
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _term_configuration_snapshot(*, school, term):
@@ -190,6 +237,46 @@ def prepare_rollover_preview(*, school, source_session, destination_session, act
             and enrollment.status == student.status
         )
 
+        # current_class is a convenience pointer, but while a source placement is
+        # active it must agree with the authoritative final SessionEnrollment.
+        if enrollment.status == "active":
+            if student.current_class_id != source_arm.pk:
+                add_student_issue(
+                    issues,
+                    "CURRENT_CLASS_DRIFT",
+                    "The student's current class does not match the final active source-session placement.",
+                    student_id,
+                )
+            if student.status != "active":
+                add_student_issue(
+                    issues,
+                    "STUDENT_STATUS_DRIFT",
+                    "The student's lifecycle status does not match an active source-session placement.",
+                    student_id,
+                )
+            if not student.user.is_active:
+                add_student_issue(
+                    issues,
+                    "ACCOUNT_STATE_DRIFT",
+                    "The student's login account is inactive while the source-session placement is active.",
+                    student_id,
+                )
+        elif lifecycle_exempt:
+            if student.current_class_id is not None:
+                add_student_issue(
+                    issues,
+                    "CURRENT_CLASS_DRIFT",
+                    "A withdrawn or graduated student must not retain a current class pointer.",
+                    student_id,
+                )
+            if student.user.is_active:
+                add_student_issue(
+                    issues,
+                    "ACCOUNT_STATE_DRIFT",
+                    "A withdrawn or graduated student's login account must be inactive.",
+                    student_id,
+                )
+
         if len(student_records) > 1:
             add_student_issue(
                 issues,
@@ -282,6 +369,42 @@ def prepare_rollover_preview(*, school, source_session, destination_session, act
                     student_id,
                 )
 
+            # Existing PromotionExecute behavior may already have applied a decision.
+            # Accept that legacy-applied state only when every pointer/status agrees.
+            if enrollment.status != "active":
+                if record.decision in ("promoted", "repeated"):
+                    active_dest = [
+                        e for e in destination_enrollments.get(student_id, [])
+                        if e.status == "active"
+                    ]
+                    if (
+                        enrollment.status != "completed"
+                        or len(active_dest) != 1
+                        or active_dest[0].class_arm_id != record.to_class_id
+                        or student.current_class_id != record.to_class_id
+                        or student.status != "active"
+                        or not student.user.is_active
+                    ):
+                        add_student_issue(
+                            issues,
+                            "LEGACY_APPLIED_STATE_DRIFT",
+                            "Previously applied promotion state does not consistently match the recorded year-end decision.",
+                            student_id,
+                        )
+                elif record.decision in ("graduated", "withdrawn"):
+                    if (
+                        enrollment.status != record.decision
+                        or student.current_class_id is not None
+                        or student.status != record.decision
+                        or student.user.is_active
+                    ):
+                        add_student_issue(
+                            issues,
+                            "LEGACY_APPLIED_STATE_DRIFT",
+                            "Previously applied lifecycle state does not consistently match the recorded year-end decision.",
+                            student_id,
+                        )
+
         student_rows.append({
             "student_id": student.pk,
             "admission_number": student.admission_number,
@@ -320,6 +443,10 @@ def prepare_rollover_preview(*, school, source_session, destination_session, act
         "REPEAT_CLASS_MISMATCH": "Some repeat decisions do not retain the source class.",
         "DESTINATION_ENROLLMENT_CONFLICT": "Some students already have conflicting destination-session enrollment history.",
         "GRADUATION_FROM_NONFINAL_LEVEL": "Some graduation decisions come from non-final class levels.",
+        "CURRENT_CLASS_DRIFT": "Some students' current-class pointers do not match authoritative enrollment history.",
+        "STUDENT_STATUS_DRIFT": "Some students' lifecycle status conflicts with active enrollment history.",
+        "ACCOUNT_STATE_DRIFT": "Some student account activation states conflict with enrollment/lifecycle state.",
+        "LEGACY_APPLIED_STATE_DRIFT": "Some previously applied decisions have inconsistent placement or lifecycle state.",
     }
     for code, student_ids in sorted(issue_students.items()):
         student_blockers.append(_issue(
@@ -417,36 +544,18 @@ def prepare_rollover_preview(*, school, source_session, destination_session, act
         "warnings": warnings,
         "configuration": configuration,
         "students": student_rows,
-        "carry_forward_policy": {
-            "reuse": ["class_levels", "class_arms", "subjects", "periods"],
-            "review_or_create": [
-                "curriculum_plans",
-                "subject_assignments",
-                "timetable_entries",
-                "term_scoring",
-                "fee_schedules",
-                "class_teachers",
-            ],
-            "never_copy": [
-                "scores",
-                "attendance_records",
-                "lesson_records",
-                "topic_coverage",
-                "promotion_records",
-                "fee_payments",
-                "ledger_history",
-                "invoices",
-                "payment_orders",
-                "cbt_attempts",
-                "assignment_submissions",
-                "published_communications",
-            ],
-        },
+        "carry_forward_policy": _carry_forward_policy(),
     }
+
+    payload["snapshot_fingerprint"] = _snapshot_fingerprint(payload)
 
     if completed_rollover:
         payload["rollover_id"] = completed_rollover.pk
         payload["status"] = completed_rollover.status
+        payload["completed_at"] = (
+            completed_rollover.completed_at.isoformat()
+            if completed_rollover.completed_at else None
+        )
         return payload
 
     rollover = AcademicRollover.objects.select_for_update().filter(
@@ -465,6 +574,11 @@ def prepare_rollover_preview(*, school, source_session, destination_session, act
 
     rollover.status = "ready" if ready else "preparing"
     rollover.preview_snapshot = payload
+    rollover.configuration_options = {
+        "carry_forward_policy": payload["carry_forward_policy"],
+        "destination_configuration": configuration,
+        "snapshot_fingerprint": payload["snapshot_fingerprint"],
+    }
     rollover.student_count = summary["source_students"]
     rollover.promoted_count = summary["promoted"]
     rollover.repeated_count = summary["repeated"]
@@ -861,9 +975,22 @@ def activate_session(*, school, target_session):
         school=locked_school, is_current=True
     ).exclude(pk=target.pk).first()
     if not current:
+        first_term = Term.objects.select_for_update().filter(
+            session=target, name="first"
+        ).first()
+        if not first_term:
+            raise RolloverSafetyError(
+                "Configure First Term before activating an academic session."
+            )
         if not target.is_current:
             target.is_current = True
             target.save(update_fields=["is_current"])
+        Term.objects.filter(
+            session__school=locked_school, is_current=True
+        ).exclude(pk=first_term.pk).update(is_current=False)
+        if not first_term.is_current:
+            first_term.is_current = True
+            first_term.save(update_fields=["is_current"])
         return target
 
     if target.start_date <= current.end_date:
