@@ -688,7 +688,11 @@ def inspect_upload(request, domain):
         if profile_mapping and set(profile_mapping).issubset(set(headers)):
             values = [value for value in profile_mapping.values() if value]
             if len(values) == len(set(values)) and all(value in DOMAINS[domain][1] for value in values):
-                suggested.update(profile_mapping)
+                merged = dict(profile_mapping)
+                for source, destination in suggested.items():
+                    if source not in merged and destination not in merged.values():
+                        merged[source] = destination
+                suggested = merged
                 matched_profile = profile
                 matched_profile.last_used_at = timezone.now()
                 matched_profile.save(update_fields=['last_used_at', 'updated_at'])
@@ -993,8 +997,13 @@ class MigrationMappingProfiles(APIView):
         if domain not in DOMAINS or not name or not isinstance(mappings, dict):
             raise ValidationError({'error': 'Provide a supported domain, profile name and mappings object.'})
         allowed = set(DOMAINS[domain][1])
-        if any(key not in allowed for key in mappings.values() if key):
-            raise ValidationError({'error': 'Mapping profile contains an unsupported destination field.'})
+        destinations = [value for value in mappings.values() if value]
+        if (
+            any(value not in allowed for value in destinations)
+            or len(destinations) != len(set(destinations))
+            or any(not isinstance(source, str) or not source.strip() for source in mappings)
+        ):
+            raise ValidationError({'error': 'Mapping profile contains an unsupported or duplicate destination field.'})
         profile, _ = MigrationMappingProfile.objects.update_or_create(
             school=request.tenant, domain=domain, name=name,
             defaults={
