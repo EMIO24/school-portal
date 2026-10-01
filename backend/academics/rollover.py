@@ -592,15 +592,23 @@ def execute_rollover(*, school, source_session, destination_session, actor, idem
     for enrollment in enrollment_rows:
         final_enrollments.setdefault(enrollment.student_id, enrollment)
 
+    # Lock PromotionRecord rows themselves. Nullable to_session/to_class relations
+    # must not be joined into SELECT ... FOR UPDATE on PostgreSQL because they
+    # become the nullable side of LEFT OUTER JOINs.
     records = list(
-        PromotionRecord.objects.select_for_update().filter(
+        PromotionRecord.objects.select_for_update(of=("self",)).filter(
             school=locked_school,
             from_session=source,
-        ).select_related(
+        ).order_by("student_id", "id")
+    )
+    records = list(
+        PromotionRecord.objects.filter(pk__in=[record.pk for record in records])
+        .select_related(
             "to_session",
             "from_class__class_level",
             "to_class__class_level",
-        ).order_by("student_id", "id")
+        )
+        .order_by("student_id", "id")
     )
     records_by_student = defaultdict(list)
     for record in records:
