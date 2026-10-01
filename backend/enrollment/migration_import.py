@@ -773,6 +773,7 @@ class MigrationCentre(APIView):
 
         def process():
             for number, row, parse_error in rows:
+                target = None
                 if parse_error:
                     outcome = {'row': number, 'action': 'REJECT', 'field': parse_error[0], 'reason': parse_error[1]}
                 else:
@@ -844,7 +845,7 @@ class MigrationCentre(APIView):
                                    'reason': 'This row could not be saved. Check its values and retry it separately.'}
                 counts[outcome['action']] += 1
                 results.append(outcome)
-                if operation == 'import':
+                if operation == 'import' and not job_was_terminal:
                     source_identity = ''
                     if row:
                         try:
@@ -922,6 +923,7 @@ class MigrationJobList(APIView):
             'id': row.pk, 'domain': row.domain, 'source_name': row.source_name,
             'original_filename': row.original_filename, 'file_fingerprint': row.file_fingerprint,
             'status': row.status, 'total_rows': row.total_rows,
+            'last_processed_row': row.last_processed_row,
             'create_count': row.create_count, 'reuse_count': row.reuse_count,
             'review_count': row.review_count, 'reject_count': row.reject_count,
             'created_at': row.created_at, 'validated_at': row.validated_at,
