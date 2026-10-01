@@ -218,3 +218,49 @@ class AcademicRolloverSafetyTests(TestCase):
                 created_by=self.admin,
                 completed_by=self.admin,
             )
+
+
+    def test_first_activation_requires_and_activates_first_term(self):
+        fresh = School.objects.create(
+            name="Fresh Calendar School",
+            slug="fresh-calendar-school",
+            subdomain="fresh-calendar-school",
+        )
+        fresh_admin = CustomUser.objects.create_user(
+            "admin@fresh-calendar.test",
+            "Password!123",
+            school=fresh,
+            role="school_admin",
+        )
+        session = AcademicSession.objects.create(
+            school=fresh,
+            name="2026/27",
+            start_date=date(2026, 9, 1),
+            end_date=date(2027, 7, 31),
+        )
+        client = APIClient(HTTP_X_SCHOOL_SLUG=fresh.slug)
+        client.force_authenticate(fresh_admin)
+
+        blocked = client.post(
+            f"/api/sessions/{session.pk}/set-current/",
+            format="json",
+        )
+        self.assertEqual(blocked.status_code, 400, blocked.data)
+        session.refresh_from_db()
+        self.assertFalse(session.is_current)
+
+        first_term = Term.objects.create(
+            session=session,
+            name="first",
+            start_date=date(2026, 9, 1),
+            end_date=date(2026, 12, 18),
+        )
+        activated = client.post(
+            f"/api/sessions/{session.pk}/set-current/",
+            format="json",
+        )
+        self.assertEqual(activated.status_code, 200, activated.data)
+        session.refresh_from_db()
+        first_term.refresh_from_db()
+        self.assertTrue(session.is_current)
+        self.assertTrue(first_term.is_current)
