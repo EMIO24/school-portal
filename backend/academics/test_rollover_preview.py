@@ -261,3 +261,61 @@ class AcademicRolloverPreviewTests(TestCase):
         self.assertEqual(response.data["summary"]["decision_required"], 0)
         self.assertEqual(response.data["summary"]["lifecycle_exempt"], 1)
         self.assertTrue(response.data["students"][0]["lifecycle_exempt"])
+
+
+    def test_current_class_drift_blocks_preview_and_is_persisted(self):
+        PromotionRecord.objects.create(
+            school=self.school,
+            student=self.student,
+            from_session=self.source,
+            to_session=self.destination,
+            from_class=self.arm1,
+            to_class=self.arm2,
+            decision="promoted",
+            criteria_met=True,
+            decided_by=self.admin,
+        )
+        drift_arm = ClassArm.objects.create(
+            school=self.school,
+            class_level=self.level1,
+            name="B",
+        )
+        self.student.current_class = drift_arm
+        self.student.save(update_fields=["current_class"])
+
+        response = self.preview()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(response.data["ready"])
+        self.assertIn(
+            "CURRENT_CLASS_DRIFT",
+            {row["code"] for row in response.data["blockers"]},
+        )
+        self.assertIn(
+            "CURRENT_CLASS_DRIFT",
+            {row["code"] for row in response.data["students"][0]["issues"]},
+        )
+
+    def test_preview_persists_complete_carry_forward_policy_and_fingerprint(self):
+        response = self.preview()
+        self.assertEqual(response.status_code, 200, response.data)
+        policy = response.data["carry_forward_policy"]
+        self.assertIn("staff_profiles", policy["reuse"])
+        self.assertIn("fee_categories", policy["reuse"])
+        self.assertIn("promotion_criteria", policy["reuse"])
+        self.assertIn("assessment_modes", policy["review_or_create"])
+        self.assertIn("ledger_history", policy["never_copy"])
+        self.assertEqual(len(response.data["snapshot_fingerprint"]), 64)
+
+        rollover = AcademicRollover.objects.get(
+            school=self.school,
+            source_session=self.source,
+            destination_session=self.destination,
+        )
+        self.assertEqual(
+            rollover.configuration_options["snapshot_fingerprint"],
+            response.data["snapshot_fingerprint"],
+        )
+        self.assertEqual(
+            rollover.configuration_options["carry_forward_policy"],
+            policy,
+        )
