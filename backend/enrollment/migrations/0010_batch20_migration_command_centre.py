@@ -81,6 +81,7 @@ class Migration(migrations.Migration):
                 ("status", models.CharField(choices=[("open", "Open"), ("resolved", "Resolved"), ("ignored", "Ignored")], db_index=True, default="open", max_length=12)),
                 ("resolution", models.JSONField(blank=True, default=dict)),
                 ("resolved_at", models.DateTimeField(blank=True, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("job", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="conflicts", to="enrollment.migrationjob")),
                 ("resolved_by", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="migration_conflicts_resolved", to=settings.AUTH_USER_MODEL)),
             ],
