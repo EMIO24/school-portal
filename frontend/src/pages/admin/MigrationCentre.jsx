@@ -175,6 +175,7 @@ export default function MigrationCentre() {
     if (operation === 'import' && !window.confirm(`Import ${report?.counts.CREATE || 0} new ${labels[domain].toLowerCase()} records? Reused records will not be overwritten.`)) return;
     setBusy(true); setError('');
     const form = new FormData(); form.append('file', file); form.append('mapping', JSON.stringify(mapping));
+    if (sourceSystem.trim()) form.append('source_name', sourceSystem.trim());
     try {
       const {data} = await api.post(`/api/migration/${domain}/${operation}/`, form);
       setReport(data);
@@ -271,7 +272,7 @@ export default function MigrationCentre() {
       {jobs.length === 0 ? <p>No migration jobs recorded yet.</p> :
         <div className="migration-job-list">{jobs.slice(0, 20).map(job => <article key={job.id}>
           <div><strong>#{job.id} {labels[job.domain] || job.domain}</strong><span className={`migration-status status-${job.status}`}>{job.status.replaceAll('_', ' ')}</span></div>
-          <p>{job.original_filename} · {job.total_rows} rows</p>
+          <p>{job.original_filename} · {job.total_rows} rows{job.source_name ? ` · ${job.source_name}` : ''}</p>
           <small>{job.create_count} created · {job.reuse_count} reused · {job.review_count} review · {job.reject_count} rejected · row {job.last_processed_row || 0} checkpoint</small>
           <button type="button" onClick={() => downloadJobReport(job.id)}>Download audit report</button>
         </article>)}</div>}
