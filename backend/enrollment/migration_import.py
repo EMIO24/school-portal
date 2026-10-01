@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import re
+import hashlib
 from datetime import datetime
 from decimal import Decimal
 
@@ -12,6 +13,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.db import transaction
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
@@ -26,9 +28,10 @@ from fees.models import FeeCategory, FeeSchedule, StudentFinanceAccount, Student
 from timetable.models import Period, TimetableEntry
 from curriculum.models import AcademicStandardObjective, AcademicStandardTopic, SchoolAcademicStandard
 from tenants.models import PlatformEvent, School
-from .models import (ClassArm, ClassLevel, MigrationStudentReference, StaffProfile,
-                     StudentProfile, Subject, SubjectAssignment)
+from .models import (ClassArm, ClassLevel, MigrationConflict, MigrationJob, MigrationMappingProfile,
+                     MigrationStudentReference, StaffProfile, StudentProfile, Subject, SubjectAssignment)
 from .session_enrollment import EnrollmentPlacementError, ensure_current_enrollment
+from .batch20_migration import BATCH20_DOMAINS, MigrationReview, assess_batch20, create_batch20
 
 User = get_user_model()
 DOMAINS = {
@@ -56,6 +59,7 @@ DOMAINS = {
                         ('standard_title', 'class_level', 'subject_code', 'term', 'position', 'title',
                          'recommended_week', 'requirement', 'description', 'source_reference', 'objectives')),
 }
+DOMAINS.update(BATCH20_DOMAINS)
 ALIASES = {'regno': 'student_ref', 'studentnumber': 'student_ref',
            'teacheremail': 'teacher_email', 'parentemail': 'parent_email',
            'subjectcode': 'subject_code', 'classarm': 'class_arm',
@@ -123,6 +127,16 @@ def arm_for(school, level, value):
 
 
 def identify(domain, row):
+    if domain == 'historical_sessions':
+        return row['session'].casefold()
+    if domain == 'historical_terms':
+        return (row['session'].casefold(), row['term'].casefold())
+    if domain == 'historical_enrollments':
+        return (row['student_ref'].casefold(), row['session'].casefold(), row['enrolled_on'])
+    if domain == 'historical_results':
+        return (row['student_ref'].casefold(), row['session'].casefold(), row['term'].casefold(), row['subject_code'].casefold())
+    if domain == 'historical_attendance':
+        return (row['student_ref'].casefold(), row['session'].casefold(), row['term'].casefold(), row['date'])
     if domain == 'opening_balances': return row['student_ref'].casefold()
     if domain == 'timetable':
         return (row['class_level'].casefold(), row['class_arm'].casefold(),
@@ -144,6 +158,8 @@ def identify(domain, row):
             row['class_arm'].casefold(), row['subject_code'].casefold())
 def assess(domain, row, school, current_session=None):
     """Return (action, resolved data); perform no writes."""
+    if domain in BATCH20_DOMAINS:
+        return assess_batch20(domain, row, school)
     if domain == 'opening_balances':
         identity = MigrationStudentReference.objects.filter(school=school,
             reference__iexact=row['student_ref']).select_related('student').first()
@@ -439,6 +455,8 @@ def assess(domain, row, school, current_session=None):
 
 
 def create(domain, row, school, data):
+    if domain in BATCH20_DOMAINS:
+        return create_batch20(domain, row, school, data, actor=data.get('actor'))
     if domain == 'opening_balances':
         try:
             post_adjustment(school, data['student'], data['actor'], kind='opening',
@@ -536,6 +554,50 @@ def _tabular_value(cell):
     return str(value)
 
 
+def _upload_fingerprint(upload):
+    try:
+        upload.seek(0)
+        blob = upload.read(MAX_BYTES + 1)
+        upload.seek(0)
+    except Exception:
+        raise ValidationError({'error': 'Could not read the uploaded file.'})
+    if len(blob) > MAX_BYTES:
+        raise ValidationError({'error': 'Spreadsheet is larger than 2 MB.'})
+    return hashlib.sha256(blob).hexdigest()
+
+
+def _job_for_upload(request, domain, *, status='inspected', total_rows=0, file_format='', mapping=None):
+    upload = request.FILES.get('file')
+    if not upload:
+        raise ValidationError({'error': 'Choose a CSV or Excel .xlsx file.'})
+    fingerprint = _upload_fingerprint(upload)
+    defaults = {
+        'original_filename': (upload.name or 'upload')[:255],
+        'file_format': file_format,
+        'status': status,
+        'total_rows': total_rows,
+        'created_by': request.user,
+    }
+    if mapping is not None:
+        defaults['mapping_snapshot'] = mapping
+    job, _ = MigrationJob.objects.get_or_create(
+        school=request.tenant,
+        domain=domain,
+        file_fingerprint=fingerprint,
+        defaults=defaults,
+    )
+    changed = []
+    for field, value in defaults.items():
+        if field == 'created_by':
+            continue
+        if value not in ('', None) and getattr(job, field) != value:
+            setattr(job, field, value)
+            changed.append(field)
+    if changed:
+        job.save(update_fields=changed + ['updated_at'])
+    return job, fingerprint
+
+
 def _read_tabular_upload(upload):
     name = (upload.name or '').lower()
     if not name.endswith(('.csv', '.xlsx')) or upload.size > MAX_BYTES:
@@ -610,13 +672,20 @@ def inspect_upload(request, domain):
         raise ValidationError({'error': 'Choose a CSV or Excel .xlsx file.'})
     headers, indexed_rows, file_format = _read_tabular_upload(upload)
     _validate_headers(headers)
+    suggested = _suggest_mapping(domain, headers)
+    job, fingerprint = _job_for_upload(
+        request, domain, status='inspected', total_rows=len(indexed_rows),
+        file_format=file_format, mapping=suggested,
+    )
     return {
         'headers': headers,
         'rows': [raw for _, raw in indexed_rows],
         'row_numbers': [number for number, _ in indexed_rows],
         'total_rows': len(indexed_rows),
-        'suggested_mapping': _suggest_mapping(domain, headers),
+        'suggested_mapping': suggested,
         'format': file_format,
+        'job_id': job.pk,
+        'file_fingerprint': fingerprint,
     }
 
 
@@ -654,7 +723,10 @@ def parse_upload(request, domain):
             rows.append((number, None, ('file', 'Formula-like content is not accepted in migration fields.')))
         else:
             rows.append((number, row, None))
-    return rows, [h for h in headers if h not in mapping], mapping
+    job, fingerprint = _job_for_upload(
+        request, domain, total_rows=len(rows), mapping=mapping,
+    )
+    return rows, [h for h in headers if h not in mapping], mapping, job, fingerprint
 
 
 class MigrationCentre(APIView):
@@ -680,7 +752,7 @@ class MigrationCentre(APIView):
             raise ValidationError({'error': 'Choose inspect, validate or import.'})
         if operation == 'inspect':
             return Response(inspect_upload(request, domain))
-        rows, ignored, mapping = parse_upload(request, domain)
+        rows, ignored, mapping, job, fingerprint = parse_upload(request, domain)
         school = request.tenant
         current_session = (
             AcademicSession.objects.filter(school=school, is_current=True).first()
@@ -690,7 +762,7 @@ class MigrationCentre(APIView):
         results, seen, seen_emails, seen_people = [], set(), set(), set()
         seen_phones, seen_assignment_slots = set(), set()
         seen_timetable_teacher_slots = set()
-        counts = {'CREATE': 0, 'REUSE': 0, 'REJECT': 0}
+        counts = {'CREATE': 0, 'REUSE': 0, 'REVIEW': 0, 'REJECT': 0}
 
         def process():
             for number, row, parse_error in rows:
@@ -742,6 +814,20 @@ class MigrationCentre(APIView):
                                     data['actor'] = request.user
                                 create(domain, row, school, data)
                         outcome = {'row': number, 'action': action}
+                    except MigrationReview as exc:
+                        MigrationConflict.objects.update_or_create(
+                            job=job,
+                            row_number=number,
+                            conflict_type=exc.conflict_type,
+                            defaults={
+                                'domain': domain,
+                                'source_identity': str(identify(domain, row))[:255] if row else '',
+                                'source_payload': row or {},
+                                'candidate_matches': exc.candidates,
+                                'status': 'open',
+                            },
+                        )
+                        outcome = {'row': number, 'action': 'REVIEW', 'field': exc.field, 'reason': exc.reason}
                     except ValueError as exc:
                         outcome = {'row': number, 'action': 'REJECT', 'field': exc.args[0], 'reason': exc.args[1]}
                     except Exception:
@@ -752,16 +838,134 @@ class MigrationCentre(APIView):
                 results.append(outcome)
 
         if operation == 'import':
-            with transaction.atomic():
-                School.objects.select_for_update().get(pk=school.pk)
-                process()
-                if counts['CREATE'] or counts['REJECT']:
-                    PlatformEvent.objects.create(actor=request.user, actor_email=request.user.email,
-                        action='school.migration_completed', target=str(school.pk),
-                        details={'school_id': school.pk, 'domain': domain, 'counts': counts})
+            job.status = 'importing'
+            job.started_at = timezone.now()
+            job.mapping_snapshot = mapping
+            job.save(update_fields=['status', 'started_at', 'mapping_snapshot', 'updated_at'])
+            process()
+            job.status = 'completed_with_errors' if (counts['REJECT'] or counts['REVIEW']) else 'completed'
+            job.completed_at = timezone.now()
         else:
             process()
+            job.status = 'validated'
+            job.validated_at = timezone.now()
+        job.total_rows = len(rows)
+        job.create_count = counts['CREATE']
+        job.reuse_count = counts['REUSE']
+        job.review_count = counts['REVIEW']
+        job.reject_count = counts['REJECT']
+        job.mapping_snapshot = mapping
+        job.save(update_fields=[
+            'status', 'total_rows', 'create_count', 'reuse_count', 'review_count',
+            'reject_count', 'mapping_snapshot', 'validated_at', 'started_at',
+            'completed_at', 'updated_at',
+        ])
+        if operation == 'import' and (counts['CREATE'] or counts['REVIEW'] or counts['REJECT']):
+            PlatformEvent.objects.create(
+                actor=request.user, actor_email=request.user.email,
+                action='school.migration_completed', target=str(job.pk),
+                details={
+                    'school_id': school.pk, 'domain': domain, 'counts': counts,
+                    'migration_job_id': job.pk, 'file_fingerprint': fingerprint,
+                },
+            )
         return Response({'domain': domain, 'mode': operation, 'total_rows': len(rows),
                          'counts': counts, 'rows': results,
                          'warnings': [f'Ignored column: {header}' for header in ignored],
-                         'mapping': mapping})
+                         'mapping': mapping, 'job_id': job.pk,
+                         'file_fingerprint': fingerprint, 'status': job.status})
+
+
+class MigrationJobList(APIView):
+    permission_classes = [IsSchoolAdmin]
+
+    def get(self, request):
+        rows = MigrationJob.objects.filter(school=request.tenant).select_related('created_by')[:100]
+        return Response([{
+            'id': row.pk, 'domain': row.domain, 'source_name': row.source_name,
+            'original_filename': row.original_filename, 'file_fingerprint': row.file_fingerprint,
+            'status': row.status, 'total_rows': row.total_rows,
+            'create_count': row.create_count, 'reuse_count': row.reuse_count,
+            'review_count': row.review_count, 'reject_count': row.reject_count,
+            'created_at': row.created_at, 'validated_at': row.validated_at,
+            'completed_at': row.completed_at,
+            'created_by': row.created_by.email if row.created_by else None,
+        } for row in rows])
+
+
+class MigrationMappingProfiles(APIView):
+    permission_classes = [IsSchoolAdmin]
+
+    def get(self, request):
+        qs = MigrationMappingProfile.objects.filter(school=request.tenant)
+        domain = request.query_params.get('domain')
+        if domain:
+            qs = qs.filter(domain=domain)
+        return Response([{
+            'id': row.pk, 'domain': row.domain, 'name': row.name,
+            'source_system': row.source_system, 'mappings': row.mappings,
+            'last_used_at': row.last_used_at,
+        } for row in qs])
+
+    def post(self, request):
+        domain = str(request.data.get('domain') or '').strip()
+        name = str(request.data.get('name') or '').strip()
+        mappings = request.data.get('mappings')
+        if domain not in DOMAINS or not name or not isinstance(mappings, dict):
+            raise ValidationError({'error': 'Provide a supported domain, profile name and mappings object.'})
+        allowed = set(DOMAINS[domain][1])
+        if any(key not in allowed for key in mappings.values() if key):
+            raise ValidationError({'error': 'Mapping profile contains an unsupported destination field.'})
+        profile, _ = MigrationMappingProfile.objects.update_or_create(
+            school=request.tenant, domain=domain, name=name,
+            defaults={
+                'source_system': str(request.data.get('source_system') or '')[:120],
+                'mappings': mappings, 'created_by': request.user,
+                'last_used_at': timezone.now(),
+            },
+        )
+        return Response({'id': profile.pk, 'domain': profile.domain, 'name': profile.name,
+                         'source_system': profile.source_system, 'mappings': profile.mappings}, status=201)
+
+
+class MigrationConflictList(APIView):
+    permission_classes = [IsSchoolAdmin]
+
+    def get(self, request):
+        qs = MigrationConflict.objects.filter(job__school=request.tenant).select_related('job', 'resolved_by')
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        return Response([{
+            'id': row.pk, 'job_id': row.job_id, 'domain': row.domain,
+            'row_number': row.row_number, 'source_identity': row.source_identity,
+            'conflict_type': row.conflict_type, 'source_payload': row.source_payload,
+            'candidate_matches': row.candidate_matches, 'status': row.status,
+            'resolution': row.resolution, 'resolved_at': row.resolved_at,
+            'resolved_by': row.resolved_by.email if row.resolved_by else None,
+        } for row in qs[:200]])
+
+    def patch(self, request):
+        conflict = MigrationConflict.objects.filter(
+            pk=request.data.get('id'), job__school=request.tenant
+        ).first()
+        if not conflict:
+            raise ValidationError({'error': 'Migration conflict not found.'})
+        action = request.data.get('action')
+        if action not in ('resolved', 'ignored'):
+            raise ValidationError({'error': 'Choose resolved or ignored.'})
+        resolution = request.data.get('resolution') or {}
+        if not isinstance(resolution, dict):
+            raise ValidationError({'error': 'Resolution must be an object.'})
+        conflict.status = action
+        conflict.resolution = resolution
+        conflict.resolved_by = request.user
+        conflict.resolved_at = timezone.now()
+        conflict.save(update_fields=['status', 'resolution', 'resolved_by', 'resolved_at'])
+        PlatformEvent.objects.create(
+            actor=request.user, actor_email=request.user.email,
+            action='school.migration_conflict_resolved', target=str(conflict.pk),
+            details={'school_id': request.tenant.pk, 'job_id': conflict.job_id,
+                     'status': action, 'resolution': resolution},
+        )
+        return Response({'id': conflict.pk, 'status': conflict.status, 'resolution': conflict.resolution})
