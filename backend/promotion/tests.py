@@ -177,27 +177,26 @@ class PromotionEnrollmentHistoryTests(TestCase):
         item.update(changes)
         return [item]
 
-    def test_promotion_closes_source_and_creates_destination_enrollment(self):
+    def test_promotion_stages_decision_without_changing_placement(self):
         response = self.execute(self.promoted_body())
         self.assertEqual(response.status_code, 200)
 
         self.source_enrollment.refresh_from_db()
         self.student.refresh_from_db()
-        destination = SessionEnrollment.objects.get(
-            student=self.student, session=self.destination
-        )
         record = PromotionRecord.objects.get(
             student=self.student, from_session=self.source
         )
 
-        self.assertEqual(self.source_enrollment.status, 'completed')
-        self.assertEqual(self.source_enrollment.exited_on, self.source.end_date)
-        self.assertEqual(destination.class_arm, self.arm2)
-        self.assertEqual(destination.entry_reason, 'promotion')
-        self.assertEqual(destination.status, 'active')
+        self.assertEqual(self.source_enrollment.status, 'active')
+        self.assertIsNone(self.source_enrollment.exited_on)
+        self.assertFalse(
+            SessionEnrollment.objects.filter(
+                student=self.student, session=self.destination
+            ).exists()
+        )
         self.assertEqual(record.from_class, self.arm1)
         self.assertEqual(record.to_class, self.arm2)
-        self.assertEqual(self.student.current_class, self.arm2)
+        self.assertEqual(self.student.current_class, self.arm1)
 
     def test_promotion_uses_final_active_placement_after_mid_session_transfer(self):
         self.source.is_current = True
@@ -228,7 +227,7 @@ class PromotionEnrollmentHistoryTests(TestCase):
         self.assertEqual(periods[0].class_arm, self.arm1)
         self.assertEqual(periods[0].status, 'transferred')
         self.assertEqual(periods[1].class_arm, arm_b)
-        self.assertEqual(periods[1].status, 'completed')
+        self.assertEqual(periods[1].status, 'active')
         self.assertEqual(record.from_class, arm_b)
 
     def test_repeat_creates_new_session_enrollment_in_same_class(self):
@@ -238,13 +237,20 @@ class PromotionEnrollmentHistoryTests(TestCase):
             criteria_met=False,
         ))
         self.assertEqual(response.status_code, 200)
-        destination = SessionEnrollment.objects.get(
-            student=self.student, session=self.destination
-        )
         self.student.refresh_from_db()
-        self.assertEqual(destination.class_arm, self.arm1)
-        self.assertEqual(destination.entry_reason, 'repeat')
+        self.source_enrollment.refresh_from_db()
+        self.assertFalse(
+            SessionEnrollment.objects.filter(
+                student=self.student, session=self.destination
+            ).exists()
+        )
+        self.assertEqual(self.source_enrollment.status, 'active')
         self.assertEqual(self.student.current_class, self.arm1)
+        record = PromotionRecord.objects.get(
+            student=self.student, from_session=self.source
+        )
+        self.assertEqual(record.decision, 'repeated')
+        self.assertEqual(record.to_class, self.arm1)
 
     def test_graduation_closes_history_and_clears_current_class(self):
         response = self.execute([{
@@ -257,14 +263,15 @@ class PromotionEnrollmentHistoryTests(TestCase):
         self.source_enrollment.refresh_from_db()
         self.student.refresh_from_db()
         self.student.user.refresh_from_db()
-        self.assertEqual(self.source_enrollment.status, 'graduated')
-        self.assertEqual(self.student.status, 'graduated')
-        self.assertIsNone(self.student.current_class)
-        self.assertFalse(self.student.user.is_active)
-        self.assertFalse(
-            SessionEnrollment.objects.filter(
-                student=self.student, session=self.destination
-            ).exists()
+        self.assertEqual(self.source_enrollment.status, 'active')
+        self.assertEqual(self.student.status, 'active')
+        self.assertEqual(self.student.current_class, self.arm1)
+        self.assertTrue(self.student.user.is_active)
+        self.assertEqual(
+            PromotionRecord.objects.get(
+                student=self.student, from_session=self.source
+            ).decision,
+            'graduated',
         )
 
     def test_withdrawal_decision_disables_student_login(self):
@@ -278,10 +285,16 @@ class PromotionEnrollmentHistoryTests(TestCase):
         self.student.refresh_from_db()
         self.student.user.refresh_from_db()
         self.source_enrollment.refresh_from_db()
-        self.assertEqual(self.student.status, 'withdrawn')
-        self.assertIsNone(self.student.current_class)
-        self.assertEqual(self.source_enrollment.status, 'withdrawn')
-        self.assertFalse(self.student.user.is_active)
+        self.assertEqual(self.student.status, 'active')
+        self.assertEqual(self.student.current_class, self.arm1)
+        self.assertEqual(self.source_enrollment.status, 'active')
+        self.assertTrue(self.student.user.is_active)
+        self.assertEqual(
+            PromotionRecord.objects.get(
+                student=self.student, from_session=self.source
+            ).decision,
+            'withdrawn',
+        )
 
     def test_historical_evaluation_uses_session_enrollment_not_current_class(self):
         self.student.current_class = self.arm2
@@ -344,7 +357,7 @@ class PromotionEnrollmentHistoryTests(TestCase):
         )
         self.assertEqual(old.entry_reason, 'migration')
         self.assertEqual(old.class_arm, self.arm1)
-        self.assertEqual(old.status, 'completed')
+        self.assertEqual(old.status, 'active')
 
     def test_foreign_destination_class_is_rejected(self):
         foreign_level = ClassLevel.objects.create(
