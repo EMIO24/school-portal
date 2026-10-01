@@ -22,6 +22,7 @@ const calAPI = {
   setCurrentSession: (id)  => api.post(`/api/sessions/${id}/set-current/`),
   previewRollover: (sourceId, destinationId) => api.post(`/api/sessions/${sourceId}/rollover-preview/`, { destination_session_id: destinationId }),
   executeRollover: (sourceId, destinationId) => api.post(`/api/sessions/${sourceId}/rollover-execute/`, { destination_session_id: destinationId, idempotency_key: `rollover-${sourceId}-${destinationId}` }),
+  getRolloverHistory: () => api.get("/api/sessions/rollover-history/"),
   createTerm:     (data)   => api.post("/api/terms/", data),
   deleteTerm:     (id)     => api.delete(`/api/terms/${id}/`),
   setCurrentTerm: (id)     => api.post(`/api/terms/${id}/set-current/`),
@@ -287,6 +288,16 @@ function CreateTermForm({ session, onSave, onClose, loading }) {
 function RolloverPreview({ preview, onClose, onExecute, executing }) {
   const summary = preview.summary || {};
   const studentIssues = (preview.students || []).filter(student => !student.ready);
+  const config = preview.configuration || {};
+  const destinationTermConfig = config.destination_first_term_configuration || {};
+  const checklist = [
+    { label: "Destination First Term configured", ready: Boolean(config.destination_first_term?.ready) },
+    { label: "All required student decisions recorded", ready: (summary.unresolved ?? 0) === 0 },
+    { label: "Student placement and account state consistent", ready: !((preview.blockers || []).some(item => ["CURRENT_CLASS_DRIFT","STUDENT_STATUS_DRIFT","ACCOUNT_STATE_DRIFT","LEGACY_APPLIED_STATE_DRIFT"].includes(item.code))) },
+    { label: "Destination scoring prepared", ready: Boolean(destinationTermConfig.scoring_configured), advisory: true },
+    { label: "Destination fee schedules prepared", ready: (destinationTermConfig.fee_schedules ?? 0) > 0, advisory: true },
+    { label: "Destination timetable prepared", ready: (destinationTermConfig.timetable_entries ?? 0) > 0, advisory: true },
+  ];
 
   return (
     <div className="cs-rollover-preview">
@@ -294,6 +305,24 @@ function RolloverPreview({ preview, onClose, onExecute, executing }) {
         <strong>{preview.ready ? "Ready for rollover" : "Rollover is not ready"}</strong>
         <span>{preview.source_session?.name} → {preview.destination_session?.name}</span>
       </div>
+      <section className="cs-rollover-section">
+        <h4>Year-end checklist</h4>
+        <div className="cs-rollover-checklist">
+          {checklist.map(item => (
+            <div key={item.label} className="cs-rollover-check">
+              <span className={item.ready ? "is-ready" : item.advisory ? "is-warning" : "is-blocked"}>
+                {item.ready ? "✓" : item.advisory ? "!" : "×"}
+              </span>
+              <span>{item.label}{item.advisory && !item.ready ? " (recommended)" : ""}</span>
+            </div>
+          ))}
+        </div>
+        {(summary.unresolved ?? 0) > 0 && (
+          <a className="btn btn-secondary cs-rollover-link" href="/admin/promotion">
+            Review promotion decisions
+          </a>
+        )}
+      </section>
       <div className="cs-rollover-summary" aria-label="Rollover summary">
         <div><strong>{summary.source_students ?? 0}</strong><span>Students</span></div>
         <div><strong>{summary.decided ?? 0}</strong><span>Decided</span></div>
@@ -340,6 +369,7 @@ function RolloverPreview({ preview, onClose, onExecute, executing }) {
       )}
       <p className="cs-rollover-note">
         Preview only. No student placement, result, attendance, fee, timetable, or historical record is changed here.
+        {preview.snapshot_fingerprint && <> Readiness snapshot: <code>{preview.snapshot_fingerprint.slice(0, 12)}</code>.</>}
       </p>
       <div className="cs-form-actions">
         <button type="button" className="btn btn-ghost" onClick={onClose} disabled={executing}>Close Preview</button>
@@ -353,6 +383,60 @@ function RolloverPreview({ preview, onClose, onExecute, executing }) {
   );
 }
 
+function RolloverCompletion({ result, onClose }) {
+  const summary = result.summary || {};
+  return (
+    <div className="cs-rollover-preview">
+      <div className="cs-rollover-state is-ready">
+        <strong>Academic rollover completed</strong>
+        <span>The destination session and First Term are now active.</span>
+      </div>
+      <div className="cs-rollover-summary" aria-label="Rollover completion summary">
+        <div><strong>{summary.source_students ?? 0}</strong><span>Students</span></div>
+        <div><strong>{summary.promoted ?? 0}</strong><span>Promoted</span></div>
+        <div><strong>{summary.repeated ?? 0}</strong><span>Repeated</span></div>
+        <div><strong>{summary.graduated ?? 0}</strong><span>Graduated</span></div>
+        <div><strong>{summary.withdrawn ?? 0}</strong><span>Withdrawn</span></div>
+      </div>
+      <p className="cs-rollover-note">
+        Rollover #{result.rollover_id} completed {result.completed_at ? "at " + new Date(result.completed_at).toLocaleString("en-NG") : "successfully"}.
+        Historical results, attendance, fees and prior placements remain attached to their original sessions.
+      </p>
+      <div className="cs-form-actions">
+        <button type="button" className="btn btn-primary" onClick={onClose}>Close Receipt</button>
+      </div>
+    </div>
+  );
+}
+
+function RolloverHistory({ rows, loading, onClose }) {
+  return (
+    <div className="cs-rollover-preview">
+      {loading ? <p className="cs-form-hint">Loading rollover history…</p> : rows.length === 0 ? (
+        <p className="cs-empty-msg">No rollover history has been recorded yet.</p>
+      ) : (
+        <div className="cs-rollover-history">
+          {rows.map(row => (
+            <div className="cs-rollover-history-row" key={row.id}>
+              <div>
+                <strong>{row.source_session.name} → {row.destination_session.name}</strong>
+                <span>{row.status}</span>
+              </div>
+              <small>{row.student_count} students · {row.promoted_count} promoted · {row.repeated_count} repeated · {row.graduated_count} graduated · {row.withdrawn_count} withdrawn</small>
+              <small>
+                {row.completed_at ? "Completed " + new Date(row.completed_at).toLocaleString("en-NG") : "Prepared " + new Date(row.created_at).toLocaleString("en-NG")}
+                {row.completed_by ? " by " + row.completed_by : ""}
+              </small>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="cs-form-actions">
+        <button type="button" className="btn btn-primary" onClick={onClose}>Close History</button>
+      </div>
+    </div>
+  );
+}
 // ── Term Row ───────────────────────────────────────────────────────────────
 
 function HolidayForm({ term, holiday, onSave, onClose, loading }) {
@@ -506,6 +590,9 @@ export default function CalendarSettings() {
   const [addTermTarget,  setAddTermTarget]  = useState(null);  // session obj
   const [holidayTarget,  setHolidayTarget]  = useState(null);
   const [rolloverPreview, setRolloverPreview] = useState(null);
+  const [rolloverResult, setRolloverResult] = useState(null);
+  const [rolloverHistory, setRolloverHistory] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   function showToast(msg, type = "success") {
     setToast({ msg, type });
@@ -583,14 +670,29 @@ export default function CalendarSettings() {
 
     setBusy(true);
     try {
-      await calAPI.executeRollover(sourceId, destinationId);
+      const { data } = await calAPI.executeRollover(sourceId, destinationId);
       setRolloverPreview(null);
+      setRolloverResult(data);
       await load();
       showToast("Academic rollover completed successfully.");
     } catch (err) {
       showToast(apiErrorMessage(err, "Academic rollover could not be completed."), "error");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleRolloverHistory() {
+    setHistoryLoading(true);
+    setRolloverHistory([]);
+    try {
+      const { data } = await calAPI.getRolloverHistory();
+      setRolloverHistory(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setRolloverHistory(null);
+      showToast(apiErrorMessage(err, "Failed to load rollover history."), "error");
+    } finally {
+      setHistoryLoading(false);
     }
   }
 
@@ -697,13 +799,22 @@ export default function CalendarSettings() {
             Manage sessions and terms. One session and one term can be active at a time.
           </p>
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={() => setShowNewSession(true)}
-          disabled={busy}
-        >
-          + New Session
-        </button>
+        <div className="cs-page-actions">
+          <button
+            className="btn btn-secondary"
+            onClick={handleRolloverHistory}
+            disabled={busy || historyLoading}
+          >
+            Rollover History
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowNewSession(true)}
+            disabled={busy}
+          >
+            + New Session
+          </button>
+        </div>
       </div>
 
       {/* ── Current status banner ── */}
@@ -789,6 +900,18 @@ export default function CalendarSettings() {
             onExecute={handleExecuteRollover}
             executing={busy}
           />
+        </Modal>
+      )}
+
+      {rolloverResult && (
+        <Modal title="Rollover Completion Receipt" onClose={() => setRolloverResult(null)}>
+          <RolloverCompletion result={rolloverResult} onClose={() => setRolloverResult(null)} />
+        </Modal>
+      )}
+
+      {rolloverHistory !== null && (
+        <Modal title="Academic Rollover History" onClose={() => setRolloverHistory(null)}>
+          <RolloverHistory rows={rolloverHistory} loading={historyLoading} onClose={() => setRolloverHistory(null)} />
         </Modal>
       )}
 
