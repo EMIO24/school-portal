@@ -46,9 +46,9 @@ export default function MigrationCentre() {
       api.get('/api/migration/mappings/'),
       api.get('/api/migration/conflicts/?status=open'),
     ]);
-    if (jobResult.status === 'fulfilled') setJobs(jobResult.value.data || []);
-    if (profileResult.status === 'fulfilled') setProfiles(profileResult.value.data || []);
-    if (conflictResult.status === 'fulfilled') setConflicts(conflictResult.value.data || []);
+    if (jobResult.status === 'fulfilled') setJobs(Array.isArray(jobResult.value.data) ? jobResult.value.data : []);
+    if (profileResult.status === 'fulfilled') setProfiles(Array.isArray(profileResult.value.data) ? profileResult.value.data : []);
+    if (conflictResult.status === 'fulfilled') setConflicts(Array.isArray(conflictResult.value.data) ? conflictResult.value.data : []);
   }
 
   useEffect(() => {
