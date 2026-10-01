@@ -34,7 +34,7 @@ from .serializers import (
 
 from enrollment.safety import RetainAcademicHistoryMixin
 from .history import session_has_execution_history, term_has_execution_history
-from .rollover import RolloverSafetyError, activate_session, activate_term
+from .rollover import RolloverSafetyError, activate_session, activate_term, prepare_rollover_preview
 
 
 class SessionViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
@@ -70,6 +70,30 @@ class SessionViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelView
         if changed and session_has_execution_history(instance):
             raise ValidationError("This academic session has historical records and its identity or dates cannot be changed.")
         serializer.save()
+
+    @action(detail=True, methods=["post"], url_path="rollover-preview")
+    def rollover_preview(self, request, pk=None):
+        """Build a non-destructive readiness preview for this source session."""
+        source = self.get_object()
+        destination_id = request.data.get("destination_session_id")
+        destination = AcademicSession.objects.filter(
+            pk=destination_id,
+            school=self._get_tenant(),
+        ).first()
+        if not destination:
+            raise ValidationError({
+                "destination_session_id": "Select a destination session belonging to this school."
+            })
+        try:
+            preview = prepare_rollover_preview(
+                school=self._get_tenant(),
+                source_session=source,
+                destination_session=destination,
+                actor=request.user,
+            )
+        except RolloverSafetyError as exc:
+            raise ValidationError(str(exc))
+        return Response(preview, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="set-current")
     @transaction.atomic
