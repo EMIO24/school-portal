@@ -794,8 +794,8 @@ class MigrationCentre(APIView):
         seen_timetable_teacher_slots = set()
         counts = {'CREATE': 0, 'REUSE': 0, 'REVIEW': 0, 'REJECT': 0}
 
-        def process():
-            for number, row, parse_error in rows:
+        def process(batch_rows=None):
+            for number, row, parse_error in (batch_rows if batch_rows is not None else rows):
                 target = None
                 if parse_error:
                     outcome = {'row': number, 'action': 'REJECT', 'field': parse_error[0], 'reason': parse_error[1]}
@@ -899,7 +899,15 @@ class MigrationCentre(APIView):
                 job.started_at = timezone.now()
                 job.mapping_snapshot = mapping
                 job.save(update_fields=['status', 'started_at', 'mapping_snapshot', 'updated_at'])
-            process()
+            chunk_size = 100
+            for start in range(0, len(rows), chunk_size):
+                batch = rows[start:start + chunk_size]
+                with transaction.atomic():
+                    School.objects.select_for_update().get(pk=school.pk)
+                    process(batch)
+                if not job_was_terminal and batch:
+                    job.last_processed_row = max(job.last_processed_row, batch[-1][0])
+                    job.save(update_fields=['last_processed_row', 'updated_at'])
             if not job_was_terminal:
                 job.status = 'completed_with_errors' if (counts['REJECT'] or counts['REVIEW']) else 'completed'
                 job.completed_at = timezone.now()
