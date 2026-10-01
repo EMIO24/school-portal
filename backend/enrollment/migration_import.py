@@ -576,6 +576,7 @@ def _job_for_upload(request, domain, *, status='inspected', total_rows=0, file_f
     fingerprint = _upload_fingerprint(upload)
     defaults = {
         'original_filename': (upload.name or 'upload')[:255],
+        'source_name': str(request.data.get('source_name') or '')[:120],
         'file_format': file_format,
         'status': status,
         'total_rows': total_rows,
@@ -701,6 +702,9 @@ def inspect_upload(request, domain):
         request, domain, status='inspected', total_rows=len(indexed_rows),
         file_format=file_format, mapping=suggested,
     )
+    if matched_profile and matched_profile.source_system and not job.source_name and job.status not in ('completed', 'completed_with_errors'):
+        job.source_name = matched_profile.source_system
+        job.save(update_fields=['source_name', 'updated_at'])
     return {
         'headers': headers,
         'rows': [raw for _, raw in indexed_rows],
