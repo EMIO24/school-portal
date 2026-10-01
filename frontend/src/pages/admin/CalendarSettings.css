@@ -704,3 +704,95 @@
     grid-column: auto;
   }
 }
+
+
+.cs-page-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.cs-rollover-checklist {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.cs-rollover-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius);
+  background: var(--color-surface-2);
+  font-size: 0.82rem;
+}
+
+.cs-rollover-check > span:first-child {
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.cs-rollover-check > span:first-child.is-ready {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.cs-rollover-check > span:first-child.is-warning {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  color: var(--color-accent);
+}
+
+.cs-rollover-check > span:first-child.is-blocked {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.cs-rollover-link {
+  width: fit-content;
+  text-decoration: none;
+  margin-top: var(--space-1);
+}
+
+.cs-rollover-history {
+  display: grid;
+  gap: var(--space-3);
+  max-height: 420px;
+  overflow: auto;
+}
+
+.cs-rollover-history-row {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius);
+  background: var(--color-surface-2);
+}
+
+.cs-rollover-history-row > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.cs-rollover-history-row > div span {
+  text-transform: capitalize;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.cs-rollover-history-row small {
+  color: var(--color-text-muted);
+}
+
+.cs-rollover-note code {
+  font-size: 0.75rem;
+}
