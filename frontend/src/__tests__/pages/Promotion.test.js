@@ -81,3 +81,54 @@ test('promotion requires and submits a higher destination class', async () => {
     })],
   ));
 });
+
+
+test('preloads a previously staged decision for review and correction', async () => {
+  api.post.mockImplementation(async url => {
+    if (url.startsWith('/api/promotion/evaluate/')) return {data: [{
+      student_id: 31,
+      student_name: 'Ada Student',
+      class: 'JSS1A',
+      class_arm_id: 21,
+      class_level_id: 11,
+      session_avg: 75,
+      subjects_passed: 8,
+      attendance_pct: 95,
+      criteria_met: true,
+      recommended: 'promoted',
+      saved_decision_id: 91,
+      saved_decision: 'promoted',
+      saved_to_session_id: 2,
+      saved_to_class_id: 22,
+    }]};
+    return {data: {staged: 1, executed: 1, updated: 1, applied: false, graduated: 0}};
+  });
+
+  const {container} = renderPage(<Promotion />);
+  await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/class-arms/'));
+
+  fireEvent.change(container.querySelector('.promo-controls > select'), {target:{value:'1'}});
+  fireEvent.click(screen.getByRole('button',{name:'Evaluate Students'}));
+
+  expect(await screen.findByText('Ada Student')).toBeVisible();
+  expect(screen.getByLabelText('Destination session')).toHaveValue('2');
+  expect(screen.getByRole('combobox',{name:'Destination class for Ada Student'})).toHaveValue('22');
+
+  fireEvent.change(
+    screen.getByRole('combobox',{name:'Destination class for Ada Student'}),
+    {target:{value:'22'}},
+  );
+  fireEvent.click(screen.getByRole('button',{name:/Stage All Decisions/}));
+  fireEvent.click(screen.getByRole('button',{name:'Confirm & Save Decisions'}));
+
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+    '/api/promotion/execute/',
+    [expect.objectContaining({
+      student_id:31,
+      session_id:1,
+      to_session_id:2,
+      to_class_id:22,
+      decision:'promoted',
+    })],
+  ));
+});
