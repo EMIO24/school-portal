@@ -14,6 +14,7 @@ const labels = {
   historical_enrollments: 'Historical student placements',
   historical_results: 'Historical results',
   historical_attendance: 'Historical attendance',
+  historical_finance: 'Historical finance adjustments',
 };
 const csvCell = value => {
   const raw = String(value ?? '');
@@ -124,8 +125,13 @@ export default function MigrationCentre() {
         format: data.format,
         jobId: data.job_id,
         fingerprint: data.file_fingerprint,
+        mappingProfile: data.mapping_profile || null,
       });
       setMapping(data.suggested_mapping || {});
+      if (data.mapping_profile) {
+        setProfileName(data.mapping_profile.name || '');
+        setSourceSystem(data.mapping_profile.source_system || '');
+      }
       setFile(nextFile);
     } catch (err) {
       setError(err.response?.data?.error || 'Could not read the spreadsheet.');
@@ -138,6 +144,19 @@ export default function MigrationCentre() {
     const next = {...mapping};
     next[header] = field || null;
     setMapping(next); setReport(null);
+  }
+
+  async function downloadJobReport(jobId) {
+    setError('');
+    try {
+      const {data} = await api.get(`/api/migration/jobs/${jobId}/report/`, {responseType: 'blob'});
+      const url = URL.createObjectURL(new Blob([data], {type: 'text/csv'}));
+      const anchor = document.createElement('a');
+      anchor.href = url; anchor.download = `paideia_migration_job_${jobId}.csv`; anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError('Could not download the migration job report.');
+    }
   }
 
   async function template() {
@@ -204,11 +223,13 @@ export default function MigrationCentre() {
       {domain === 'historical_enrollments' && <p>Historical placement writes SessionEnrollment evidence. Past placements never rewrite current_class.</p>}
       {domain === 'historical_results' && <p>Historical results require matching historical placement and the actual stored assessment components. Conflicts go to human review.</p>}
       {domain === 'historical_attendance' && <p>Import dated attendance evidence only. Paideia does not manufacture daily attendance from aggregate percentages.</p>}
+      {domain === 'historical_finance' && <p>Imports verified debit/credit evidence as idempotent ledger adjustments only. It never creates FeePayment, PaymentOrder, Paystack settlements or receipts.</p>}
     </section>
     <section><h2>2. Upload and map columns</h2>
       <label>Spreadsheet file <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy} onChange={event => chooseFile(event.target.files[0])}/></label>
       <p>Upload CSV or Excel (.xlsx), up to 2 MB and 2,000 data rows. Excel imports use the first worksheet.</p>
       {parsed && <><p>{parsed.totalRows} rows found. Review each suggested mapping.</p>
+        {parsed.mappingProfile && <p className="migration-profile-match">Matched saved mapping: <strong>{parsed.mappingProfile.name}</strong>{parsed.mappingProfile.source_system ? ` · ${parsed.mappingProfile.source_system}` : ''}</p>}
         <div className="migration-mapping">{parsed.headers.map(header => <label key={header}>{header}
           <select value={mapping[header] || ''} onChange={event => changeMapping(header, event.target.value)}>
             <option value="">Ignore this column</option>
@@ -251,7 +272,8 @@ export default function MigrationCentre() {
         <div className="migration-job-list">{jobs.slice(0, 20).map(job => <article key={job.id}>
           <div><strong>#{job.id} {labels[job.domain] || job.domain}</strong><span className={`migration-status status-${job.status}`}>{job.status.replaceAll('_', ' ')}</span></div>
           <p>{job.original_filename} · {job.total_rows} rows</p>
-          <small>{job.create_count} created · {job.reuse_count} reused · {job.review_count} review · {job.reject_count} rejected</small>
+          <small>{job.create_count} created · {job.reuse_count} reused · {job.review_count} review · {job.reject_count} rejected · row {job.last_processed_row || 0} checkpoint</small>
+          <button type="button" onClick={() => downloadJobReport(job.id)}>Download audit report</button>
         </article>)}</div>}
     </section>
     <section aria-label="Reconciliation queue"><h2>5. Reconciliation queue</h2>
