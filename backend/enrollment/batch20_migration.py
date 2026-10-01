@@ -9,7 +9,7 @@ Historical imports are evidence reconstruction only:
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import transaction
+from django.db import models, transaction
 
 from academics.models import AcademicSession, Term
 from attendance.models import AttendanceRecord, AttendanceSession
@@ -239,7 +239,13 @@ def assess_batch20(domain, row, school):
             raise ValueError("subject_code", "Import this subject first.")
         values = {field: _decimal_score(row, field) for field in
                   ("first_test", "second_test", "assignment", "project", "practical", "exam_score")}
-        if sum(values.values()) > Decimal("100.00"):
+        ca_total = sum((values[field] for field in
+                        ("first_test", "second_test", "assignment", "project", "practical")), Decimal("0"))
+        if ca_total > Decimal(str(subject.max_ca_score)):
+            raise ValueError("first_test", f"Continuous assessment total exceeds this subject's {subject.max_ca_score}-mark CA limit.")
+        if values["exam_score"] > Decimal(str(subject.max_exam_score)):
+            raise ValueError("exam_score", f"Exam score exceeds this subject's {subject.max_exam_score}-mark exam limit.")
+        if ca_total + values["exam_score"] > Decimal("100.00"):
             raise ValueError("exam_score", "Assessment components total more than 100.")
         published_text = row.get("is_published", "").strip().casefold()
         published = published_text in ("1", "true", "yes", "published")
@@ -337,6 +343,3 @@ def create_batch20(domain, row, school, data, *, actor=None):
     else:
         raise ValueError("file", "Unsupported historical migration type.")
 
-
-# Imported here to avoid a module-level circular dependency.
-from django.db import models
