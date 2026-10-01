@@ -7,6 +7,7 @@ Historical imports are evidence reconstruction only:
 - conflicts are REVIEW outcomes, not implicit overwrites.
 """
 from decimal import Decimal
+import hashlib
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models, transaction
@@ -301,7 +302,8 @@ def assess_batch20(domain, row, school):
             session = _session_for(school, row["session"])
             term = _term_for(session, row["term"])
         signed = debit if debit > 0 else -credit
-        key = f"migration-finance:{school.pk}:{student.pk}:{reference}"[:100]
+        ref_digest = hashlib.sha256(reference.encode("utf-8")).hexdigest()[:48]
+        key = f"migration-finance:{school.pk}:{student.pk}:{ref_digest}"
         existing = StudentLedgerEntry.objects.filter(school=school, idempotency_key=key).first()
         if existing:
             if (
