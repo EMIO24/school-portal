@@ -34,7 +34,7 @@ from .serializers import (
 
 from enrollment.safety import RetainAcademicHistoryMixin
 from .history import session_has_execution_history, term_has_execution_history
-from .rollover import RolloverSafetyError, activate_session, activate_term, prepare_rollover_preview
+from .rollover import RolloverSafetyError, activate_session, activate_term, execute_rollover, prepare_rollover_preview
 
 
 class SessionViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
@@ -94,6 +94,38 @@ class SessionViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelView
         except RolloverSafetyError as exc:
             raise ValidationError(str(exc))
         return Response(preview, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="rollover-execute")
+    def rollover_execute(self, request, pk=None):
+        """Atomically execute a ready rollover from this source session."""
+        source = self.get_object()
+        destination_id = request.data.get("destination_session_id")
+        destination = AcademicSession.objects.filter(
+            pk=destination_id,
+            school=self._get_tenant(),
+        ).first()
+        if not destination:
+            raise ValidationError({
+                "destination_session_id": "Select a destination session belonging to this school."
+            })
+
+        idempotency_key = str(request.data.get("idempotency_key") or "").strip()
+        if len(idempotency_key) > 100:
+            raise ValidationError({
+                "idempotency_key": "Idempotency key must be 100 characters or fewer."
+            })
+
+        try:
+            result = execute_rollover(
+                school=self._get_tenant(),
+                source_session=source,
+                destination_session=destination,
+                actor=request.user,
+                idempotency_key=idempotency_key,
+            )
+        except RolloverSafetyError as exc:
+            raise ValidationError(str(exc))
+        return Response(result, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="set-current")
     @transaction.atomic
