@@ -650,7 +650,7 @@ class MigrationCentreTests(TestCase):
         self.assertEqual(job.last_processed_row, 2)
         row = MigrationRowRecord.objects.get(job=job, row_number=2)
         self.assertEqual(row.action, 'CREATE')
-        self.assertIn('JSS1', row.source_identity)
+        self.assertIn('jss1', row.source_identity)
 
         report = self.client.get(f'/api/migration/jobs/{job.pk}/report/')
         self.assertEqual(report.status_code, 200)
