@@ -54,20 +54,20 @@ test('promotion requires and submits a higher destination class', async () => {
 
   expect(await screen.findByText('Ada Student')).toBeVisible();
 
-  fireEvent.click(screen.getByRole('button', {name: /Apply All Decisions/}));
-  fireEvent.click(screen.getByRole('button', {name: 'Confirm & Execute'}));
+  fireEvent.click(screen.getByRole('button', {name: /Stage All Decisions/}));
+  fireEvent.click(screen.getByRole('button', {name: 'Confirm & Save Decisions'}));
   expect(await screen.findByText('Select the destination academic session.')).toBeVisible();
 
   const destinationSession = screen.getByLabelText('Destination session');
   fireEvent.change(destinationSession, {target: {value: '2'}});
-  fireEvent.click(screen.getByRole('button', {name: 'Confirm & Execute'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Confirm & Save Decisions'}));
   expect(await screen.findByText('Select a destination class for Ada Student.')).toBeVisible();
 
   fireEvent.change(
     screen.getByRole('combobox', {name: 'Destination class for Ada Student'}),
     {target: {value: '22'}},
   );
-  fireEvent.click(screen.getByRole('button', {name: 'Confirm & Execute'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Confirm & Save Decisions'}));
 
   await waitFor(() => expect(api.post).toHaveBeenCalledWith(
     '/api/promotion/execute/',
