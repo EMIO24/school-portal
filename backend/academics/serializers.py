@@ -56,11 +56,20 @@ class TermSerializer(serializers.ModelSerializer):
         return None
 
     def validate(self, attrs):
-        if attrs.get("start_date") and attrs.get("end_date"):
-            if attrs["start_date"] >= attrs["end_date"]:
-                raise serializers.ValidationError(
-                    {"end_date": "End date must be after start date."}
-                )
+        session = attrs.get("session", getattr(self.instance, "session", None))
+        start = attrs.get("start_date", getattr(self.instance, "start_date", None))
+        end = attrs.get("end_date", getattr(self.instance, "end_date", None))
+        next_term = attrs.get("next_term_begins", getattr(self.instance, "next_term_begins", None))
+        request = self.context.get("request")
+        if session and request and session.school_id != request.tenant.pk:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Session does not belong to this school.")
+        if start and end and start >= end:
+            raise serializers.ValidationError({"end_date": "End date must be after start date."})
+        if session and start and end and (start < session.start_date or end > session.end_date):
+            raise serializers.ValidationError({"start_date": "Term dates must stay within the selected session."})
+        if next_term and end and next_term <= end:
+            raise serializers.ValidationError({"next_term_begins": "Next term must begin after this term ends."})
         return attrs
 
 
@@ -84,10 +93,24 @@ class AcademicSessionSerializer(serializers.ModelSerializer):
         return None
 
     def validate(self, attrs):
-        if attrs.get("start_date") and attrs.get("end_date"):
-            if attrs["start_date"] >= attrs["end_date"]:
+        start = attrs.get("start_date", getattr(self.instance, "start_date", None))
+        end = attrs.get("end_date", getattr(self.instance, "end_date", None))
+        if start and end and start >= end:
+            raise serializers.ValidationError({"end_date": "End date must be after start date."})
+
+        request = self.context.get("request")
+        school = getattr(request, "tenant", None) if request else getattr(self.instance, "school", None)
+        if school and start and end:
+            overlaps = AcademicSession.objects.filter(
+                school=school,
+                start_date__lte=end,
+                end_date__gte=start,
+            )
+            if self.instance:
+                overlaps = overlaps.exclude(pk=self.instance.pk)
+            if overlaps.exists():
                 raise serializers.ValidationError(
-                    {"end_date": "End date must be after start date."}
+                    {"start_date": "Academic sessions for a school cannot overlap."}
                 )
         return attrs
 
