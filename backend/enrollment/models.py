@@ -616,3 +616,115 @@ class SubjectAssignment(models.Model):
             f"{self.subject.code} / {self.class_arm.full_name} "
             f"({self.term})"
         )
+
+
+# ── Batch 20: Migration command centre ─────────────────────────────────────
+
+class MigrationJob(models.Model):
+    STATUS_CHOICES = [
+        ("inspected", "Inspected"),
+        ("validated", "Validated"),
+        ("importing", "Importing"),
+        ("completed", "Completed"),
+        ("completed_with_errors", "Completed with errors"),
+        ("failed", "Failed"),
+    ]
+
+    school = models.ForeignKey(
+        "tenants.School", on_delete=models.CASCADE, related_name="migration_jobs"
+    )
+    domain = models.CharField(max_length=40, db_index=True)
+    source_name = models.CharField(max_length=120, blank=True, default="")
+    original_filename = models.CharField(max_length=255)
+    file_fingerprint = models.CharField(max_length=64)
+    file_format = models.CharField(max_length=12, blank=True, default="")
+    status = models.CharField(max_length=24, choices=STATUS_CHOICES, default="inspected", db_index=True)
+    mapping_snapshot = models.JSONField(default=dict, blank=True)
+    total_rows = models.PositiveIntegerField(default=0)
+    create_count = models.PositiveIntegerField(default=0)
+    reuse_count = models.PositiveIntegerField(default=0)
+    reject_count = models.PositiveIntegerField(default=0)
+    review_count = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="migration_jobs_created"
+    )
+    validated_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["school", "domain", "file_fingerprint"],
+                name="unique_migration_file_per_school_domain",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.school} | {self.domain} | {self.original_filename}"
+
+
+class MigrationMappingProfile(models.Model):
+    school = models.ForeignKey(
+        "tenants.School", on_delete=models.CASCADE, related_name="migration_mapping_profiles"
+    )
+    domain = models.CharField(max_length=40, db_index=True)
+    name = models.CharField(max_length=120)
+    source_system = models.CharField(max_length=120, blank=True, default="")
+    mappings = models.JSONField(default=dict)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="migration_mapping_profiles_created"
+    )
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["domain", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["school", "domain", "name"],
+                name="unique_migration_mapping_profile_name",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.school} | {self.domain} | {self.name}"
+
+
+class MigrationConflict(models.Model):
+    STATUS_CHOICES = [
+        ("open", "Open"),
+        ("resolved", "Resolved"),
+        ("ignored", "Ignored"),
+    ]
+
+    job = models.ForeignKey(MigrationJob, on_delete=models.CASCADE, related_name="conflicts")
+    row_number = models.PositiveIntegerField()
+    domain = models.CharField(max_length=40)
+    source_identity = models.CharField(max_length=255, blank=True, default="")
+    conflict_type = models.CharField(max_length=80)
+    source_payload = models.JSONField(default=dict)
+    candidate_matches = models.JSONField(default=list)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="open", db_index=True)
+    resolution = models.JSONField(default=dict, blank=True)
+    resolved_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="migration_conflicts_resolved"
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["job_id", "row_number", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["job", "row_number", "conflict_type"],
+                name="unique_migration_conflict_per_row_type",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.job_id}:{self.row_number} {self.conflict_type}"
