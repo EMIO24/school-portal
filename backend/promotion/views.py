@@ -85,7 +85,7 @@ class PromotionEvaluateView(APIView):
         school         = getattr(request, 'tenant', None)
         session_id     = request.query_params.get('session')
         class_level_id = request.query_params.get('class_level')
-        from academics.models import AcademicRollover, AcademicSession
+        from academics.models import AcademicSession
         from enrollment.models import SessionEnrollment, StudentProfile
 
         try:
@@ -189,7 +189,7 @@ class PromotionExecuteView(APIView):
     @transaction.atomic
     def post(self, request):
         from enrollment.models import StudentProfile, ClassArm, SessionEnrollment
-        from academics.models import AcademicSession
+        from academics.models import AcademicRollover, AcademicSession
         from tenants.models import School, PlatformEvent
         from rest_framework.exceptions import ValidationError
 
