@@ -54,6 +54,24 @@ DROP FUNCTION IF EXISTS academics_enforce_one_current_term_per_school();
 """
 
 
+def normalize_current_terms(apps, schema_editor):
+    Term = apps.get_model("academics", "Term")
+    AcademicSession = apps.get_model("academics", "AcademicSession")
+    School = apps.get_model("tenants", "School")
+
+    for school_id in School.objects.values_list("pk", flat=True).iterator():
+        current_ids = list(
+            Term.objects.filter(
+                session__school_id=school_id,
+                is_current=True,
+            )
+            .order_by("-session__start_date", "-start_date", "-pk")
+            .values_list("pk", flat=True)
+        )
+        if len(current_ids) > 1:
+            Term.objects.filter(pk__in=current_ids[1:]).update(is_current=False)
+
+
 def create_postgres_guard(apps, schema_editor):
     if schema_editor.connection.vendor == "postgresql":
         with schema_editor.connection.cursor() as cursor:
@@ -73,5 +91,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(normalize_current_terms, migrations.RunPython.noop),
         migrations.RunPython(create_postgres_guard, drop_postgres_guard),
     ]
