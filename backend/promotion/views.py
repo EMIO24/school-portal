@@ -85,7 +85,7 @@ class PromotionEvaluateView(APIView):
         school         = getattr(request, 'tenant', None)
         session_id     = request.query_params.get('session')
         class_level_id = request.query_params.get('class_level')
-        from academics.models import AcademicSession
+        from academics.models import AcademicRollover, AcademicSession
         from enrollment.models import SessionEnrollment, StudentProfile
 
         try:
@@ -113,6 +113,22 @@ class PromotionEvaluateView(APIView):
             ).select_related('class_level')
         }
 
+        saved_decisions = {
+            record.student_id: record
+            for record in PromotionRecord.objects.filter(
+                school=school,
+                from_session=session,
+            ).select_related('to_session', 'to_class')
+        }
+
+        def attach_saved_decision(row, student_id):
+            saved = saved_decisions.get(student_id)
+            row['saved_decision_id'] = saved.pk if saved else None
+            row['saved_decision'] = saved.decision if saved else None
+            row['saved_to_session_id'] = saved.to_session_id if saved else None
+            row['saved_to_class_id'] = saved.to_class_id if saved else None
+            return row
+
         results = []
         enrolled_student_ids = set()
         for enrollment in enrollments:
@@ -132,7 +148,7 @@ class PromotionEvaluateView(APIView):
                 class_arm=enrollment.class_arm,
             )
             row['membership_source'] = 'session_enrollment'
-            results.append(row)
+            results.append(attach_saved_decision(row, student.pk))
 
         # Compatibility is intentionally limited to the current session.
         # Older sessions must have explicit SessionEnrollment history.
@@ -162,7 +178,7 @@ class PromotionEvaluateView(APIView):
                     class_arm=student.current_class,
                 )
                 row['membership_source'] = 'current_class_compatibility'
-                results.append(row)
+                results.append(attach_saved_decision(row, student.pk))
 
         return Response(results)
 
@@ -206,13 +222,25 @@ class PromotionExecuteView(APIView):
                     'Select an active student and source session from this school.'
                 )
 
-            if PromotionRecord.objects.filter(
+            existing_records = list(
+                PromotionRecord.objects.select_for_update().filter(
+                    school=school,
+                    student=student,
+                    from_session=session,
+                ).order_by('id')
+            )
+            if len(existing_records) > 1:
+                raise ValidationError(
+                    'Duplicate year-end decisions already exist for this student. Resolve the duplicate records before continuing.'
+                )
+            existing_record = existing_records[0] if existing_records else None
+            if AcademicRollover.objects.filter(
                 school=school,
-                student=student,
-                from_session=session,
+                source_session=session,
+                status='completed',
             ).exists():
                 raise ValidationError(
-                    'A decision already exists for this student and session. Review it before changing records.'
+                    'Year-end decisions cannot be changed after academic rollover is completed.'
                 )
 
             source_enrollment = SessionEnrollment.objects.select_for_update().filter(
@@ -300,6 +328,7 @@ class PromotionExecuteView(APIView):
                 'destination': destination,
                 'destination_arm': destination_arm,
                 'item': item,
+                'existing_record': existing_record,
             })
 
         for change in prepared:
@@ -315,18 +344,41 @@ class PromotionExecuteView(APIView):
             # Batch 19: year-end decisions are staged here only. Student placement,
             # lifecycle status, login activation, and destination enrollment are
             # applied exclusively by the atomic academic rollover executor.
-            record = PromotionRecord.objects.create(
-                school=school,
-                student=student,
-                from_session=session,
-                to_session=destination,
-                from_class=source_arm,
-                to_class=destination_arm,
-                decision=decision,
-                criteria_met=bool(item.get('criteria_met', False)),
-                decided_by=request.user,
-                notes=str(item.get('notes', ''))[:2000],
-            )
+            existing_record = change['existing_record']
+            previous = None
+            if existing_record:
+                previous = {
+                    'decision': existing_record.decision,
+                    'to_session_id': existing_record.to_session_id,
+                    'to_class_id': existing_record.to_class_id,
+                    'criteria_met': existing_record.criteria_met,
+                    'notes': existing_record.notes,
+                }
+                existing_record.to_session = destination
+                existing_record.from_class = source_arm
+                existing_record.to_class = destination_arm
+                existing_record.decision = decision
+                existing_record.criteria_met = bool(item.get('criteria_met', False))
+                existing_record.decided_by = request.user
+                existing_record.notes = str(item.get('notes', ''))[:2000]
+                existing_record.save(update_fields=[
+                    'to_session', 'from_class', 'to_class', 'decision',
+                    'criteria_met', 'decided_by', 'notes',
+                ])
+                record = existing_record
+            else:
+                record = PromotionRecord.objects.create(
+                    school=school,
+                    student=student,
+                    from_session=session,
+                    to_session=destination,
+                    from_class=source_arm,
+                    to_class=destination_arm,
+                    decision=decision,
+                    criteria_met=bool(item.get('criteria_met', False)),
+                    decided_by=request.user,
+                    notes=str(item.get('notes', ''))[:2000],
+                )
 
             PlatformEvent.objects.create(
                 actor=request.user,
@@ -341,6 +393,8 @@ class PromotionExecuteView(APIView):
                     'to_session_id': destination.pk if destination else None,
                     'to_class_id': destination_arm.pk if destination_arm else None,
                     'staged': True,
+                    'updated_existing': existing_record is not None,
+                    'previous': previous,
                 },
             )
 
@@ -349,6 +403,10 @@ class PromotionExecuteView(APIView):
             # Kept for older clients that still read the legacy field name.
             'executed': len(prepared),
             'applied': False,
+            'updated': sum(
+                change['existing_record'] is not None
+                for change in prepared
+            ),
             'graduated': sum(
                 change['item']['decision'] == 'graduated'
                 for change in prepared
