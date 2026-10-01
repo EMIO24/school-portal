@@ -1,6 +1,7 @@
 from collections import defaultdict
 
 from django.db import transaction
+from django.utils import timezone
 
 from .models import AcademicRollover, AcademicSession, Term
 
@@ -480,6 +481,359 @@ def prepare_rollover_preview(*, school, source_session, destination_session, act
     rollover.preview_snapshot = payload
     rollover.save(update_fields=["preview_snapshot", "updated_at"])
     return payload
+
+
+@transaction.atomic
+def execute_rollover(*, school, source_session, destination_session, actor, idempotency_key=""):
+    """
+    Atomically finalize one academic-year cutover.
+
+    The executor refreshes readiness inside the same transaction, locks the school,
+    rollover, student placements and student accounts, then applies only the
+    placement/lifecycle changes implied by already-recorded PromotionRecord rows.
+    Replays for an already-completed session pair are safe and return the original
+    completion summary.
+    """
+    from enrollment.models import SessionEnrollment, StudentProfile
+    from promotion.models import PromotionRecord
+    from tenants.models import PlatformEvent, School
+
+    locked_school = School.objects.select_for_update().get(pk=school.pk)
+    source = AcademicSession.objects.select_for_update().filter(
+        pk=source_session.pk, school=locked_school
+    ).first()
+    destination = AcademicSession.objects.select_for_update().filter(
+        pk=destination_session.pk, school=locked_school
+    ).first()
+    if not source or not destination:
+        raise RolloverSafetyError(
+            "Select source and destination sessions belonging to this school."
+        )
+
+    completed = AcademicRollover.objects.select_for_update().filter(
+        school=locked_school,
+        source_session=source,
+        destination_session=destination,
+        status="completed",
+    ).order_by("-id").first()
+    if completed:
+        return {
+            "rollover_id": completed.pk,
+            "status": completed.status,
+            "completed_at": completed.completed_at.isoformat() if completed.completed_at else None,
+            "idempotent_replay": True,
+            "summary": {
+                "source_students": completed.student_count,
+                "promoted": completed.promoted_count,
+                "repeated": completed.repeated_count,
+                "graduated": completed.graduated_count,
+                "withdrawn": completed.withdrawn_count,
+            },
+        }
+
+    if idempotency_key:
+        existing_key = AcademicRollover.objects.select_for_update().filter(
+            school=locked_school,
+            idempotency_key=idempotency_key,
+        ).first()
+        if existing_key and (
+            existing_key.source_session_id != source.pk
+            or existing_key.destination_session_id != destination.pk
+        ):
+            raise RolloverSafetyError(
+                "This rollover idempotency key has already been used for another session pair."
+            )
+
+    preview = prepare_rollover_preview(
+        school=locked_school,
+        source_session=source,
+        destination_session=destination,
+        actor=actor,
+    )
+    if not preview.get("ready"):
+        first = (preview.get("blockers") or [{}])[0].get(
+            "message", "The academic rollover is not ready."
+        )
+        raise RolloverSafetyError(first)
+
+    rollover = AcademicRollover.objects.select_for_update().get(
+        pk=preview["rollover_id"],
+        school=locked_school,
+        source_session=source,
+        destination_session=destination,
+    )
+    if rollover.status != "ready":
+        raise RolloverSafetyError(
+            "Refresh the rollover preview before executing the academic rollover."
+        )
+    if idempotency_key:
+        rollover.idempotency_key = idempotency_key
+        rollover.save(update_fields=["idempotency_key", "updated_at"])
+
+    first_term = Term.objects.select_for_update().filter(
+        session=destination, name="first"
+    ).first()
+    if not first_term:
+        raise RolloverSafetyError(
+            "Configure First Term for the destination session before rollover."
+        )
+
+    # Lock all relevant records again after the fresh preview so no concurrent
+    # placement/decision mutation can slip between readiness and execution.
+    enrollment_rows = list(
+        SessionEnrollment.objects.select_for_update().filter(
+            school=locked_school,
+            session=source,
+        ).select_related("class_arm__class_level").order_by(
+            "student_id", "-enrolled_on", "-pk"
+        )
+    )
+    final_enrollments = {}
+    for enrollment in enrollment_rows:
+        final_enrollments.setdefault(enrollment.student_id, enrollment)
+
+    records = list(
+        PromotionRecord.objects.select_for_update().filter(
+            school=locked_school,
+            from_session=source,
+        ).select_related(
+            "to_session",
+            "from_class__class_level",
+            "to_class__class_level",
+        ).order_by("student_id", "id")
+    )
+    records_by_student = defaultdict(list)
+    for record in records:
+        records_by_student[record.student_id].append(record)
+
+    destination_rows = list(
+        SessionEnrollment.objects.select_for_update().filter(
+            school=locked_school,
+            session=destination,
+        ).select_related("class_arm").order_by("student_id", "pk")
+    )
+    destination_by_student = defaultdict(list)
+    for enrollment in destination_rows:
+        destination_by_student[enrollment.student_id].append(enrollment)
+
+    student_ids = list(final_enrollments)
+    students = {
+        student.pk: student
+        for student in StudentProfile.objects.select_for_update().select_related(
+            "user"
+        ).filter(school=locked_school, pk__in=student_ids)
+    }
+
+    counts = {
+        "promoted": 0,
+        "repeated": 0,
+        "graduated": 0,
+        "withdrawn": 0,
+    }
+
+    for student_id, source_enrollment in final_enrollments.items():
+        student = students.get(student_id)
+        if student is None:
+            raise RolloverSafetyError(
+                "A source-session enrollment references a missing student."
+            )
+
+        student_records = records_by_student.get(student_id, [])
+        lifecycle_exempt = (
+            not student_records
+            and student.status in ("withdrawn", "graduated")
+            and source_enrollment.status == student.status
+        )
+        if lifecycle_exempt:
+            continue
+        if len(student_records) != 1:
+            raise RolloverSafetyError(
+                "Every rollover student must have exactly one year-end decision."
+            )
+
+        record = student_records[0]
+        decision = record.decision
+        if record.from_class_id != source_enrollment.class_arm_id:
+            raise RolloverSafetyError(
+                "A promotion decision no longer matches the student's final source class."
+            )
+
+        if decision in ("promoted", "repeated"):
+            if record.to_session_id != destination.pk or not record.to_class_id:
+                raise RolloverSafetyError(
+                    "A promoted or repeated student has an invalid destination placement."
+                )
+
+            if source_enrollment.status == "active":
+                source_enrollment.status = "completed"
+                source_enrollment.exited_on = source.end_date
+                source_enrollment.notes = (
+                    source_enrollment.notes
+                    + (" " if source_enrollment.notes else "")
+                    + f"Closed by academic rollover {rollover.pk}: {decision}."
+                )[:500]
+                source_enrollment.save(
+                    update_fields=["status", "exited_on", "notes", "updated_at"]
+                )
+            elif not (
+                source_enrollment.status == "completed"
+                and source_enrollment.exited_on == source.end_date
+            ):
+                raise RolloverSafetyError(
+                    "A source placement changed after rollover preview."
+                )
+
+            existing_destination = destination_by_student.get(student_id, [])
+            active_destination = [
+                row for row in existing_destination if row.status == "active"
+            ]
+            if existing_destination:
+                if len(active_destination) != 1 or active_destination[0].class_arm_id != record.to_class_id:
+                    raise RolloverSafetyError(
+                        "Destination enrollment history changed after rollover preview."
+                    )
+                destination_enrollment = active_destination[0]
+            else:
+                destination_enrollment = SessionEnrollment.objects.create(
+                    school=locked_school,
+                    student=student,
+                    session=destination,
+                    class_arm=record.to_class,
+                    status="active",
+                    entry_reason="promotion" if decision == "promoted" else "repeat",
+                    enrolled_on=destination.start_date,
+                    notes=f"Created by academic rollover {rollover.pk} from promotion decision {record.pk}.",
+                    created_by=actor,
+                )
+                destination_by_student[student_id].append(destination_enrollment)
+
+            if student.current_class_id not in (
+                source_enrollment.class_arm_id,
+                record.to_class_id,
+            ):
+                raise RolloverSafetyError(
+                    "The student's current class changed after rollover preview."
+                )
+            student.current_class = record.to_class
+            student.status = "active"
+            student.user.is_active = True
+            student.user.save(update_fields=["is_active"])
+            student.save(update_fields=["current_class", "status"])
+            counts[decision] += 1
+
+        elif decision in ("graduated", "withdrawn"):
+            if destination_by_student.get(student_id):
+                raise RolloverSafetyError(
+                    "Graduated or withdrawn students cannot have destination-session enrollment history."
+                )
+
+            if source_enrollment.status == "active":
+                source_enrollment.status = decision
+                source_enrollment.exited_on = source.end_date
+                source_enrollment.notes = (
+                    source_enrollment.notes
+                    + (" " if source_enrollment.notes else "")
+                    + f"Closed by academic rollover {rollover.pk}: {decision}."
+                )[:500]
+                source_enrollment.save(
+                    update_fields=["status", "exited_on", "notes", "updated_at"]
+                )
+            elif not (
+                source_enrollment.status == decision
+                and source_enrollment.exited_on is not None
+            ):
+                raise RolloverSafetyError(
+                    "A source placement changed after rollover preview."
+                )
+
+            if student.current_class_id not in (
+                None,
+                source_enrollment.class_arm_id,
+            ):
+                raise RolloverSafetyError(
+                    "The student's current class changed after rollover preview."
+                )
+            student.current_class = None
+            student.status = decision
+            student.user.is_active = False
+            student.user.save(update_fields=["is_active"])
+            student.save(update_fields=["current_class", "status"])
+            counts[decision] += 1
+        else:
+            raise RolloverSafetyError("A promotion decision is not valid for rollover.")
+
+    # No active source placements may survive the cutover.
+    if SessionEnrollment.objects.filter(
+        school=locked_school,
+        session=source,
+        status="active",
+    ).exists():
+        raise RolloverSafetyError(
+            "Active source-session placements remain after applying rollover decisions."
+        )
+
+    AcademicSession.objects.filter(
+        school=locked_school, is_current=True
+    ).exclude(pk=destination.pk).update(is_current=False)
+    if not destination.is_current:
+        AcademicSession.objects.filter(pk=destination.pk).update(is_current=True)
+        destination.is_current = True
+
+    Term.objects.filter(
+        session__school=locked_school, is_current=True
+    ).exclude(pk=first_term.pk).update(is_current=False)
+    if not first_term.is_current:
+        Term.objects.filter(pk=first_term.pk).update(is_current=True)
+        first_term.is_current = True
+
+    completed_at = timezone.now()
+    rollover.status = "completed"
+    rollover.completed_by = actor
+    rollover.completed_at = completed_at
+    rollover.student_count = len(final_enrollments)
+    rollover.promoted_count = counts["promoted"]
+    rollover.repeated_count = counts["repeated"]
+    rollover.graduated_count = counts["graduated"]
+    rollover.withdrawn_count = counts["withdrawn"]
+    rollover.preview_snapshot = {
+        **preview,
+        "status": "completed",
+        "completed_at": completed_at.isoformat(),
+        "execution_summary": {
+            "source_students": len(final_enrollments),
+            **counts,
+        },
+    }
+    rollover.save()
+
+    PlatformEvent.objects.create(
+        actor=actor,
+        actor_email=actor.email if actor else "",
+        action="school.academic_rollover",
+        target=str(rollover.pk),
+        details={
+            "school_id": locked_school.pk,
+            "rollover_id": rollover.pk,
+            "source_session_id": source.pk,
+            "destination_session_id": destination.pk,
+            "source_students": len(final_enrollments),
+            **counts,
+        },
+    )
+
+    return {
+        "rollover_id": rollover.pk,
+        "status": rollover.status,
+        "completed_at": completed_at.isoformat(),
+        "idempotent_replay": False,
+        "source_session_id": source.pk,
+        "destination_session_id": destination.pk,
+        "current_term_id": first_term.pk,
+        "summary": {
+            "source_students": len(final_enrollments),
+            **counts,
+        },
+    }
 
 
 @transaction.atomic
