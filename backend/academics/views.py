@@ -23,7 +23,7 @@ from accounts.permissions import IsSchoolAdmin, IsAuthenticatedTenantUser
 from tenants.mixins import TenantMixin
 from tenants.security import audit
 
-from .models import AcademicSession, Holiday, Term
+from .models import AcademicRollover, AcademicSession, Holiday, Term
 from .serializers import (
     AcademicSessionSerializer,
     CurrentCalendarSerializer,
@@ -70,6 +70,47 @@ class SessionViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelView
         if changed and session_has_execution_history(instance):
             raise ValidationError("This academic session has historical records and its identity or dates cannot be changed.")
         serializer.save()
+
+    @action(detail=False, methods=["get"], url_path="rollover-history")
+    def rollover_history(self, request):
+        """Return the school's auditable rollover history, newest first."""
+        rows = AcademicRollover.objects.filter(
+            school=self._get_tenant()
+        ).select_related(
+            "source_session",
+            "destination_session",
+            "created_by",
+            "completed_by",
+        ).order_by("-created_at", "-id")[:50]
+
+        return Response([
+            {
+                "id": row.pk,
+                "status": row.status,
+                "source_session": {
+                    "id": row.source_session_id,
+                    "name": row.source_session.name,
+                },
+                "destination_session": {
+                    "id": row.destination_session_id,
+                    "name": row.destination_session.name,
+                },
+                "student_count": row.student_count,
+                "promoted_count": row.promoted_count,
+                "repeated_count": row.repeated_count,
+                "graduated_count": row.graduated_count,
+                "withdrawn_count": row.withdrawn_count,
+                "snapshot_fingerprint": (
+                    row.configuration_options.get("snapshot_fingerprint")
+                    if isinstance(row.configuration_options, dict) else None
+                ),
+                "created_at": row.created_at.isoformat(),
+                "created_by": row.created_by.email if row.created_by else None,
+                "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+                "completed_by": row.completed_by.email if row.completed_by else None,
+            }
+            for row in rows
+        ])
 
     @action(detail=True, methods=["post"], url_path="rollover-preview")
     def rollover_preview(self, request, pk=None):
