@@ -16,8 +16,8 @@ from timetable.models import Period, TimetableEntry
 from fees.models import FeeCategory, FeeSchedule
 from curriculum.models import CurriculumSource, CurriculumVersion, SchoolAcademicStandard, AcademicStandardTopic
 from .models import (ClassArm, ClassLevel, MigrationConflict, MigrationJob, MigrationMappingProfile,
-                     MigrationStudentReference, SessionEnrollment, StaffProfile, StudentProfile,
-                     Subject, SubjectAssignment)
+                     MigrationRowRecord, MigrationStudentReference, SessionEnrollment, StaffProfile,
+                     StudentProfile, Subject, SubjectAssignment)
 
 
 class MigrationCentreTests(TestCase):
@@ -566,3 +566,93 @@ class MigrationCentreTests(TestCase):
         self.assertEqual(foreign_client.get('/api/migration/jobs/').data, [])
         self.assertEqual(foreign_client.get('/api/migration/mappings/').data, [])
         self.assertEqual(foreign_client.get('/api/migration/conflicts/').data, [])
+
+
+    def test_batch20_historical_finance_uses_ledger_adjustment_not_payment_artifacts(self):
+        current = AcademicSession.objects.create(
+            school=self.school, name='2026/27',
+            start_date=date(2026, 9, 1), end_date=date(2027, 7, 18), is_current=True,
+        )
+        Term.objects.create(
+            session=current, name='first',
+            start_date=date(2026, 9, 1), end_date=date(2026, 12, 18), is_current=True,
+        )
+        self.upload('classes', 'import', 'class_level,class_arm\nJSS1,A')
+        student_import = self.upload(
+            'students', 'import',
+            'student_ref,first_name,last_name,class_level,class_arm,dob\n'
+            'FIN-20,Ada,Finance,JSS1,A,2013-01-02',
+        )
+        self.assertEqual(student_import.data['counts']['CREATE'], 1, student_import.data)
+
+        opening = self.upload(
+            'opening_balances', 'import',
+            'student_ref,amount,direction,effective_date,reason,reference\n'
+            'FIN-20,10000,debt,2026-09-01,Verified legacy balance,OPEN-FIN-20',
+        )
+        self.assertEqual(opening.data['counts']['CREATE'], 1, opening.data)
+
+        from fees.models import FeePayment, PaymentOrder, StudentLedgerEntry
+        payment_count = FeePayment.objects.count()
+        order_count = PaymentOrder.objects.count()
+
+        imported = self.upload(
+            'historical_finance', 'import',
+            'student_ref,effective_date,description,debit,credit,reference\n'
+            'FIN-20,2026-09-15,Verified legacy correction,2500,,LEG-ADJ-20',
+        )
+        self.assertEqual(imported.status_code, 200, imported.data)
+        self.assertEqual(imported.data['counts']['CREATE'], 1, imported.data)
+        entry = StudentLedgerEntry.objects.get(reference='LEG-ADJ-20')
+        self.assertEqual(entry.kind, 'adjustment')
+        self.assertEqual(entry.signed_amount, Decimal('2500.00'))
+        self.assertEqual(entry.reason, 'Verified legacy correction')
+        self.assertEqual(FeePayment.objects.count(), payment_count)
+        self.assertEqual(PaymentOrder.objects.count(), order_count)
+
+        replay = self.upload(
+            'historical_finance', 'import',
+            'student_ref,effective_date,description,debit,credit,reference\n'
+            'FIN-20,2026-09-15,Verified legacy correction,2500,,LEG-ADJ-20',
+        )
+        self.assertTrue(replay.data['idempotent_replay'])
+        self.assertEqual(replay.data['counts']['REUSE'], 1)
+        self.assertEqual(StudentLedgerEntry.objects.filter(reference='LEG-ADJ-20').count(), 1)
+
+    def test_batch20_row_provenance_report_and_saved_mapping_auto_match(self):
+        profile = MigrationMappingProfile.objects.create(
+            school=self.school,
+            domain='classes',
+            name='Legacy class export',
+            source_system='Old SIS',
+            mappings={'Level Name': 'class_level', 'Arm Name': 'class_arm'},
+            created_by=self.admin,
+        )
+        file_obj = SimpleUploadedFile(
+            'legacy-classes.csv',
+            b'Level Name,Arm Name\nJSS1,A',
+            content_type='text/csv',
+        )
+        inspected = self.client.post('/api/migration/classes/inspect/', {'file': file_obj}, format='multipart')
+        self.assertEqual(inspected.status_code, 200, inspected.data)
+        self.assertEqual(inspected.data['mapping_profile']['id'], profile.pk)
+        self.assertEqual(inspected.data['suggested_mapping']['Level Name'], 'class_level')
+        profile.refresh_from_db()
+        self.assertIsNotNone(profile.last_used_at)
+
+        imported = self.upload(
+            'classes', 'import',
+            'Level Name,Arm Name\nJSS1,A',
+            {'Level Name': 'class_level', 'Arm Name': 'class_arm'},
+        )
+        self.assertEqual(imported.data['counts']['CREATE'], 1, imported.data)
+        job = MigrationJob.objects.get(pk=imported.data['job_id'])
+        self.assertEqual(job.last_processed_row, 2)
+        row = MigrationRowRecord.objects.get(job=job, row_number=2)
+        self.assertEqual(row.action, 'CREATE')
+        self.assertIn('JSS1', row.source_identity)
+
+        report = self.client.get(f'/api/migration/jobs/{job.pk}/report/')
+        self.assertEqual(report.status_code, 200)
+        self.assertIn(b'row_number,action,source_identity,target_model,target_pk', report.content)
+        self.assertIn(b'2,CREATE', report.content)
