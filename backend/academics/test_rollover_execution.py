@@ -322,6 +322,83 @@ class AcademicRolloverExecutionTests(TestCase):
         self.destination.refresh_from_db()
         self.assertTrue(self.destination.is_current)
 
+    def test_graduation_and_withdrawal_are_applied_without_destination_enrollments(self):
+        final_level = ClassLevel.objects.create(
+            school=self.school, name="SS3", order_index=6, is_final_year=True
+        )
+        final_arm = ClassArm.objects.create(
+            school=self.school, class_level=final_level, name="A"
+        )
+        graduate_user = CustomUser.objects.create_user(
+            "graduate@execution.test",
+            "Password!123",
+            school=self.school,
+            role="student",
+        )
+        graduate = StudentProfile.objects.create(
+            school=self.school,
+            user=graduate_user,
+            current_class=final_arm,
+        )
+        graduate_enrollment = SessionEnrollment.objects.create(
+            school=self.school,
+            student=graduate,
+            session=self.source,
+            class_arm=final_arm,
+            status="active",
+            entry_reason="manual",
+            enrolled_on=self.source.start_date,
+            created_by=self.admin,
+        )
+
+        PromotionRecord.objects.create(
+            school=self.school,
+            student=self.student,
+            from_session=self.source,
+            from_class=self.arm1,
+            decision="withdrawn",
+            criteria_met=False,
+            decided_by=self.admin,
+        )
+        PromotionRecord.objects.create(
+            school=self.school,
+            student=graduate,
+            from_session=self.source,
+            from_class=final_arm,
+            decision="graduated",
+            criteria_met=True,
+            decided_by=self.admin,
+        )
+
+        response = self.execute()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["summary"]["withdrawn"], 1)
+        self.assertEqual(response.data["summary"]["graduated"], 1)
+
+        self.student.refresh_from_db()
+        self.student_user.refresh_from_db()
+        self.source_enrollment.refresh_from_db()
+        graduate.refresh_from_db()
+        graduate_user.refresh_from_db()
+        graduate_enrollment.refresh_from_db()
+
+        self.assertEqual(self.student.status, "withdrawn")
+        self.assertIsNone(self.student.current_class)
+        self.assertFalse(self.student_user.is_active)
+        self.assertEqual(self.source_enrollment.status, "withdrawn")
+
+        self.assertEqual(graduate.status, "graduated")
+        self.assertIsNone(graduate.current_class)
+        self.assertFalse(graduate_user.is_active)
+        self.assertEqual(graduate_enrollment.status, "graduated")
+
+        self.assertFalse(
+            SessionEnrollment.objects.filter(
+                session=self.destination,
+                student__in=[self.student, graduate],
+            ).exists()
+        )
+
     def test_teacher_cannot_execute_rollover(self):
         self.create_promoted_decision()
         self.client.force_authenticate(self.teacher)
