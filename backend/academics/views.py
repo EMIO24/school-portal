@@ -33,6 +33,8 @@ from .serializers import (
 
 
 from enrollment.safety import RetainAcademicHistoryMixin
+from .history import session_has_execution_history, term_has_execution_history
+from .rollover import RolloverSafetyError, activate_session, activate_term
 
 
 class SessionViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
