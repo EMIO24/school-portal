@@ -1,7 +1,7 @@
 from datetime import date
 
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -115,6 +115,13 @@ class AcademicRolloverSafetyTests(TestCase):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 AcademicSession.objects.filter(pk=self.destination.pk).update(is_current=True)
+
+    def test_database_rejects_two_current_terms_when_model_guard_is_bypassed(self):
+        if connection.vendor != "postgresql":
+            self.skipTest("Batch 19 current-term database guard is PostgreSQL-specific.")
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Term.objects.filter(pk=self.destination_term.pk).update(is_current=True)
 
     def test_session_creation_rejects_overlap(self):
         response = self.client.post(
