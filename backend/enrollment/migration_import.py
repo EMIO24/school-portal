@@ -29,7 +29,8 @@ from timetable.models import Period, TimetableEntry
 from curriculum.models import AcademicStandardObjective, AcademicStandardTopic, SchoolAcademicStandard
 from tenants.models import PlatformEvent, School
 from .models import (ClassArm, ClassLevel, MigrationConflict, MigrationJob, MigrationMappingProfile,
-                     MigrationStudentReference, StaffProfile, StudentProfile, Subject, SubjectAssignment)
+                     MigrationRowRecord, MigrationStudentReference, StaffProfile, StudentProfile,
+                     Subject, SubjectAssignment)
 from .session_enrollment import EnrollmentPlacementError, ensure_current_enrollment
 from .batch20_migration import BATCH20_DOMAINS, MigrationReview, assess_batch20, create_batch20
 
@@ -137,6 +138,8 @@ def identify(domain, row):
         return (row['student_ref'].casefold(), row['session'].casefold(), row['term'].casefold(), row['subject_code'].casefold())
     if domain == 'historical_attendance':
         return (row['student_ref'].casefold(), row['session'].casefold(), row['term'].casefold(), row['date'])
+    if domain == 'historical_finance':
+        return (row['student_ref'].casefold(), row['reference'].casefold())
     if domain == 'opening_balances': return row['student_ref'].casefold()
     if domain == 'timetable':
         return (row['class_level'].casefold(), row['class_arm'].casefold(),
@@ -812,11 +815,12 @@ class MigrationCentre(APIView):
                                 raise ValueError('student_ref', 'Duplicate student details in this file.')
                             if student_email: seen_emails.add(student_email)
                             seen_people.add(person)
+                        target = None
                         if operation == 'import' and action == 'CREATE':
                             with transaction.atomic():
-                                if domain in ('opening_balances', 'students'):
+                                if domain in ('opening_balances', 'students') or domain in BATCH20_DOMAINS:
                                     data['actor'] = request.user
-                                create(domain, row, school, data)
+                                target = create(domain, row, school, data)
                         outcome = {'row': number, 'action': action}
                     except MigrationReview as exc:
                         MigrationConflict.objects.update_or_create(
@@ -840,6 +844,30 @@ class MigrationCentre(APIView):
                                    'reason': 'This row could not be saved. Check its values and retry it separately.'}
                 counts[outcome['action']] += 1
                 results.append(outcome)
+                if operation == 'import':
+                    source_identity = ''
+                    if row:
+                        try:
+                            source_identity = str(identify(domain, row))[:255]
+                        except Exception:
+                            source_identity = ''
+                    target_obj = locals().get('target')
+                    MigrationRowRecord.objects.update_or_create(
+                        job=job,
+                        row_number=number,
+                        defaults={
+                            'action': outcome['action'],
+                            'source_identity': source_identity,
+                            'target_model': (
+                                target_obj._meta.label_lower
+                                if target_obj is not None and hasattr(target_obj, '_meta')
+                                else ''
+                            ),
+                            'target_pk': str(getattr(target_obj, 'pk', '') or ''),
+                        },
+                    )
+                    if number > job.last_processed_row:
+                        job.last_processed_row = number
 
         if operation == 'import':
             if not job_was_terminal:
@@ -865,8 +893,8 @@ class MigrationCentre(APIView):
             job.mapping_snapshot = mapping
             job.save(update_fields=[
                 'status', 'total_rows', 'create_count', 'reuse_count', 'review_count',
-                'reject_count', 'mapping_snapshot', 'validated_at', 'started_at',
-                'completed_at', 'updated_at',
+                'reject_count', 'last_processed_row', 'mapping_snapshot', 'validated_at',
+                'started_at', 'completed_at', 'updated_at',
             ])
         if operation == 'import' and not job_was_terminal and (counts['CREATE'] or counts['REVIEW'] or counts['REJECT']):
             PlatformEvent.objects.create(
