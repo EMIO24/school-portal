@@ -9,7 +9,7 @@ from .views import ClassArmViewSet, ClassLevelViewSet, StudentViewSet, SubjectVi
 from .staff_views import StaffViewSet
 from .parent_links import StudentParents
 from .assignment_views import SubjectAssignmentViewSet, AssignSubjectsMixin, SubjectByClassMixin
-from .migration_import import MigrationCentre
+from .migration_import import MigrationCentre, MigrationConflictList, MigrationJobList, MigrationMappingProfiles
 
 # Patch mixins onto existing ViewSets (avoids inheritance conflicts)
 StaffViewSet.__bases__  = (AssignSubjectsMixin,) + StaffViewSet.__bases__
@@ -25,6 +25,9 @@ router.register(r"subject-assignments", SubjectAssignmentViewSet, basename="subj
 
 urlpatterns = [
     path('migration/', MigrationCentre.as_view()),
+    path('migration/jobs/', MigrationJobList.as_view()),
+    path('migration/mappings/', MigrationMappingProfiles.as_view()),
+    path('migration/conflicts/', MigrationConflictList.as_view()),
     path('migration/templates/<str:domain>/', MigrationCentre.as_view()),
     path('migration/<str:domain>/<str:operation>/', MigrationCentre.as_view()),
     path('students/<int:pk>/parents/', StudentParents.as_view()),
