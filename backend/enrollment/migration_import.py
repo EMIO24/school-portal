@@ -690,6 +690,8 @@ def inspect_upload(request, domain):
             if len(values) == len(set(values)) and all(value in DOMAINS[domain][1] for value in values):
                 suggested.update(profile_mapping)
                 matched_profile = profile
+                matched_profile.last_used_at = timezone.now()
+                matched_profile.save(update_fields=['last_used_at', 'updated_at'])
                 break
     job, fingerprint = _job_for_upload(
         request, domain, status='inspected', total_rows=len(indexed_rows),
