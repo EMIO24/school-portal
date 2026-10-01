@@ -587,8 +587,11 @@ def _job_for_upload(request, domain, *, status='inspected', total_rows=0, file_f
         defaults=defaults,
     )
     changed = []
+    terminal = job.status in ('completed', 'completed_with_errors')
     for field, value in defaults.items():
         if field == 'created_by':
+            continue
+        if field == 'status' and terminal:
             continue
         if value not in ('', None) and getattr(job, field) != value:
             setattr(job, field, value)
