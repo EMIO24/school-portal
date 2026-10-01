@@ -8,3 +8,15 @@
 .migration-mapping{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px}
 .migration-centre [role="alert"]{color:#9b1c1c}
 @media(max-width:600px){.migration-centre{padding:12px}.migration-centre section{padding:14px}}
+
+.migration-profile-tools{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;align-items:end;margin-top:16px;padding-top:16px;border-top:1px solid var(--border,#d8dee5)}
+.migration-job-list,.migration-conflicts{display:grid;gap:10px}
+.migration-job-list article,.migration-conflicts article{border:1px solid var(--border,#d8dee5);border-radius:8px;padding:12px;background:var(--surface,#fff)}
+.migration-job-list article>div{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.migration-job-list p,.migration-conflicts p{margin:6px 0}
+.migration-status{font-size:12px;text-transform:capitalize;padding:3px 8px;border-radius:999px;background:#eef2f6}
+.status-completed{background:#e6f4ec;color:#1a6b3c}
+.status-completed_with_errors{background:#fff8e1;color:#8a6500}
+.status-failed{background:#fdecea;color:#9b1c1c}
+.migration-conflicts pre{max-height:180px;overflow:auto;background:#f6f8fa;border-radius:6px;padding:10px;font-size:12px}
+.migration-centre code{font-size:12px}
