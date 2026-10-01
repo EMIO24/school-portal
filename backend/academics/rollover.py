@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from django.db import transaction
 
 from .models import AcademicRollover, AcademicSession, Term
@@ -5,6 +7,479 @@ from .models import AcademicRollover, AcademicSession, Term
 
 class RolloverSafetyError(ValueError):
     pass
+
+
+def _issue(code, message, *, count=None):
+    item = {"code": code, "message": message}
+    if count is not None:
+        item["count"] = count
+    return item
+
+
+def _term_configuration_snapshot(*, school, term):
+    """Return planning/configuration counts only; never historical execution records."""
+    if term is None:
+        return {
+            "term_id": None,
+            "scoring_configured": False,
+            "fee_schedules": 0,
+            "subject_assignments": 0,
+            "timetable_entries": 0,
+            "curriculum_plans": 0,
+        }
+
+    from curriculum.models import CurriculumPlan
+    from enrollment.models import SubjectAssignment
+    from fees.models import FeeSchedule
+    from gradebook.models import TermScoring
+    from timetable.models import TimetableEntry
+
+    return {
+        "term_id": term.pk,
+        "scoring_configured": TermScoring.objects.filter(
+            school=school, term=term
+        ).exists(),
+        "fee_schedules": FeeSchedule.objects.filter(
+            school=school, term=term
+        ).count(),
+        "subject_assignments": SubjectAssignment.objects.filter(
+            school=school, term=term
+        ).count(),
+        "timetable_entries": TimetableEntry.objects.filter(
+            school=school, term=term
+        ).count(),
+        "curriculum_plans": CurriculumPlan.objects.filter(
+            school=school, term=term
+        ).count(),
+    }
+
+
+@transaction.atomic
+def prepare_rollover_preview(*, school, source_session, destination_session, actor=None):
+    """
+    Build and persist a non-destructive year-end readiness preview.
+
+    This function may update AcademicRollover preview metadata, but it never changes
+    student placement, promotion decisions, current_class, session/term activation,
+    financial records, attendance, results, timetable delivery, or curriculum history.
+    """
+    from tenants.models import School
+    from enrollment.models import (
+        ClassArm,
+        ClassLevel,
+        SessionEnrollment,
+        Subject,
+    )
+    from promotion.models import PromotionCriteria, PromotionRecord
+    from timetable.models import Period
+
+    locked_school = School.objects.select_for_update().get(pk=school.pk)
+    source = AcademicSession.objects.select_for_update().filter(
+        pk=source_session.pk, school=locked_school
+    ).first()
+    destination = AcademicSession.objects.select_for_update().filter(
+        pk=destination_session.pk, school=locked_school
+    ).first()
+    if not source or not destination:
+        raise RolloverSafetyError(
+            "Select source and destination sessions belonging to this school."
+        )
+    if source.pk == destination.pk:
+        raise RolloverSafetyError("Source and destination sessions must differ.")
+    if destination.start_date <= source.end_date:
+        raise RolloverSafetyError(
+            "Destination session must begin after the source session ends."
+        )
+
+    completed_rollover = AcademicRollover.objects.filter(
+        school=locked_school,
+        source_session=source,
+        destination_session=destination,
+        status="completed",
+    ).order_by("-id").first()
+
+    source_first_term = Term.objects.filter(session=source, name="first").first()
+    destination_first_term = Term.objects.filter(
+        session=destination, name="first"
+    ).first()
+
+    global_blockers = []
+    if not source.is_current:
+        global_blockers.append(_issue(
+            "SOURCE_NOT_CURRENT",
+            "Only the school's current academic session can be prepared for rollover.",
+        ))
+    if destination.is_current:
+        global_blockers.append(_issue(
+            "DESTINATION_ALREADY_CURRENT",
+            "The destination session is already current.",
+        ))
+    if not destination_first_term:
+        global_blockers.append(_issue(
+            "DESTINATION_FIRST_TERM_MISSING",
+            "Configure First Term for the destination session before rollover.",
+        ))
+    if completed_rollover:
+        global_blockers.append(_issue(
+            "ROLLOVER_ALREADY_COMPLETED",
+            "This source and destination session pair has already completed rollover.",
+        ))
+
+    # A student can have several periods because of transfers. The final placement
+    # is the latest recorded period in the source session and is the only placement
+    # used for rollover decision validation.
+    enrollment_rows = SessionEnrollment.objects.filter(
+        school=locked_school,
+        session=source,
+    ).select_related(
+        "student__user",
+        "class_arm__class_level",
+    ).order_by("student_id", "-enrolled_on", "-pk")
+
+    final_enrollments = {}
+    for enrollment in enrollment_rows:
+        final_enrollments.setdefault(enrollment.student_id, enrollment)
+
+    records_by_student = defaultdict(list)
+    records = PromotionRecord.objects.filter(
+        school=locked_school,
+        from_session=source,
+    ).select_related(
+        "to_session",
+        "from_class__class_level",
+        "to_class__class_level",
+    ).order_by("student_id", "id")
+    for record in records:
+        records_by_student[record.student_id].append(record)
+
+    destination_enrollments = defaultdict(list)
+    for enrollment in SessionEnrollment.objects.filter(
+        school=locked_school,
+        session=destination,
+    ).select_related("class_arm__class_level").order_by("student_id", "pk"):
+        destination_enrollments[enrollment.student_id].append(enrollment)
+
+    decision_counts = {
+        "promoted": 0,
+        "repeated": 0,
+        "graduated": 0,
+        "withdrawn": 0,
+    }
+    unresolved_count = 0
+    decided_count = 0
+    lifecycle_exempt_count = 0
+    student_rows = []
+    issue_students = defaultdict(set)
+
+    def add_student_issue(issues, code, message, student_id):
+        issues.append({"code": code, "message": message})
+        issue_students[code].add(student_id)
+
+    for student_id, enrollment in final_enrollments.items():
+        student = enrollment.student
+        source_arm = enrollment.class_arm
+        source_level = source_arm.class_level
+        student_records = records_by_student.get(student_id, [])
+        issues = []
+        record = student_records[0] if len(student_records) == 1 else None
+
+        lifecycle_exempt = (
+            not student_records
+            and student.status in ("withdrawn", "graduated")
+            and enrollment.status == student.status
+        )
+
+        if len(student_records) > 1:
+            add_student_issue(
+                issues,
+                "DUPLICATE_PROMOTION_DECISIONS",
+                "More than one promotion decision exists for this student and source session.",
+                student_id,
+            )
+        elif not student_records and not lifecycle_exempt:
+            unresolved_count += 1
+            add_student_issue(
+                issues,
+                "MISSING_PROMOTION_DECISION",
+                "A year-end promotion, repeat, graduation, or withdrawal decision is required.",
+                student_id,
+            )
+        elif lifecycle_exempt:
+            lifecycle_exempt_count += 1
+        else:
+            decided_count += 1
+            decision_counts[record.decision] += 1
+
+            if record.from_class_id != source_arm.pk:
+                add_student_issue(
+                    issues,
+                    "SOURCE_CLASS_MISMATCH",
+                    "The promotion decision does not reference the student's final source-session class.",
+                    student_id,
+                )
+
+            if record.decision in ("promoted", "repeated"):
+                if record.to_session_id != destination.pk:
+                    add_student_issue(
+                        issues,
+                        "DESTINATION_SESSION_MISMATCH",
+                        "The promotion decision points to a different destination session.",
+                        student_id,
+                    )
+                if not record.to_class_id:
+                    add_student_issue(
+                        issues,
+                        "DESTINATION_CLASS_MISSING",
+                        "The promotion decision requires a destination class.",
+                        student_id,
+                    )
+                elif record.to_class.school_id != locked_school.pk:
+                    add_student_issue(
+                        issues,
+                        "DESTINATION_CLASS_FOREIGN",
+                        "The destination class does not belong to this school.",
+                        student_id,
+                    )
+                elif record.decision == "promoted" and (
+                    record.to_class.class_level.order_index
+                    <= source_level.order_index
+                ):
+                    add_student_issue(
+                        issues,
+                        "PROMOTION_CLASS_NOT_HIGHER",
+                        "Promoted students must move to a higher class level.",
+                        student_id,
+                    )
+                elif record.decision == "repeated" and record.to_class_id != source_arm.pk:
+                    add_student_issue(
+                        issues,
+                        "REPEAT_CLASS_MISMATCH",
+                        "A repeat decision must retain the student's final source class.",
+                        student_id,
+                    )
+
+                existing_dest = destination_enrollments.get(student_id, [])
+                active_dest = [e for e in existing_dest if e.status == "active"]
+                if existing_dest:
+                    matching = [
+                        e for e in active_dest
+                        if record.to_class_id and e.class_arm_id == record.to_class_id
+                    ]
+                    if not matching:
+                        add_student_issue(
+                            issues,
+                            "DESTINATION_ENROLLMENT_CONFLICT",
+                            "Destination-session enrollment history already exists and does not match this decision.",
+                            student_id,
+                        )
+
+            elif record.decision == "graduated" and not source_level.is_final_year:
+                add_student_issue(
+                    issues,
+                    "GRADUATION_FROM_NONFINAL_LEVEL",
+                    "Graduation is only valid from a class level marked as final year.",
+                    student_id,
+                )
+
+        student_rows.append({
+            "student_id": student.pk,
+            "admission_number": student.admission_number,
+            "student_name": student.full_name,
+            "student_status": student.status,
+            "source_enrollment_id": enrollment.pk,
+            "source_enrollment_status": enrollment.status,
+            "source_class_id": source_arm.pk,
+            "source_class": source_arm.full_name,
+            "source_level": source_level.name,
+            "decision_id": record.pk if record else None,
+            "decision": record.decision if record else None,
+            "destination_session_id": record.to_session_id if record else None,
+            "destination_class_id": record.to_class_id if record else None,
+            "destination_class": record.to_class.full_name if record and record.to_class_id else None,
+            "lifecycle_exempt": lifecycle_exempt,
+            "ready": not issues,
+            "issues": issues,
+        })
+
+    if not final_enrollments:
+        global_blockers.append(_issue(
+            "SOURCE_ENROLLMENTS_MISSING",
+            "The source session has no student placement history to roll over.",
+        ))
+
+    student_blockers = []
+    messages = {
+        "DUPLICATE_PROMOTION_DECISIONS": "Students have duplicate year-end decisions.",
+        "MISSING_PROMOTION_DECISION": "Students are still missing year-end decisions.",
+        "SOURCE_CLASS_MISMATCH": "Some decisions do not match students' final source classes.",
+        "DESTINATION_SESSION_MISMATCH": "Some decisions point to a different destination session.",
+        "DESTINATION_CLASS_MISSING": "Some promoted or repeated students have no destination class.",
+        "DESTINATION_CLASS_FOREIGN": "Some destination classes belong to another school.",
+        "PROMOTION_CLASS_NOT_HIGHER": "Some promotion decisions do not move students to a higher level.",
+        "REPEAT_CLASS_MISMATCH": "Some repeat decisions do not retain the source class.",
+        "DESTINATION_ENROLLMENT_CONFLICT": "Some students already have conflicting destination-session enrollment history.",
+        "GRADUATION_FROM_NONFINAL_LEVEL": "Some graduation decisions come from non-final class levels.",
+    }
+    for code, student_ids in sorted(issue_students.items()):
+        student_blockers.append(_issue(
+            code,
+            messages[code],
+            count=len(student_ids),
+        ))
+
+    source_config = _term_configuration_snapshot(
+        school=locked_school, term=source_first_term
+    )
+    destination_config = _term_configuration_snapshot(
+        school=locked_school, term=destination_first_term
+    )
+    class_level_count = ClassLevel.objects.filter(school=locked_school).count()
+    criteria_count = PromotionCriteria.objects.filter(school=locked_school).count()
+    configuration = {
+        "destination_first_term": {
+            "ready": destination_first_term is not None,
+            "term_id": destination_first_term.pk if destination_first_term else None,
+        },
+        "destination_term_count": Term.objects.filter(session=destination).count(),
+        "class_levels": class_level_count,
+        "class_arms": ClassArm.objects.filter(school=locked_school).count(),
+        "subjects": Subject.objects.filter(school=locked_school).count(),
+        "periods": Period.objects.filter(school=locked_school).count(),
+        "promotion_criteria": {
+            "configured": criteria_count,
+            "class_levels": class_level_count,
+        },
+        "source_first_term": source_config,
+        "destination_first_term_configuration": destination_config,
+    }
+
+    warnings = []
+    destination_term_count = configuration["destination_term_count"]
+    if destination_term_count < 3:
+        warnings.append(_issue(
+            "DESTINATION_TERMS_INCOMPLETE",
+            f"The destination session currently has {destination_term_count} of 3 terms configured.",
+        ))
+    if criteria_count < class_level_count:
+        warnings.append(_issue(
+            "PROMOTION_CRITERIA_INCOMPLETE",
+            "Promotion criteria are not explicitly configured for every class level; default criteria may still be used.",
+            count=class_level_count - criteria_count,
+        ))
+
+    comparison_fields = [
+        ("scoring_configured", "DESTINATION_SCORING_NOT_PREPARED", "First-term scoring configuration has not been prepared."),
+        ("fee_schedules", "DESTINATION_FEES_NOT_PREPARED", "First-term fee schedules have not been prepared."),
+        ("subject_assignments", "DESTINATION_ASSIGNMENTS_NOT_PREPARED", "First-term teacher/subject assignments have not been prepared."),
+        ("timetable_entries", "DESTINATION_TIMETABLE_NOT_PREPARED", "First-term timetable entries have not been prepared."),
+        ("curriculum_plans", "DESTINATION_CURRICULUM_NOT_PREPARED", "First-term curriculum plans have not been prepared."),
+    ]
+    if destination_first_term:
+        for field, code, message in comparison_fields:
+            source_value = source_config[field]
+            destination_value = destination_config[field]
+            source_has_value = bool(source_value)
+            destination_has_value = bool(destination_value)
+            if source_has_value and not destination_has_value:
+                warnings.append(_issue(code, message))
+
+    blockers = global_blockers + student_blockers
+    ready = not blockers
+
+    summary = {
+        "source_students": len(final_enrollments),
+        "decision_required": len(final_enrollments) - lifecycle_exempt_count,
+        "decided": decided_count,
+        "unresolved": unresolved_count,
+        "lifecycle_exempt": lifecycle_exempt_count,
+        **decision_counts,
+    }
+
+    payload = {
+        "source_session": {
+            "id": source.pk,
+            "name": source.name,
+            "start_date": str(source.start_date),
+            "end_date": str(source.end_date),
+            "is_current": source.is_current,
+        },
+        "destination_session": {
+            "id": destination.pk,
+            "name": destination.name,
+            "start_date": str(destination.start_date),
+            "end_date": str(destination.end_date),
+            "is_current": destination.is_current,
+        },
+        "ready": ready,
+        "summary": summary,
+        "blockers": blockers,
+        "warnings": warnings,
+        "configuration": configuration,
+        "students": student_rows,
+        "carry_forward_policy": {
+            "reuse": ["class_levels", "class_arms", "subjects", "periods"],
+            "review_or_create": [
+                "curriculum_plans",
+                "subject_assignments",
+                "timetable_entries",
+                "term_scoring",
+                "fee_schedules",
+                "class_teachers",
+            ],
+            "never_copy": [
+                "scores",
+                "attendance_records",
+                "lesson_records",
+                "topic_coverage",
+                "promotion_records",
+                "fee_payments",
+                "ledger_history",
+                "invoices",
+                "payment_orders",
+                "cbt_attempts",
+                "assignment_submissions",
+                "published_communications",
+            ],
+        },
+    }
+
+    if completed_rollover:
+        payload["rollover_id"] = completed_rollover.pk
+        payload["status"] = completed_rollover.status
+        return payload
+
+    rollover = AcademicRollover.objects.select_for_update().filter(
+        school=locked_school,
+        source_session=source,
+        destination_session=destination,
+        status__in=("preparing", "ready"),
+    ).order_by("-id").first()
+    if not rollover:
+        rollover = AcademicRollover(
+            school=locked_school,
+            source_session=source,
+            destination_session=destination,
+            created_by=actor,
+        )
+
+    rollover.status = "ready" if ready else "preparing"
+    rollover.preview_snapshot = payload
+    rollover.student_count = summary["source_students"]
+    rollover.promoted_count = summary["promoted"]
+    rollover.repeated_count = summary["repeated"]
+    rollover.graduated_count = summary["graduated"]
+    rollover.withdrawn_count = summary["withdrawn"]
+    if rollover.created_by_id is None and actor is not None:
+        rollover.created_by = actor
+    rollover.save()
+
+    payload["rollover_id"] = rollover.pk
+    payload["status"] = rollover.status
+
+    # Persist the final payload including its rollover identity/status.
+    rollover.preview_snapshot = payload
+    rollover.save(update_fields=["preview_snapshot", "updated_at"])
+    return payload
 
 
 @transaction.atomic
