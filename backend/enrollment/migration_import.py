@@ -589,12 +589,12 @@ def _job_for_upload(request, domain, *, status='inspected', total_rows=0, file_f
         file_fingerprint=fingerprint,
         defaults=defaults,
     )
-    changed = []
     terminal = job.status in ('completed', 'completed_with_errors')
+    if terminal:
+        return job, fingerprint
+    changed = []
     for field, value in defaults.items():
         if field == 'created_by':
-            continue
-        if field == 'status' and terminal:
             continue
         if value not in ('', None) and getattr(job, field) != value:
             setattr(job, field, value)
@@ -679,6 +679,18 @@ def inspect_upload(request, domain):
     headers, indexed_rows, file_format = _read_tabular_upload(upload)
     _validate_headers(headers)
     suggested = _suggest_mapping(domain, headers)
+    matched_profile = None
+    profiles = MigrationMappingProfile.objects.filter(
+        school=request.tenant, domain=domain
+    ).order_by('-last_used_at', '-updated_at', '-id')
+    for profile in profiles:
+        profile_mapping = profile.mappings if isinstance(profile.mappings, dict) else {}
+        if profile_mapping and set(profile_mapping).issubset(set(headers)):
+            values = [value for value in profile_mapping.values() if value]
+            if len(values) == len(set(values)) and all(value in DOMAINS[domain][1] for value in values):
+                suggested.update(profile_mapping)
+                matched_profile = profile
+                break
     job, fingerprint = _job_for_upload(
         request, domain, status='inspected', total_rows=len(indexed_rows),
         file_format=file_format, mapping=suggested,
@@ -692,6 +704,11 @@ def inspect_upload(request, domain):
         'format': file_format,
         'job_id': job.pk,
         'file_fingerprint': fingerprint,
+        'mapping_profile': ({
+            'id': matched_profile.pk,
+            'name': matched_profile.name,
+            'source_system': matched_profile.source_system,
+        } if matched_profile else None),
     }
 
 
@@ -930,6 +947,27 @@ class MigrationJobList(APIView):
             'completed_at': row.completed_at,
             'created_by': row.created_by.email if row.created_by else None,
         } for row in rows])
+
+
+class MigrationJobReport(APIView):
+    permission_classes = [IsSchoolAdmin]
+
+    def get(self, request, pk):
+        from django.http import HttpResponse
+        job = MigrationJob.objects.filter(pk=pk, school=request.tenant).first()
+        if not job:
+            raise ValidationError({'error': 'Migration job not found.'})
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['row_number', 'action', 'source_identity', 'target_model', 'target_pk'])
+        for row in job.row_records.all().order_by('row_number'):
+            writer.writerow([
+                row.row_number, row.action, row.source_identity,
+                row.target_model, row.target_pk,
+            ])
+        response = HttpResponse(output.getvalue(), content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="paideia_migration_job_{job.pk}.csv"'
+        return response
 
 
 class MigrationMappingProfiles(APIView):
