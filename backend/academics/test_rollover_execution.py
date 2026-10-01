@@ -425,3 +425,52 @@ class AcademicRolloverExecutionTests(TestCase):
         self.client.force_authenticate(self.teacher)
         denied = self.client.get("/api/sessions/rollover-history/")
         self.assertEqual(denied.status_code, 403)
+
+
+    def test_staged_promotion_decision_is_applied_only_by_rollover(self):
+        staged = self.client.post(
+            "/api/promotion/execute/",
+            [{
+                "student_id": self.student.pk,
+                "session_id": self.source.pk,
+                "to_session_id": self.destination.pk,
+                "to_class_id": self.arm2.pk,
+                "decision": "promoted",
+                "criteria_met": True,
+            }],
+            format="json",
+        )
+        self.assertEqual(staged.status_code, 200, staged.data)
+        self.assertEqual(staged.data["staged"], 1)
+        self.assertFalse(staged.data["applied"])
+
+        self.source_enrollment.refresh_from_db()
+        self.student.refresh_from_db()
+        self.assertEqual(self.source_enrollment.status, "active")
+        self.assertEqual(self.student.current_class, self.arm1)
+        self.assertFalse(
+            SessionEnrollment.objects.filter(
+                student=self.student,
+                session=self.destination,
+            ).exists()
+        )
+
+        preview = self.client.post(
+            f"/api/sessions/{self.source.pk}/rollover-preview/",
+            {"destination_session_id": self.destination.pk},
+            format="json",
+        )
+        self.assertEqual(preview.status_code, 200, preview.data)
+        self.assertTrue(preview.data["ready"], preview.data)
+
+        executed = self.execute(key="staged-then-rollover")
+        self.assertEqual(executed.status_code, 200, executed.data)
+        self.source_enrollment.refresh_from_db()
+        self.student.refresh_from_db()
+        destination_enrollment = SessionEnrollment.objects.get(
+            student=self.student,
+            session=self.destination,
+        )
+        self.assertEqual(self.source_enrollment.status, "completed")
+        self.assertEqual(self.student.current_class, self.arm2)
+        self.assertEqual(destination_enrollment.class_arm, self.arm2)
