@@ -1,5 +1,6 @@
 from datetime import date
 
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
@@ -174,14 +175,14 @@ class AcademicRolloverSafetyTests(TestCase):
             start_date=date(2027, 9, 1),
             end_date=date(2028, 7, 31),
         )
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             AcademicRollover.objects.create(
                 school=self.school,
                 source_session=self.source,
                 destination_session=other_session,
                 created_by=self.admin,
             )
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             AcademicRollover.objects.create(
                 school=self.school,
                 source_session=self.source,
@@ -190,7 +191,7 @@ class AcademicRolloverSafetyTests(TestCase):
             )
 
     def test_completed_rollover_requires_completion_timestamp_and_is_unique(self):
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             AcademicRollover.objects.create(
                 school=self.school,
                 source_session=self.source,
@@ -207,7 +208,7 @@ class AcademicRolloverSafetyTests(TestCase):
             created_by=self.admin,
             completed_by=self.admin,
         )
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             AcademicRollover.objects.create(
                 school=self.school,
                 source_session=self.source,
