@@ -34,6 +34,14 @@ def activate_session(*, school, target_session):
             "A replacement current session must begin after the current session ends."
         )
 
+    first_term = Term.objects.select_for_update().filter(
+        session=target, name="first"
+    ).first()
+    if not first_term:
+        raise RolloverSafetyError(
+            "Configure First Term for the destination session before activating it."
+        )
+
     active_source = SessionEnrollment.objects.filter(
         school=locked_school, session=current, status="active"
     ).exists()
@@ -53,6 +61,12 @@ def activate_session(*, school, target_session):
     ).exclude(pk=target.pk).update(is_current=False)
     target.is_current = True
     target.save(update_fields=["is_current"])
+    Term.objects.filter(
+        session__school=locked_school, is_current=True
+    ).exclude(pk=first_term.pk).update(is_current=False)
+    if not first_term.is_current:
+        first_term.is_current = True
+        first_term.save(update_fields=["is_current"])
     return target
 
 
@@ -71,6 +85,10 @@ def activate_term(*, school, target_term):
     current_session = AcademicSession.objects.select_for_update().filter(
         school=locked_school, is_current=True
     ).first()
+    if current_session and current_session.pk != term.session_id and term.name != "first":
+        raise RolloverSafetyError(
+            "A new academic session must begin with First Term."
+        )
     if not current_session or current_session.pk != term.session_id:
         activate_session(school=locked_school, target_session=term.session)
 
