@@ -312,6 +312,9 @@ class PromotionExecuteView(APIView):
             item = change['item']
             decision = item['decision']
 
+            # Batch 19: year-end decisions are staged here only. Student placement,
+            # lifecycle status, login activation, and destination enrollment are
+            # applied exclusively by the atomic academic rollover executor.
             record = PromotionRecord.objects.create(
                 school=school,
                 student=student,
@@ -325,61 +328,27 @@ class PromotionExecuteView(APIView):
                 notes=str(item.get('notes', ''))[:2000],
             )
 
-            source_enrollment.status = (
-                'graduated' if decision == 'graduated'
-                else 'withdrawn' if decision == 'withdrawn'
-                else 'completed'
-            )
-            source_enrollment.exited_on = session.end_date
-            source_enrollment.notes = (
-                source_enrollment.notes
-                + (' ' if source_enrollment.notes else '')
-                + f'Closed by promotion decision {record.pk}: {decision}.'
-            )[:500]
-            source_enrollment.save(
-                update_fields=['status', 'exited_on', 'notes', 'updated_at']
-            )
-
-            if decision in ('promoted', 'repeated'):
-                new_enrollment = SessionEnrollment.objects.create(
-                    school=school,
-                    student=student,
-                    session=destination,
-                    class_arm=destination_arm,
-                    status='active',
-                    entry_reason='promotion' if decision == 'promoted' else 'repeat',
-                    enrolled_on=destination.start_date,
-                    notes=f'Created by promotion decision {record.pk}.',
-                    created_by=request.user,
-                )
-                student.current_class = destination_arm
-                student.status = 'active'
-                student.user.is_active = True
-            else:
-                new_enrollment = None
-                student.current_class = None
-                student.status = decision
-                student.user.is_active = False
-
-            student.user.save(update_fields=['is_active'])
-            student.save(update_fields=['current_class', 'status'])
-
             PlatformEvent.objects.create(
                 actor=request.user,
                 actor_email=request.user.email,
-                action='school.promotion',
+                action='school.promotion_decision',
                 target=str(record.pk),
                 details={
                     'school_id': school.pk,
                     'student_id': student.pk,
                     'decision': decision,
                     'from_enrollment_id': source_enrollment.pk,
-                    'to_enrollment_id': new_enrollment.pk if new_enrollment else None,
+                    'to_session_id': destination.pk if destination else None,
+                    'to_class_id': destination_arm.pk if destination_arm else None,
+                    'staged': True,
                 },
             )
 
         return Response({
+            'staged': len(prepared),
+            # Kept for older clients that still read the legacy field name.
             'executed': len(prepared),
+            'applied': False,
             'graduated': sum(
                 change['item']['decision'] == 'graduated'
                 for change in prepared
