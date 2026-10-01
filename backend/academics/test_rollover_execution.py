@@ -404,3 +404,24 @@ class AcademicRolloverExecutionTests(TestCase):
         self.client.force_authenticate(self.teacher)
         response = self.execute()
         self.assertEqual(response.status_code, 403)
+
+
+    def test_rollover_history_is_admin_only_and_reports_completion_metadata(self):
+        self.create_promoted_decision()
+        executed = self.execute()
+        self.assertEqual(executed.status_code, 200, executed.data)
+
+        history = self.client.get("/api/sessions/rollover-history/")
+        self.assertEqual(history.status_code, 200, history.data)
+        self.assertEqual(len(history.data), 1)
+        row = history.data[0]
+        self.assertEqual(row["status"], "completed")
+        self.assertEqual(row["source_session"]["id"], self.source.pk)
+        self.assertEqual(row["destination_session"]["id"], self.destination.pk)
+        self.assertEqual(row["promoted_count"], 1)
+        self.assertEqual(row["completed_by"], self.admin.email)
+        self.assertEqual(len(row["snapshot_fingerprint"]), 64)
+
+        self.client.force_authenticate(self.teacher)
+        denied = self.client.get("/api/sessions/rollover-history/")
+        self.assertEqual(denied.status_code, 403)
