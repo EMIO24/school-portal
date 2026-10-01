@@ -114,7 +114,7 @@ export default function Promotion() {
       const { data } = await api.post("/api/promotion/execute/", body);
       setPreview(false);
       setResults([]);
-      setToast(`Done — ${data.executed} processed, ${data.graduated} graduated.`);
+      setToast(`Saved — ${data.staged ?? data.executed} year-end decisions staged. Run Academic Rollover from Calendar to apply them.`);
       setTimeout(() => setToast(null), 5000);
     } catch {
       setToast('Could not execute promotions. Check the destination session and class; a previous decision cannot be repeated.');
@@ -221,7 +221,7 @@ export default function Promotion() {
 
           <div className="promo-action-row">
             <button className="btn-primary" onClick={() => setPreview(true)}>
-              Apply All Decisions ({results.length} students)
+              Stage All Decisions ({results.length} students)
             </button>
           </div>
         </>
@@ -231,9 +231,9 @@ export default function Promotion() {
       {preview && (
         <div className="modal-overlay" onClick={() => setPreview(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <h2>Confirm Promotion Execution</h2>
+            <h2>Confirm Year-End Decisions</h2>
             <p style={{ marginBottom: 16, color: "#555" }}>
-              This will close the source-session enrollments and create the approved next-session placements. Historical records will be preserved.
+              This saves the year-end decisions for review. Student classes, lifecycle status, and next-session enrollments will not change until you execute Academic Rollover from the Calendar page.
             </p>
             <div className="promo-summary">
               <div className="ps-row green"><span>Promoted</span><strong>{summary.promoted}</strong></div>
@@ -243,7 +243,7 @@ export default function Promotion() {
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setPreview(false)}>Cancel</button>
               <button className="btn-primary" onClick={execute} disabled={executing}>
-                {executing ? "Executing…" : "Confirm & Execute"}
+                {executing ? "Saving…" : "Confirm & Save Decisions"}
               </button>
             </div>
           </div>
