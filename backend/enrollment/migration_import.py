@@ -756,6 +756,7 @@ class MigrationCentre(APIView):
         if operation == 'inspect':
             return Response(inspect_upload(request, domain))
         rows, ignored, mapping, job, fingerprint = parse_upload(request, domain)
+        job_was_terminal = job.status in ('completed', 'completed_with_errors')
         school = request.tenant
         current_session = (
             AcademicSession.objects.filter(school=school, is_current=True).first()
@@ -841,29 +842,33 @@ class MigrationCentre(APIView):
                 results.append(outcome)
 
         if operation == 'import':
-            job.status = 'importing'
-            job.started_at = timezone.now()
-            job.mapping_snapshot = mapping
-            job.save(update_fields=['status', 'started_at', 'mapping_snapshot', 'updated_at'])
+            if not job_was_terminal:
+                job.status = 'importing'
+                job.started_at = timezone.now()
+                job.mapping_snapshot = mapping
+                job.save(update_fields=['status', 'started_at', 'mapping_snapshot', 'updated_at'])
             process()
-            job.status = 'completed_with_errors' if (counts['REJECT'] or counts['REVIEW']) else 'completed'
-            job.completed_at = timezone.now()
+            if not job_was_terminal:
+                job.status = 'completed_with_errors' if (counts['REJECT'] or counts['REVIEW']) else 'completed'
+                job.completed_at = timezone.now()
         else:
             process()
-            job.status = 'validated'
-            job.validated_at = timezone.now()
-        job.total_rows = len(rows)
-        job.create_count = counts['CREATE']
-        job.reuse_count = counts['REUSE']
-        job.review_count = counts['REVIEW']
-        job.reject_count = counts['REJECT']
-        job.mapping_snapshot = mapping
-        job.save(update_fields=[
-            'status', 'total_rows', 'create_count', 'reuse_count', 'review_count',
-            'reject_count', 'mapping_snapshot', 'validated_at', 'started_at',
-            'completed_at', 'updated_at',
-        ])
-        if operation == 'import' and (counts['CREATE'] or counts['REVIEW'] or counts['REJECT']):
+            if not job_was_terminal:
+                job.status = 'validated'
+                job.validated_at = timezone.now()
+        if not job_was_terminal:
+            job.total_rows = len(rows)
+            job.create_count = counts['CREATE']
+            job.reuse_count = counts['REUSE']
+            job.review_count = counts['REVIEW']
+            job.reject_count = counts['REJECT']
+            job.mapping_snapshot = mapping
+            job.save(update_fields=[
+                'status', 'total_rows', 'create_count', 'reuse_count', 'review_count',
+                'reject_count', 'mapping_snapshot', 'validated_at', 'started_at',
+                'completed_at', 'updated_at',
+            ])
+        if operation == 'import' and not job_was_terminal and (counts['CREATE'] or counts['REVIEW'] or counts['REJECT']):
             PlatformEvent.objects.create(
                 actor=request.user, actor_email=request.user.email,
                 action='school.migration_completed', target=str(job.pk),
@@ -876,7 +881,8 @@ class MigrationCentre(APIView):
                          'counts': counts, 'rows': results,
                          'warnings': [f'Ignored column: {header}' for header in ignored],
                          'mapping': mapping, 'job_id': job.pk,
-                         'file_fingerprint': fingerprint, 'status': job.status})
+                         'file_fingerprint': fingerprint, 'status': job.status,
+                         'idempotent_replay': bool(operation == 'import' and job_was_terminal)})
 
 
 class MigrationJobList(APIView):
