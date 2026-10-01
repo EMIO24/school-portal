@@ -91,3 +91,44 @@ test('shows the backend rollover blocker when direct session activation is refus
 
   expect(await screen.findByText(/Complete the academic rollover before activating the next session/)).toBeVisible();
 });
+
+
+test('executes a ready rollover only after confirmation',async()=>{
+  window.confirm=jest.fn(()=>true);
+  const destination={
+    id:3,name:'2027/28',start_date:'2027-09-01',end_date:'2028-07-31',is_current:false,
+    terms:[{id:4,session:3,name:'first',name_display:'First Term',start_date:'2027-09-01',end_date:'2027-12-17',is_current:false,holidays:[]}],
+  };
+  api.get.mockResolvedValue({data:[...sessions,destination]});
+  api.post.mockImplementation((url)=>{
+    if(url.includes('/rollover-preview/')){
+      return Promise.resolve({data:{
+        rollover_id:11,status:'ready',ready:true,
+        source_session:{id:1,name:'2026/27'},
+        destination_session:{id:3,name:'2027/28'},
+        summary:{source_students:1,decided:1,unresolved:0,promoted:1,repeated:0,graduated:0,withdrawn:0},
+        blockers:[],warnings:[],students:[],
+      }});
+    }
+    if(url.includes('/rollover-execute/')){
+      return Promise.resolve({data:{
+        rollover_id:11,status:'completed',idempotent_replay:false,
+        source_session_id:1,destination_session_id:3,current_term_id:4,
+        summary:{source_students:1,promoted:1,repeated:0,graduated:0,withdrawn:0},
+      }});
+    }
+    return Promise.resolve({data:holiday});
+  });
+
+  renderPage(<CalendarSettings/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Rollover Preview'}));
+  fireEvent.click(await screen.findByRole('button',{name:'Execute Rollover'}));
+
+  expect(window.confirm).toHaveBeenCalled();
+  await waitFor(()=>expect(api.post).toHaveBeenCalledWith(
+    '/api/sessions/1/rollover-execute/',
+    {destination_session_id:3,idempotency_key:'rollover-1-3'}
+  ));
+  expect(await screen.findByText(/Academic rollover completed successfully/)).toBeVisible();
+  expect(api.get).toHaveBeenCalledTimes(2);
+});
