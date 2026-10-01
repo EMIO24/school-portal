@@ -645,6 +645,7 @@ class MigrationJob(models.Model):
     reuse_count = models.PositiveIntegerField(default=0)
     reject_count = models.PositiveIntegerField(default=0)
     review_count = models.PositiveIntegerField(default=0)
+    last_processed_row = models.PositiveIntegerField(default=0)
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="migration_jobs_created"
     )
@@ -665,6 +666,35 @@ class MigrationJob(models.Model):
 
     def __str__(self):
         return f"{self.school} | {self.domain} | {self.original_filename}"
+
+
+class MigrationRowRecord(models.Model):
+    ACTION_CHOICES = [
+        ("CREATE", "Create"),
+        ("REUSE", "Reuse"),
+        ("REVIEW", "Review"),
+        ("REJECT", "Reject"),
+    ]
+
+    job = models.ForeignKey(MigrationJob, on_delete=models.CASCADE, related_name="row_records")
+    row_number = models.PositiveIntegerField()
+    action = models.CharField(max_length=8, choices=ACTION_CHOICES)
+    source_identity = models.CharField(max_length=255, blank=True, default="")
+    target_model = models.CharField(max_length=120, blank=True, default="")
+    target_pk = models.CharField(max_length=80, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["job_id", "row_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["job", "row_number"],
+                name="unique_migration_job_row_record",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.job_id}:{self.row_number} {self.action}"
 
 
 class MigrationMappingProfile(models.Model):
