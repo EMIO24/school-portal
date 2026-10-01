@@ -17,6 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from django.utils import timezone
+from django.db import transaction
 
 from accounts.permissions import IsSchoolAdmin, IsAuthenticatedTenantUser
 from tenants.mixins import TenantMixin
@@ -57,7 +58,19 @@ class SessionViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelView
     def get_queryset(self):
         return super().get_queryset().order_by("-start_date")
 
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        protected = ("name", "start_date", "end_date")
+        changed = any(
+            field in serializer.validated_data and serializer.validated_data[field] != getattr(instance, field)
+            for field in protected
+        )
+        if changed and session_has_execution_history(instance):
+            raise ValidationError("This academic session has historical records and its identity or dates cannot be changed.")
+        serializer.save()
+
     @action(detail=True, methods=["post"], url_path="set-current")
+    @transaction.atomic
     def set_current(self, request, pk=None):
         """
         POST /api/sessions/{id}/set-current/
@@ -66,12 +79,11 @@ class SessionViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelView
         The model's save() atomically clears the flag on all others.
         """
         session = self.get_object()
-        session.is_current = True
-        session.save()
-        return Response(
-            AcademicSessionSerializer(session).data,
-            status=status.HTTP_200_OK,
-        )
+        try:
+            session = activate_session(school=self._get_tenant(), target_session=session)
+        except RolloverSafetyError as exc:
+            raise ValidationError(str(exc))
+        return Response(AcademicSessionSerializer(session).data, status=status.HTTP_200_OK)
 
 
 class TermViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
@@ -117,7 +129,23 @@ class TermViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet
             raise PermissionDenied("Session does not belong to this school.")
         serializer.save()
 
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        session = serializer.validated_data.get("session", instance.session)
+        if session.school_id != self._get_tenant().pk:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Session does not belong to this school.")
+        protected = ("session", "name", "start_date", "end_date", "next_term_begins")
+        changed = any(
+            field in serializer.validated_data and serializer.validated_data[field] != getattr(instance, field)
+            for field in protected
+        )
+        if changed and term_has_execution_history(instance):
+            raise ValidationError("This term has historical execution records and its calendar meaning cannot be changed.")
+        serializer.save()
+
     @action(detail=True, methods=["post"], url_path="set-current")
+    @transaction.atomic
     def set_current(self, request, pk=None):
         """
         POST /api/terms/{id}/set-current/
@@ -126,19 +154,11 @@ class TermViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet
         Also marks the parent session as current for consistency.
         """
         term = self.get_object()
-        term.is_current = True
-        term.save()
-
-        # Ensure parent session is also current
-        session = term.session
-        if not session.is_current:
-            session.is_current = True
-            session.save()
-
-        return Response(
-            TermSerializer(term).data,
-            status=status.HTTP_200_OK,
-        )
+        try:
+            term = activate_term(school=self._get_tenant(), target_term=term)
+        except RolloverSafetyError as exc:
+            raise ValidationError(str(exc))
+        return Response(TermSerializer(term).data, status=status.HTTP_200_OK)
 
 
 class HolidayViewSet(TenantMixin, viewsets.ModelViewSet):
