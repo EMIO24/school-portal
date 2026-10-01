@@ -572,3 +572,135 @@
 .cs-holiday > div:first-child { display: grid; gap: 0.2rem; }
 .cs-holiday span, .cs-holiday small { color: var(--color-text-muted); }
 .cs-holiday > div:last-child { display: flex; align-items: center; gap: var(--space-2); }
+
+
+/* ── Academic rollover preview ───────────────────────────────────────────── */
+
+.cs-rollover-preview {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.cs-rollover-state {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+}
+
+.cs-rollover-state.is-ready {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.cs-rollover-state.is-blocked {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.cs-rollover-state span {
+  font-size: 0.8rem;
+}
+
+.cs-rollover-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: var(--space-2);
+}
+
+.cs-rollover-summary > div {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius);
+  background: var(--color-surface-2);
+}
+
+.cs-rollover-summary strong {
+  font-size: 1.1rem;
+}
+
+.cs-rollover-summary span,
+.cs-rollover-section span,
+.cs-rollover-student span,
+.cs-rollover-student small {
+  font-size: 0.76rem;
+  color: var(--color-text-muted);
+}
+
+.cs-rollover-section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.cs-rollover-section h4 {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.cs-rollover-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.cs-rollover-list li {
+  padding-left: 0.2rem;
+}
+
+.cs-rollover-list li > span:last-child {
+  margin-left: var(--space-2);
+}
+
+.cs-rollover-list--blockers {
+  color: var(--color-danger);
+}
+
+.cs-rollover-students {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 240px;
+  overflow: auto;
+}
+
+.cs-rollover-student {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  gap: 2px var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius);
+}
+
+.cs-rollover-student small {
+  grid-column: 1 / -1;
+}
+
+.cs-rollover-note {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 600px) {
+  .cs-rollover-state {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cs-rollover-student {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-rollover-student small {
+    grid-column: auto;
+  }
+}
