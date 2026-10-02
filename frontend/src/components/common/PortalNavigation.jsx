@@ -20,7 +20,15 @@ export const ROLE_LINKS = {
     ['communications', 'Communication Centre'], ['notices', 'My notices'], ['notifications', 'Email and SMS'], ['notification-templates', 'Notification templates'],
     ['subscription', 'Portal subscription'], ['fee-setup', 'Fee setup'], ['fee-collection', 'Fee collection'], ['promotion', 'Promotion'],
   ].map(([path, label]) => [`/admin/${path}`, label]),
-  teacher: [['dashboard', 'Dashboard'], ['attendance', 'Take attendance'], ['scores', 'Scores'],
+  principal: [
+    ['/admin/dashboard', 'Dashboard'], ['/admin/attendance', 'Attendance'], ['/admin/presence', 'Student presence'],
+    ['/admin/teaching', 'Teaching records'], ['/admin/results', 'Results'], ['/admin/promotion', 'Promotion'],
+    ['/admin/notices', 'Notices']
+  ],
+  class_teacher: [['dashboard', 'Dashboard'], ['attendance', 'Take attendance'], ['presence', 'Student presence'], ['scores', 'Scores'],
+    ['timetable', 'My timetable'], ['teaching', "Today's lessons"], ['scheme', 'My scheme'], ['academic-planning', 'Lesson planning & resources'],
+    ['notices', 'Notices']].map(([path, label]) => [`/teacher/${path}`, label]),
+  teacher: [['dashboard', 'Dashboard'], ['attendance', 'Take attendance'], ['presence', 'Student presence'], ['scores', 'Scores'],
     ['domains', 'Student development'], ['timetable', 'My timetable'], ['teaching', "Today's lessons"], ['scheme', 'My scheme'], ['academic-planning', 'Lesson planning & resources'],
     ['term-questions', 'Term CBT questions'], ['question-bank', 'Question bank'], ['exam-manager', 'Exams'],
     ['exam-papers', 'Exam papers'], ['online-assignments', 'Online assignments'], ['notices', 'Notices']].map(([path, label]) => [`/teacher/${path}`, label]),
