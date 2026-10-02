@@ -154,6 +154,7 @@ class BulkRecordItemSerializer(serializers.Serializer):
     student_id = serializers.IntegerField()
     status     = serializers.ChoiceField(choices=AttendanceRecord.Status.choices)
     remark     = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    arrival_time = serializers.TimeField(required=False, allow_null=True)
 
 
 class BulkSubmitSerializer(serializers.Serializer):
