@@ -37,6 +37,15 @@ export default function Admissions() {
     }catch(e){setError(errorText(e));}finally{setBusy(false);}
   };
 
+  const addDocument=async app=>{
+    const title=window.prompt('Document title'); if(!title)return;
+    const document_url=window.prompt('Document URL'); if(!document_url)return;
+    const kind=window.prompt('Type: birth_certificate, previous_result, passport_photo, medical or other','other')||'other';
+    setBusy(true);setError('');
+    try{await api.post(`/api/operations/admissions/${app.id}/documents/`,{title,document_url,kind});setNotice('Admission document added.');await load();}
+    catch(e){setError(errorText(e));}finally{setBusy(false);}
+  };
+
   const decide=async(app,decision)=>{
     const payload={decision};
     if(decision==='admit'){
@@ -88,6 +97,8 @@ export default function Admissions() {
         <strong>{app.application_number} · {app.first_name} {app.last_name}</strong>
         <p>{app.applying_class_level_name} · {app.status}{app.preferred_campus_name?` · ${app.preferred_campus_name}`:''}</p>
         <p>Guardian: {app.guardian_name} · {app.guardian_phone}</p>
+        {(app.documents||[]).map(doc=><p key={doc.id}><small>{doc.kind}</small> · <a href={doc.document_url} target="_blank" rel="noreferrer">{doc.title}</a></p>)}
+        {!['admitted','rejected','withdrawn'].includes(app.status)&&<button disabled={busy} onClick={()=>addDocument(app)}>Add document</button>
         {!['admitted','rejected','withdrawn'].includes(app.status)&&<div className="assessment-actions">
           <button disabled={busy} onClick={()=>decide(app,'under_review')}>Under review</button>
           <button disabled={busy} onClick={()=>decide(app,'offered')}>Offer</button>
