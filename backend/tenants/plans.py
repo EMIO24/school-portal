@@ -17,8 +17,7 @@ FEATURES = {
 PLAN_FEATURES = {
     'free': ['core'],
     'basic': ['core', 'attendance', 'results', 'fees', 'timetable', 'notifications', 'bulk_import', 'term_cbt'],
-    'premium': list(FEATURES),
-    # Enterprise inherits shipped capabilities; institutional modules are separate slices.
+    'premium': [key for key in FEATURES if key != 'multi_campus'],
     'enterprise': list(FEATURES),
 }
 
