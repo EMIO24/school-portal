@@ -17,7 +17,7 @@ from django.db import transaction
 class SchoolIdentitySerializer(serializers.ModelSerializer):
     class Meta:
         model = School
-        fields = ['name', 'motto', 'address', 'phone', 'email', 'logo']
+        fields = ['name', 'motto', 'address', 'phone', 'email', 'logo', 'uses_class_arms']
         read_only_fields = ['logo']
 
     def to_internal_value(self, data):
@@ -57,15 +57,28 @@ class SchoolSetup(APIView):
             ('grading', 'Grading ranges', valid_scoring, '/admin/setup#assessment'),
         ]
         return Response({'identity': SchoolIdentitySerializer(school).data, 'class_level_choices':ClassLevel.LEVEL_CHOICES,
+            'uses_class_arms': school.uses_class_arms,
             'steps': [{'key':key, 'label':label, 'complete':done, 'url':url} for key,label,done,url in steps],
             'missing_assignments': missing, 'session':session.name if session else None,
             'term':term.get_name_display() if term else None,
             'assessment': {c['key']:c['maximum'] for c in policy.components} if policy else {**CA_MAXIMA, 'exam_score':MAX_EXAM}})
 
     def patch(self, request):
-        form = SchoolIdentitySerializer(request.tenant, data=request.data, partial=True)
+        school = request.tenant
+        requested_arms = request.data.get('uses_class_arms', school.uses_class_arms)
+        if requested_arms is False and school.uses_class_arms:
+            named = ClassArm.objects.filter(school=school, is_default=False)
+            if named.exists():
+                raise serializers.ValidationError({
+                    'uses_class_arms': 'Remove unused named class arms before switching this school to no-arm mode.'
+                })
+        form = SchoolIdentitySerializer(school, data=request.data, partial=True)
         form.is_valid(raise_exception=True)
-        form.save()
+        school = form.save()
+        if not school.uses_class_arms:
+            from enrollment.class_structure import ensure_default_arm
+            for level in ClassLevel.objects.filter(school=school):
+                ensure_default_arm(school=school, class_level=level)
         PlatformEvent.objects.create(actor=request.user, actor_email=request.user.email,
             action='school.identity_updated', target=str(request.tenant.pk), details={'fields':list(form.validated_data)})
         return Response(form.data)
