@@ -131,8 +131,29 @@ class StaffViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if staff.user.role == 'principal' and ids:
+            return Response(
+                {"error": "Principal is school-wide and cannot be assigned as a class teacher."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if staff.user.role == 'class_teacher':
+            conflicts = arms.exclude(class_teacher__isnull=True).exclude(class_teacher=staff.user)
+            if conflicts.exists():
+                return Response(
+                    {"error": "One or more selected classes already have a class teacher."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
         staff.assigned_classes.set(arms)
-        return Response(StaffProfileSerializer(staff).data)
+        if staff.user.role == 'class_teacher':
+            ClassArm.objects.filter(
+                school=tenant, class_teacher=staff.user
+            ).exclude(pk__in=ids).update(class_teacher=None)
+            ClassArm.objects.filter(
+                school=tenant, pk__in=ids
+            ).update(class_teacher=staff.user)
+
+        return Response(StaffProfileSerializer(staff, context={"request": request}).data)
 
     # ── Bulk CSV import ───────────────────────────────────────────────────
 
