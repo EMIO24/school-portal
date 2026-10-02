@@ -33,7 +33,7 @@ export const ROLE_LINKS = {
     ['term-questions', 'Term CBT questions'], ['question-bank', 'Question bank'], ['exam-manager', 'Exams'],
     ['exam-papers', 'Exam papers'], ['online-assignments', 'Online assignments'], ['notices', 'Notices']].map(([path, label]) => [`/teacher/${path}`, label]),
   student: [['dashboard', 'Dashboard'], ['attendance', 'Attendance'], ['timetable', 'Timetable'],
-    ['results', 'Results'], ['exams', 'Exams'], ['online-assignments', 'Assignments'], ['fees', 'Fees'], ['performance', 'Performance'], ['notices', 'Notices']]
+    ['results', 'Results'], ['resources', 'Learning resources'], ['exams', 'Exams'], ['online-assignments', 'Assignments'], ['fees', 'Fees'], ['performance', 'Performance'], ['notices', 'Notices']]
     .map(([path, label]) => [`/student/${path}`, label]),
   parent: [['/parent/dashboard', 'Dashboard'], ['/parent/notices', 'Notices']],
   superadmin: [['/superadmin/appearance', 'Portal designs'], ['/superadmin/payments', 'Payments'], ['/superadmin/demo-requests', 'Demo requests'], ['/superadmin/dashboard', 'Schools'], ['/superadmin/team', 'Platform staff and activity']],
