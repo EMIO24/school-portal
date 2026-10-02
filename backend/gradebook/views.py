@@ -78,7 +78,7 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
         if p.get('subject'):   qs = qs.filter(subject_id=p['subject'])
         if p.get('term'):      qs = qs.filter(term_id=p['term'])
         if p.get('session'):   qs = qs.filter(session_id=p['session'])
-        if self.request.user.role == "teacher":
+        if self.request.user.role in ("teacher", "class_teacher"):
             from django.db.models import Exists, OuterRef
             from enrollment.models import SubjectAssignment
             qs = qs.filter(Exists(SubjectAssignment.objects.filter(school=self.school,
@@ -209,7 +209,7 @@ class ScoreEntryViewSet(TenantMixin, viewsets.ModelViewSet):
     def reopen(self, request):
         from rest_framework.exceptions import ValidationError, PermissionDenied
         from tenants.models import PlatformEvent
-        if request.user.role != 'school_admin': raise PermissionDenied('Only school administrators can reopen results.')
+        if request.user.role not in ('school_admin', 'principal'): raise PermissionDenied('Only school administrators or the principal can reopen results.')
         reason, ids = str(request.data.get('reason','')).strip(), request.data.get('entry_ids')
         if len(reason) < 10: raise ValidationError('Explain the correction (at least 10 characters).')
         if not isinstance(ids,list) or not ids or len(ids)>1000: raise ValidationError('Select the entries to reopen.')
