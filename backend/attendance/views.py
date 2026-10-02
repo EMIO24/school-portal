@@ -543,9 +543,24 @@ class StudentPresenceView(APIView):
             return Response({'class_arm': 'Choose a class in this school.'}, status=400)
         if request.user.role == 'class_teacher' and arm.class_teacher_id != request.user.pk:
             return Response({'detail': 'This is not your class.'}, status=403)
+        from academics.models import AcademicSession
+        academic_session = AcademicSession.objects.filter(
+            school=school, start_date__lte=on_date, end_date__gte=on_date
+        ).order_by('-start_date').first()
+        roster_ids = (
+            enrolled_user_ids_for_class_on_date(
+                school=school,
+                class_arm=arm,
+                session=academic_session,
+                on_date=on_date,
+            )
+            if academic_session else []
+        )
         students = StudentProfile.objects.filter(
-            school=school, status='active', current_class=arm
-        ).select_related('user', 'current_class__class_level').order_by('user__last_name', 'user__first_name')
+            school=school, user_id__in=roster_ids
+        ).select_related('user', 'current_class__class_level').order_by(
+            'user__last_name', 'user__first_name'
+        )
         presence_map = {
             row.student_id: row
             for row in StudentDailyPresence.objects.filter(
