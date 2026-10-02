@@ -209,7 +209,7 @@ class OnlineAssignmentViewSet(TenantMixin, ModelViewSet):
         if self.request.user.role == 'student':
             arm_id = getattr(getattr(self.request.user, 'student_profile', None), 'current_class_id', None)
             return qs.filter(class_arm_id=arm_id, status__in=['published', 'closed'])
-        if self.request.user.role == 'teacher':
+        if self.request.user.role in ('teacher', 'class_teacher'):
             from django.db.models import Exists, OuterRef
             from enrollment.models import SubjectAssignment
             assigned = SubjectAssignment.objects.filter(school=self.school, teacher__user=self.request.user,
