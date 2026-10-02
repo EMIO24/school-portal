@@ -60,7 +60,7 @@ class ExamPaperViewSet(TenantMixin, ModelViewSet):
 
     def get_queryset(self):
         qs = ExamPaper.objects.filter(school=self.school).select_related('term__session', 'subject', 'class_level').order_by('-created_at', '-pk')
-        if self.request.user.role == 'teacher':
+        if self.request.user.role in ('teacher', 'class_teacher'):
             from django.db.models import Exists, OuterRef
             from enrollment.models import SubjectAssignment
             assigned = SubjectAssignment.objects.filter(school=self.school,
@@ -201,7 +201,7 @@ class OnlineAssignmentViewSet(TenantMixin, ModelViewSet):
         super().initial(request, *args, **kwargs)
         if not request.user.is_active or request.user.school_id != getattr(request.tenant, 'pk', None) or request.user.must_change_password:
             raise PermissionDenied('Select your school account.')
-        if request.user.role not in ('school_admin', 'teacher', 'student'):
+        if request.user.role not in ('school_admin', 'principal', 'teacher', 'class_teacher', 'student'):
             raise PermissionDenied('This assignment is not available to your role.')
 
     def get_queryset(self):
@@ -219,20 +219,20 @@ class OnlineAssignmentViewSet(TenantMixin, ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        if self.request.user.role == 'student':
-            raise PermissionDenied('Students cannot create assignments.')
+        if self.request.user.role in ('student', 'principal'):
+            raise PermissionDenied('Only assigned teaching staff or the school administrator can create assignments.')
         serializer.save(school=self.school, created_by=self.request.user)
 
     def perform_update(self, serializer):
-        if self.request.user.role == 'student':
-            raise PermissionDenied('Students cannot edit assignments.')
+        if self.request.user.role in ('student', 'principal'):
+            raise PermissionDenied('Only assigned teaching staff or the school administrator can edit assignments.')
         serializer.save()
 
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def publish(self, request, pk=None):
-        if request.user.role == 'student':
-            raise PermissionDenied('Students cannot publish assignments.')
+        if request.user.role in ('student', 'principal'):
+            raise PermissionDenied('Only assigned teaching staff or the school administrator can publish assignments.')
         assignment = OnlineAssignment.objects.select_for_update().get(pk=self.get_object().pk)
         if assignment.status != 'draft' or assignment.due_at <= timezone.now():
             raise ValidationError('Publish a draft before its deadline.')
@@ -312,9 +312,9 @@ class OnlineAssignmentViewSet(TenantMixin, ModelViewSet):
     @transaction.atomic
     def mark(self, request, pk=None):
         assignment = self.get_object()
-        if request.user.role == 'student':
-            raise PermissionDenied('Only assigned staff can mark submissions.')
-        if request.user.role == 'teacher':
+        if request.user.role in ('student', 'principal'):
+            raise PermissionDenied('Only assigned teaching staff or the school administrator can mark submissions.')
+        if request.user.role in ('teacher', 'class_teacher'):
             require_assignment(request, assignment.class_arm_id, assignment.term_id, assignment.subject_id)
         row = get_object_or_404(AssignmentSubmission.objects.select_for_update(), pk=request.data.get('submission_id'), assignment=assignment)
         if row.status != 'submitted':
@@ -338,5 +338,5 @@ class OnlineAssignmentViewSet(TenantMixin, ModelViewSet):
             integrate_component(school=self.school, student=row.student, subject=assignment.subject,
                 term=assignment.term, class_arm=assignment.class_arm, key=assignment.component_key,
                 source=f'assignment:{assignment.pk}', raw_score=score,
-                raw_maximum=assignment.maximum, teacher=request.user if request.user.role == 'teacher' else None)
+                raw_maximum=assignment.maximum, teacher=request.user if request.user.role in ('teacher', 'class_teacher') else None)
         return Response({'released': True, 'score': str(score)})
