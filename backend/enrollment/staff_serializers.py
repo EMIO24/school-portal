@@ -88,7 +88,7 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
         attrs = super().validate(attrs)
         role = attrs.get('new_role') or (self.instance.user.role if self.instance else 'teacher')
         assigned = attrs.get('assigned_classes')
-        if role == 'principal' and assigned:
+        if role == 'principal' and assigned and self.instance is None:
             raise serializers.ValidationError({
                 'assigned_classes': 'Principal is school-wide and cannot be assigned as a class teacher.'
             })
