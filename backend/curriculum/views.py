@@ -17,7 +17,7 @@ from .models import CurriculumPlan, CurriculumTopic, CurriculumWeek, LearningObj
 def allowed(request):
     user, school = request.user, getattr(request, 'tenant', None)
     return bool(school and user.is_authenticated and user.is_active and not user.must_change_password
-                and user.school_id == school.pk and user.role in ('school_admin', 'teacher'))
+                and user.school_id == school.pk and user.role in ('school_admin', 'principal', 'teacher', 'class_teacher'))
 
 
 def positive(value):
@@ -37,7 +37,7 @@ def context(request, data):
 
 
 def can_read(request, term, level, subject, arm_id):
-    if request.user.role == 'school_admin':
+    if request.user.role in ('school_admin', 'principal'):
         return True
     arm = ClassArm.objects.filter(pk=positive(arm_id), school=request.tenant, class_level=level).first()
     if not arm:
@@ -93,7 +93,7 @@ class AssignedPlansView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not allowed(request) or request.user.role != 'teacher':
+        if not allowed(request) or request.user.role not in ('teacher', 'class_teacher'):
             return Response({'detail': 'Assigned teacher access required.'}, status=403)
         assignments = SubjectAssignment.objects.filter(school=request.tenant, teacher__user=request.user,
             teacher__employment_status='active').select_related('term__session', 'class_arm__class_level', 'subject')
@@ -229,7 +229,7 @@ class ScheduledCurriculumView(APIView):
         slot = TimetableEntry.objects.filter(pk=slot_id, school=request.tenant).select_related('term__session', 'class_arm__class_level').first()
         if not slot:
             return Response({'detail': 'Scheduled lesson not found.'}, status=404)
-        if request.user.role == 'teacher':
+        if request.user.role in ('teacher', 'class_teacher'):
             if slot.teacher_id != request.user.pk or not can_read(request, slot.term, slot.class_arm.class_level, slot.subject, slot.class_arm_id):
                 return Response({'detail': 'This curriculum is not assigned to you.'}, status=403)
         plan = CurriculumPlan.objects.filter(school=request.tenant, term=slot.term,
