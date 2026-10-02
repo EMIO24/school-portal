@@ -244,7 +244,7 @@ export default function StaffForm() {
                   placeholder="ngozi@school.edu.ng" />
               </Field>
               <Field label="Role" error={errors.new_role}>
-                <select disabled={isEdit || saving} value={form.new_role} onChange={e => set("new_role", e.target.value)}>
+                <select disabled={saving} value={form.new_role} onChange={e => set("new_role", e.target.value)}>
                   <option value="teacher">Teacher</option>
                   <option value="school_admin">School Admin</option>
                 </select>
