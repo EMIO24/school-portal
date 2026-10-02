@@ -12,6 +12,8 @@ Admission number format: SLUG-YYYY-XXXX  e.g. GHS-2024-0042
 Generated in utils.py, assigned in StudentProfile.save() on first create.
 """
 
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.core.exceptions import ValidationError
