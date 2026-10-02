@@ -98,9 +98,9 @@ class TimetableEntryViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(term_id=term)
 
         user = self.request.user
-        if user.role == 'school_admin':
+        if user.role in ('school_admin', 'principal'):
             return qs
-        if user.role == 'teacher':
+        if user.role in ('teacher', 'class_teacher'):
             return qs.filter(teacher=user)
         if user.role == 'student':
             arm_id = getattr(getattr(user, 'student_profile', None), 'current_class_id', None)
@@ -165,7 +165,7 @@ class TimetableEntryViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=False, url_path='my-timetable', methods=['get'])
     def my_timetable(self, request):
         """Logged-in teacher's own timetable."""
-        if getattr(request.user, 'role', None) != 'teacher':
+        if getattr(request.user, 'role', None) not in ('teacher', 'class_teacher'):
             return Response(
                 {'detail': 'Only teachers can access this endpoint.'},
                 status=status.HTTP_403_FORBIDDEN,
