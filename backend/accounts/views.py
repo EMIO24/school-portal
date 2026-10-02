@@ -251,7 +251,7 @@ class ParentStudentDashboardView(APIView):
         from enrollment.models import StudentProfile
         from academics.models import Term
         from gradebook.models import ScoreEntry
-        from attendance.models import AttendanceRecord
+        from attendance.models import AttendanceRecord, StudentDailyPresence
         from fees.models import FeeSchedule, FeePayment
         from timetable.models import TimetableEntry
         from results.models import ResultRemark
@@ -294,19 +294,33 @@ class ParentStudentDashboardView(APIView):
 
             # Last 7 days dot data
             seven_days_ago = timezone.now().date() - datetime.timedelta(days=7)
-            recent = (
+            recent = list(
                 AttendanceRecord.objects
                 .filter(student=student.user, attendance_session__term=term)
                 .filter(attendance_session__date__gte=seven_days_ago)
                 .values('attendance_session__date', 'status')
                 .order_by('attendance_session__date')
             )
+            presence_rows = {
+                row.date: row
+                for row in StudentDailyPresence.objects.filter(
+                    school=school, student=student, date__gte=seven_days_ago
+                )
+            }
+            last_days = []
+            for row in recent:
+                day = row['attendance_session__date']
+                presence = presence_rows.get(day)
+                arrival = timezone.localtime(presence.arrival_at).strftime('%H:%M') if presence and presence.arrival_at else None
+                last_days.append({'date': str(day), 'status': row['status'], 'arrival_time': arrival})
             attendance_summary = {
                 'percentage': pct,
-                'present':    present,
-                'total':      total,
-                'warning':    pct < 75,
-                'last_7_days': [{'date': str(r['attendance_session__date']), 'status': r['status']} for r in recent],
+                'present': present,
+                'late': summary.get('late', 0) or 0,
+                'absent': summary.get('absent', 0) or 0,
+                'total': total,
+                'warning': pct < 75,
+                'last_7_days': last_days,
             }
 
         # ── Fee status ─────────────────────────────────────────────────────
@@ -352,6 +366,21 @@ class ParentStudentDashboardView(APIView):
             .order_by('-sent_at')[:5]
             .values('channel', 'message_body', 'sent_at')
         )
+        today_presence = StudentDailyPresence.objects.filter(
+            school=school, student=student, date=timezone.localdate()
+        ).first()
+        presence_today = None
+        if today_presence:
+            arrival = timezone.localtime(today_presence.arrival_at) if today_presence.arrival_at else None
+            departure = timezone.localtime(today_presence.departure_at) if today_presence.departure_at else None
+            cutoff = school.arrival_cutoff_time
+            presence_today = {
+                'arrival_time': arrival.strftime('%H:%M') if arrival else None,
+                'late': bool(arrival and cutoff and arrival.time().replace(tzinfo=None) > cutoff),
+                'departure_time': departure.strftime('%H:%M') if departure else None,
+                'clockout_enabled': school.student_clockout_enabled,
+                'clockout_recorded': bool(departure),
+            }
 
         return Response({
             'student': {
@@ -361,6 +390,7 @@ class ParentStudentDashboardView(APIView):
             },
             'result_summary':     result_summary,
             'attendance_summary': attendance_summary,
+            'presence_today': presence_today,
             'fee_status':         fee_status,
             'timetable_today':    today_schedule,
             'recent_notifications': list(recent_notifs),
