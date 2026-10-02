@@ -21,8 +21,8 @@ def require_unpublished(school, student, term):
 @transaction.atomic
 def transition(request, action):
     school = lock_school(request.tenant)
-    if action != 'submit' and request.user.role != 'school_admin':
-        raise PermissionDenied('Only school administrators can approve or publish results.')
+    if action != 'submit' and request.user.role not in ('school_admin', 'principal'):
+        raise PermissionDenied('Only school administrators or the principal can approve or publish results.')
     params = {**request.query_params.dict(), **request.data}
     ids = {key:serializers.IntegerField(min_value=1).run_validation(params.get(key)) for key in ('class_arm','subject','term')}
     arm = get_object_or_404(ClassArm,pk=ids['class_arm'],school=school)
