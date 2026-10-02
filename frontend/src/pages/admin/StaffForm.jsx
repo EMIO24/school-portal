@@ -303,7 +303,7 @@ export default function StaffForm() {
         </section>
 
         {/* ── Teaching Assignments (teachers only) ── */}
-        {(["teacher", "class_teacher"].includes(form.new_role) || isEdit) && (
+        {(["teacher", "class_teacher"].includes(form.new_role)) && (
           <section className="stf-section">
             <h2 className="stf-section-title">Teaching Assignments</h2>
             <p className="stf-section-sub">Select the subjects and classes this teacher is responsible for.</p>
