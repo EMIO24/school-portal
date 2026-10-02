@@ -195,7 +195,7 @@ function AppRoutes() {
           <Routes>
             <Route path="dashboard" element={<TeacherDashboard />} />
             <Route path="attendance" element={<TakeAttendance />} />
-            <Route path="presence" element={<StudentPresence />} />
+            <Route path="presence" element={<ProtectedRoute allowedRoles={["class_teacher"]}><StudentPresence /></ProtectedRoute>} />
             <Route path="scores" element={<ScoreEntry />} />
             <Route path="domains" element={<AffinityDomain />} />
             <Route path="timetable" element={<MyTimetable />} />
