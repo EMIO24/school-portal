@@ -49,7 +49,7 @@ class StaffViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering         = ["user__last_name"]
 
     queryset = StaffProfile.objects.select_related(
-        "user", "school"
+        "user", "school", "campus"
     ).prefetch_related("subjects_taught", "assigned_classes")
 
     def perform_destroy(self, instance):
@@ -74,6 +74,10 @@ class StaffViewSet(TenantMixin, viewsets.ModelViewSet):
         status_f = self.request.query_params.get("status")
         if status_f:
             qs = qs.filter(employment_status=status_f)
+
+        campus = self.request.query_params.get("campus")
+        if campus:
+            qs = qs.filter(campus_id=campus)
 
         return qs
 
