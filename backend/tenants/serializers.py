@@ -36,6 +36,8 @@ class SchoolSerializer(serializers.ModelSerializer):
             "email",
             "motto",
             "registration_number",
+            "arrival_cutoff_time",
+            "student_clockout_enabled",
             "is_active",
             "subscription_plan",
             "created_at",
