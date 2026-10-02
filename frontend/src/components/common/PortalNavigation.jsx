@@ -9,7 +9,7 @@ import './PortalNavigation.css';
 
 export const ROLE_LINKS = {
   school_admin: [
-    ['dashboard', 'Dashboard'], ['setup', 'School setup'], ['appearance', 'School appearance'], ['calendar', 'Calendar'], ['students', 'Students'],
+    ['dashboard', 'Dashboard'], ['setup', 'School setup'], ['appearance', 'School appearance'], ['calendar', 'Calendar'], ['admissions', 'Admissions'], ['students', 'Students'], ['welfare', 'Student welfare'], ['campuses', 'Campuses'],
     ['students/new', 'Add student'], ['migration', 'Data migration'],
     ['staff', 'Staff'], ['staff/new', 'Add staff'],
     ['subjects', 'Subjects'], ['subject-assignments', 'Subject assignments'],
@@ -21,11 +21,11 @@ export const ROLE_LINKS = {
     ['subscription', 'Portal subscription'], ['fee-setup', 'Fee setup'], ['fee-collection', 'Fee collection'], ['promotion', 'Promotion'],
   ].map(([path, label]) => [`/admin/${path}`, label]),
   principal: [
-    ['/admin/dashboard', 'Dashboard'], ['/admin/attendance', 'Attendance'], ['/admin/presence', 'Student presence'],
+    ['/admin/dashboard', 'Dashboard'], ['/admin/admissions', 'Admissions'], ['/admin/welfare', 'Student welfare'], ['/admin/attendance', 'Attendance'], ['/admin/presence', 'Student presence'],
     ['/admin/teaching', 'Teaching records'], ['/admin/results', 'Results'],
     ['/admin/notices', 'Notices']
   ],
-  class_teacher: [['dashboard', 'Dashboard'], ['attendance', 'Take attendance'], ['presence', 'Student presence'], ['scores', 'Scores'],
+  class_teacher: [['dashboard', 'Dashboard'], ['attendance', 'Take attendance'], ['presence', 'Student presence'], ['welfare', 'Student welfare'], ['scores', 'Scores'],
     ['timetable', 'My timetable'], ['teaching', "Today's lessons"], ['scheme', 'My scheme'], ['academic-planning', 'Lesson planning & resources'],
     ['notices', 'Notices']].map(([path, label]) => [`/teacher/${path}`, label]),
   teacher: [['dashboard', 'Dashboard'], ['attendance', 'Take attendance'], ['scores', 'Scores'],
