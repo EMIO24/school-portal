@@ -504,17 +504,35 @@ class StudentPresenceView(APIView):
             on_date = date.fromisoformat(raw_date) if raw_date else timezone.localdate()
         except ValueError:
             return Response({'date': 'Use YYYY-MM-DD.'}, status=400)
-        qs = StudentDailyPresence.objects.filter(school=school, date=on_date).select_related(
-            'student__user', 'student__current_class__class_level'
-        )
         class_arm = request.query_params.get('class_arm')
-        if class_arm:
-            if not str(class_arm).isdigit():
-                return Response({'class_arm': 'Choose a valid class.'}, status=400)
-            qs = qs.filter(student__current_class_id=class_arm)
-        if request.user.role == 'class_teacher':
-            qs = qs.filter(student__current_class__class_teacher=request.user)
-        return Response([_presence_payload(row, school) for row in qs[:1000]])
+        if not class_arm or not str(class_arm).isdigit():
+            return Response({'class_arm': 'Choose a valid class.'}, status=400)
+        from enrollment.models import ClassArm, StudentProfile
+        arm = ClassArm.objects.filter(school=school, pk=class_arm).first()
+        if not arm:
+            return Response({'class_arm': 'Choose a class in this school.'}, status=400)
+        if request.user.role == 'class_teacher' and arm.class_teacher_id != request.user.pk:
+            return Response({'detail': 'This is not your class.'}, status=403)
+        students = StudentProfile.objects.filter(
+            school=school, status='active', current_class=arm
+        ).select_related('user', 'current_class__class_level').order_by('user__last_name', 'user__first_name')
+        presence_map = {
+            row.student_id: row
+            for row in StudentDailyPresence.objects.filter(
+                school=school, date=on_date, student__in=students
+            ).select_related('student__user', 'student__current_class__class_level')
+        }
+        rows = []
+        for student in students:
+            presence = presence_map.get(student.pk)
+            rows.append({
+                'student_id': student.pk,
+                'student_name': student.full_name,
+                'admission_number': student.admission_number,
+                'class_arm': arm.full_name,
+                'presence': _presence_payload(presence, school) if presence else None,
+            })
+        return Response({'date': on_date, 'class_arm': arm.pk, 'class_name': arm.full_name, 'students': rows})
 
     @transaction.atomic
     def post(self, request):
@@ -615,9 +633,14 @@ class StudentPresenceSettingsView(APIView):
         school = getattr(request, 'tenant', None)
         if not school or request.user.school_id != school.pk or request.user.role not in ('school_admin', 'principal', 'class_teacher'):
             return Response({'detail': 'School presence access required.'}, status=403)
+        from enrollment.models import ClassArm
+        classes = ClassArm.objects.filter(school=school).select_related('class_level')
+        if request.user.role == 'class_teacher':
+            classes = classes.filter(class_teacher=request.user)
         return Response({
             'arrival_cutoff_time': str(school.arrival_cutoff_time)[:5] if school.arrival_cutoff_time else None,
             'student_clockout_enabled': school.student_clockout_enabled,
+            'classes': [{'id': arm.pk, 'name': arm.full_name} for arm in classes],
         })
 
     def patch(self, request):
