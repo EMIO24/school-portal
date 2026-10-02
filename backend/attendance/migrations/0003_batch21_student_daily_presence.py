@@ -36,6 +36,7 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("arrival_recorded_by", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="student_arrivals_recorded", to=settings.AUTH_USER_MODEL)),
                 ("departure_recorded_by", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="student_departures_recorded", to=settings.AUTH_USER_MODEL)),
+                ("class_arm", models.ForeignKey(blank=True, help_text="Class placement snapshot when this presence record was first created.", null=True, on_delete=django.db.models.deletion.PROTECT, related_name="student_presence_records", to="enrollment.classarm")),
                 ("school", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="student_presence_records", to="tenants.school")),
                 ("student", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="daily_presence", to="enrollment.studentprofile")),
             ],
