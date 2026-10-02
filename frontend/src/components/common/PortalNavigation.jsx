@@ -13,7 +13,7 @@ export const ROLE_LINKS = {
     ['students/new', 'Add student'], ['migration', 'Data migration'],
     ['staff', 'Staff'], ['staff/new', 'Add staff'],
     ['subjects', 'Subjects'], ['subject-assignments', 'Subject assignments'],
-    ['attendance', 'Attendance'], ['timetable', 'Timetable'], ['teaching', 'Teaching records'], ['curriculum', 'Scheme of work'], ['academic-standards', 'Academic standards'], ['academic-planning', 'Academic planning'], ['results', 'Results'],
+    ['attendance', 'Attendance'], ['presence', 'Student presence'], ['timetable', 'Timetable'], ['teaching', 'Teaching records'], ['curriculum', 'Scheme of work'], ['academic-standards', 'Academic standards'], ['academic-planning', 'Academic planning'], ['results', 'Results'],
     ['scratch-cards', 'Scratch cards'], ['term-questions', 'Term CBT questions'], ['question-bank', 'Question bank'],
     ['exam-manager', 'Exams'], ['exam-results', 'Exam results'],
     ['exam-papers', 'Exam papers'], ['online-assignments', 'Online assignments'],
