@@ -247,6 +247,100 @@ class Batch22To25OperationsTests(TestCase):
         self.assertEqual([row["category"] for row in visible.data], ["attendance"])
         self.assertEqual(WelfareCase.objects.filter(school=self.school).count(), 2)
 
+    def test_operations_are_tenant_isolated(self):
+        User = get_user_model()
+        other_admin = User.objects.create_user(
+            email="other-admin@example.invalid",
+            password="Pass1234!",
+            first_name="Other",
+            last_name="Admin",
+            role="school_admin",
+            school=self.other_school,
+            must_change_password=False,
+        )
+        other_level = ClassLevel.objects.create(
+            school=self.other_school, name="JSS1", order_index=1
+        )
+        other_arm = ClassArm.objects.create(
+            school=self.other_school, class_level=other_level, name="A"
+        )
+        other_student_user = User.objects.create_user(
+            email="foreign-student@example.invalid",
+            password="Pass1234!",
+            first_name="Foreign",
+            last_name="Student",
+            role="student",
+            school=self.other_school,
+            must_change_password=False,
+        )
+        other_student = StudentProfile.objects.create(
+            user=other_student_user,
+            school=self.other_school,
+            current_class=other_arm,
+            status="active",
+        )
+        other_app = AdmissionApplication.objects.create(
+            school=self.other_school,
+            first_name="Foreign",
+            last_name="Applicant",
+            guardian_name="Guardian",
+            guardian_phone="0800",
+            applying_class_level=other_level,
+            created_by=other_admin,
+        )
+        own_client = self.client_for(self.admin)
+
+        decision = own_client.post(
+            f"/api/operations/admissions/{other_app.pk}/decision/",
+            {"decision": "reject"},
+            format="json",
+        )
+        self.assertEqual(decision.status_code, 404)
+
+        records = own_client.get(
+            f"/api/operations/student-records/{other_student.pk}/"
+        )
+        self.assertEqual(records.status_code, 404)
+
+        welfare = own_client.post(
+            "/api/operations/welfare/",
+            {
+                "student": other_student.pk,
+                "category": "attendance",
+                "severity": "low",
+                "title": "Wrong tenant",
+                "details": "Must not cross tenants.",
+            },
+            format="json",
+        )
+        self.assertEqual(welfare.status_code, 400)
+        self.assertEqual(WelfareCase.objects.filter(school=self.school).count(), 0)
+
+    def test_non_enterprise_school_cannot_create_campus(self):
+        basic = School.objects.create(
+            name="Basic Campus School",
+            slug="basic-campus-school",
+            subdomain="basic-campus-school",
+            subscription_plan="basic",
+        )
+        User = get_user_model()
+        admin = User.objects.create_user(
+            email="basic-campus-admin@example.invalid",
+            password="Pass1234!",
+            first_name="Basic",
+            last_name="Admin",
+            role="school_admin",
+            school=basic,
+            must_change_password=False,
+        )
+        response = self.client_for(admin, basic).post(
+            "/api/campuses/",
+            {"name": "Blocked Campus", "code": "BLOCK"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Campus.objects.filter(school=basic).exists())
+
     def test_enterprise_campus_creation_provisions_no_arm_classes(self):
         response = self.client_for(self.admin).post("/api/campuses/", {
             "name": "East Campus",
