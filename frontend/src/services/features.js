@@ -1,4 +1,5 @@
 export function featureForRoute(path) {
+  if (/\/campuses(?:\/|$)/.test(path)) return 'multi_campus';
   if (/\/(students|staff)\/import(?:\/|$)/.test(path)) return 'bulk_import';
   if (/\/(question-bank|exam-papers|online-assignments)(?:\/|$)/.test(path)) return 'cbt';
   if (/\/(term-questions|exam-manager|exam-results|exams|exam)(?:\/|$)/.test(path)) return 'term_cbt';
