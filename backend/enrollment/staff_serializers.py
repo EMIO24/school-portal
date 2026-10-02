@@ -33,7 +33,7 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     new_first_name = serializers.CharField(write_only=True, required=False, max_length=150)
     new_last_name  = serializers.CharField(write_only=True, required=False, max_length=150)
     new_role       = serializers.ChoiceField(
-        choices=["school_admin", "teacher"],
+        choices=["school_admin", "principal", "class_teacher", "teacher"],
         write_only=True, required=False, default="teacher",
     )
 
@@ -84,6 +84,35 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
         return [{"id": a.id, "full_name": a.full_name}
                 for a in obj.assigned_classes.all()]
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        role = attrs.get('new_role') or (self.instance.user.role if self.instance else 'teacher')
+        assigned = attrs.get('assigned_classes')
+        if role == 'principal' and assigned:
+            raise serializers.ValidationError({
+                'assigned_classes': 'Principal is school-wide and cannot be assigned as a class teacher.'
+            })
+        if role == 'class_teacher':
+            selected = list(assigned) if assigned is not None else list(self.instance.assigned_classes.all()) if self.instance else []
+            for arm in selected:
+                if arm.class_teacher_id and (not self.instance or arm.class_teacher_id != self.instance.user_id):
+                    raise serializers.ValidationError({
+                        'assigned_classes': f'{arm.full_name} already has a class teacher.'
+                    })
+        return attrs
+
+    def _sync_class_teacher_scope(self, profile):
+        if profile.user.role != 'class_teacher':
+            return
+        selected_ids = set(profile.assigned_classes.values_list('id', flat=True))
+        ClassArm.objects.filter(
+            school=profile.school, class_teacher=profile.user
+        ).exclude(pk__in=selected_ids).update(class_teacher=None)
+        if selected_ids:
+            ClassArm.objects.filter(
+                school=profile.school, pk__in=selected_ids
+            ).update(class_teacher=profile.user)
+
     @transaction.atomic
     def update(self, instance, validated_data):
         state = validated_data.get('employment_status')
@@ -93,6 +122,7 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
         edit_account(self.context['request'], instance.user, account_changes(validated_data))
         validated_data.pop('new_role', None)
         instance = super().update(instance, validated_data)
+        self._sync_class_teacher_scope(instance)
         if state in ('active', 'suspended', 'terminated', 'resigned'):
             instance.user.is_active = state == 'active'
             instance.user.save(update_fields=['is_active'])
@@ -144,6 +174,7 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
             profile.subjects_taught.set(subjects_taught)
         if assigned_classes:
             profile.assigned_classes.set(assigned_classes)
+        self._sync_class_teacher_scope(profile)
 
         return profile
 
