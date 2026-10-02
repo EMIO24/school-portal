@@ -47,10 +47,10 @@ class SchoolModulePermission(BasePermission):
         if role == 'school_admin':
             return True
         if role == 'principal':
-            if module in ('analytics', 'attendance', 'results', 'curriculum', 'gradebook', 'timetable'):
-                if module == 'gradebook' and request.method not in SAFE_METHODS and action not in ('publish',):
-                    return False
-                return True
+            if module == 'gradebook':
+                return request.method in SAFE_METHODS or action in ('approve', 'publish', 'reopen')
+            if module in ('analytics', 'attendance', 'results', 'curriculum', 'timetable'):
+                return request.method in SAFE_METHODS
             return False
         if module in ('notifications', 'promotion'):
             return False
