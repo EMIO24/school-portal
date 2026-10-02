@@ -255,7 +255,7 @@ export default function MigrationCentre() {
       <button disabled={busy} onClick={() => send('validate')}>{busy ? 'Working…' : 'Validate file'}</button>
       {report?.mode === 'validate' && <button disabled={busy || !report.counts.CREATE} onClick={() => send('import')}>Confirm import</button>}
       {report && <div role="status"><h3>{report.mode === 'validate' ? 'Validation' : 'Import'} result</h3>
-        <p>Total {report.total_rows}; create {report.counts.CREATE}; reuse {report.counts.REUSE}; review {report.counts.REVIEW || 0}; reject {report.counts.REJECT}.</p>
+        <p>Total {report.total_rows}; create {report.counts.CREATE}; reuse {report.counts.REUSE}; {'REVIEW' in report.counts ? <>review {report.counts.REVIEW}; </> : null}reject {report.counts.REJECT}.</p>
         {report.job_id && <p>Migration job #{report.job_id} · fingerprint <code>{String(report.file_fingerprint || '').slice(0, 12)}</code></p>}
         {report.warnings.map(warning => <p key={warning}>Warning: {warning}</p>)}
         {!!report.counts.REVIEW && <><h4>Needs human review</h4><ul>{report.rows.filter(row => row.action === 'REVIEW').map(row =>
