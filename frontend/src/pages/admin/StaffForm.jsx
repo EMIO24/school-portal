@@ -172,7 +172,7 @@ export default function StaffForm() {
 
     try {
       if (isEdit && form.employment_status !== originalStatus && ["suspended", "terminated", "resigned"].includes(form.employment_status) && !window.confirm("Deactivate this account? Login will be disabled; historical records will remain.")) return;
-      const payload = { ...form, dob: form.dob || null, date_employed: form.date_employed || null };
+      const payload = { ...form, campus: form.campus ? Number(form.campus) : null, dob: form.dob || null, date_employed: form.date_employed || null };
       let staffId = id;
       if (isEdit) {
         await api.patch(`/api/staff/${id}/`, payload);
