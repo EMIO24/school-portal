@@ -64,6 +64,10 @@ class School(models.Model):
         default=False,
         help_text="Enable optional student departure recording.",
     )
+    uses_class_arms = models.BooleanField(
+        default=True,
+        help_text="If false, each class level uses one implicit default placement container.",
+    )
 
     # ── Platform meta ─────────────────────────────────────────────────────────
     is_active = models.BooleanField(
