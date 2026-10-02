@@ -1,11 +1,13 @@
 import React,{useEffect,useState} from 'react';
 import api from '../../services/api';
+import {useAuth} from '../../hooks/useAuth';
 import './AssessmentCentre.css';
 
 const rows=v=>v?.results??v??[];
 const err=e=>e?.response?.data?.detail||JSON.stringify(e?.response?.data||{})||'Request failed.';
 
 export default function Welfare(){
+  const {user}=useAuth();
   const [cases,setCases]=useState([]),[students,setStudents]=useState([]);
   const [form,setForm]=useState({student:'',category:'attendance',severity:'low',title:'',details:''});
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
@@ -17,7 +19,7 @@ export default function Welfare(){
     {error&&<p role="alert" className="assessment-error">{error}</p>}{notice&&<p role="status">{notice}</p>}
     <form className="assessment-card" onSubmit={create}><h2>Open case</h2><div className="assessment-grid">
       <label>Student<select required value={form.student} onChange={e=>setForm({...form,student:e.target.value})}><option value="">Choose student</option>{students.map(s=><option key={s.id} value={s.id}>{s.full_name} · {s.current_class_name||'No class'}</option>)}</select></label>
-      <label>Category<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{['attendance','behaviour','academic','health','safeguarding','other'].map(x=><option key={x} value={x}>{x}</option>)}</select></label>
+      <label>Category<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{(user?.role==='class_teacher'?['attendance','behaviour','academic','other']:['attendance','behaviour','academic','health','safeguarding','other']).map(x=><option key={x} value={x}>{x}</option>)}</select></label>
       <label>Severity<select value={form.severity} onChange={e=>setForm({...form,severity:e.target.value})}>{['low','medium','high','critical'].map(x=><option key={x}>{x}</option>)}</select></label>
     </div><label>Title<input required maxLength="180" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label>
     <label>Details<textarea required value={form.details} onChange={e=>setForm({...form,details:e.target.value})}/></label><button disabled={busy}>Open case</button></form>
