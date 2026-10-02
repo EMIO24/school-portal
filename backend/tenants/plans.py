@@ -12,6 +12,7 @@ FEATURES = {
     'bulk_import': 'Bulk student and staff imports',
     'promotion': 'Student promotion workflows',
     'scratch_cards': 'Result scratch cards',
+    'multi_campus': 'Multi-campus management and campus-scoped operations',
 }
 PLAN_FEATURES = {
     'free': ['core'],
@@ -37,6 +38,8 @@ def required_feature(path):
         return 'term_cbt'
     if path.startswith('/api/cbt/questions/'):
         return 'term_cbt'
+    if path.startswith('/api/campuses/'):
+        return 'multi_campus'
     if path.startswith(('/api/students/bulk-import/', '/api/staff/bulk-import/')):
         return 'bulk_import'
     for prefix, feature in [('attendance', 'attendance'), ('results', 'results'), ('gradebook', 'results'),
