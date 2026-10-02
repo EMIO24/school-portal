@@ -7,7 +7,7 @@ from .standards import (
 )
 from .learning import (
     LessonPlanListView, LessonPlanTransitionView,
-    AcademicResourceListView, AcademicResourceTransitionView, AcademicResourceReviseView,
+    AcademicResourceListView, AcademicResourceTransitionView, AcademicResourceReviseView, StudentLearningResourcesView,
 )
 
 urlpatterns = [
@@ -23,6 +23,7 @@ urlpatterns = [
     path('lesson-plans/', LessonPlanListView.as_view()),
     path('lesson-plans/<int:plan_id>/transition/', LessonPlanTransitionView.as_view()),
     path('resources/', AcademicResourceListView.as_view()),
+    path('student-resources/', StudentLearningResourcesView.as_view()),
     path('resources/<int:resource_id>/transition/', AcademicResourceTransitionView.as_view()),
     path('resources/<int:resource_id>/revise/', AcademicResourceReviseView.as_view()),
     path('assignments/', AssignedPlansView.as_view()),
