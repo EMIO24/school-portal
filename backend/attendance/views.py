@@ -199,6 +199,26 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
         if valid_ids != set(student_ids):
             return Response({'detail':'All students must belong to this class.'}, status=400)
 
+        if session.mode == AttendanceSession.Mode.DAILY:
+            existing_arrivals = set(
+                StudentDailyPresence.objects.filter(
+                    school=self.school,
+                    student__user_id__in=valid_ids,
+                    date=session.date,
+                    arrival_at__isnull=False,
+                ).values_list('student__user_id', flat=True)
+            )
+            for item in records_data:
+                if (
+                    item['status'] == AttendanceRecord.Status.LATE
+                    and not item.get('arrival_time')
+                    and item['student_id'] not in existing_arrivals
+                ):
+                    return Response(
+                        {'detail': 'Enter an arrival time for every late student, or record their arrival in Student Presence first.'},
+                        status=400,
+                    )
+
         # Bulk upsert using update_or_create
         updated, created = 0, 0
         for item in records_data:
@@ -211,7 +231,7 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
                 defaults={'status': item['status'], 'remark': item.get('remark', '')},
             )
             arrival_time = item.get('arrival_time')
-            if item['status'] == AttendanceRecord.Status.LATE and arrival_time:
+            if session.mode == AttendanceSession.Mode.DAILY and item['status'] == AttendanceRecord.Status.LATE and arrival_time:
                 from enrollment.models import StudentProfile
                 profile = StudentProfile.objects.filter(school=self.school, user_id=sid).first()
                 if profile:
