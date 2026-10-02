@@ -33,7 +33,7 @@ def _school_user(request):
 
 
 def _manager(request):
-    return _school_user(request) and request.user.role == 'school_admin'
+    return _school_user(request) and request.user.role in ('school_admin', 'principal')
 
 
 def _positive(value):
@@ -112,9 +112,9 @@ def _standard_data(standard, include_topics=True):
 
 
 def _teacher_can_read_standard(request, standard):
-    if request.user.role == 'school_admin':
+    if request.user.role in ('school_admin', 'principal'):
         return True
-    if request.user.role != 'teacher' or standard.status != SchoolAcademicStandard.Status.APPROVED:
+    if request.user.role not in ('teacher', 'class_teacher') or standard.status != SchoolAcademicStandard.Status.APPROVED:
         return False
     return SubjectAssignment.objects.filter(
         school=request.tenant,
@@ -129,7 +129,7 @@ class CurriculumSourceListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not _school_user(request) or request.user.role not in ('school_admin', 'teacher'):
+        if not _school_user(request) or request.user.role not in ('school_admin', 'principal', 'teacher', 'class_teacher'):
             return Response({'detail': 'Academic standards access required.'}, status=403)
         sources = CurriculumSource.objects.filter(school=request.tenant).prefetch_related('versions').order_by('name')
         return Response({'sources': [_source_data(source) for source in sources]})
@@ -268,7 +268,7 @@ class AcademicStandardListView(APIView):
         standards = SchoolAcademicStandard.objects.filter(school=request.tenant).select_related(
             'class_level', 'subject', 'curriculum_version__source'
         ).order_by('class_level__order_index', 'subject__name', '-revision')
-        if request.user.role == 'teacher':
+        if request.user.role in ('teacher', 'class_teacher'):
             assignment_scopes = SubjectAssignment.objects.filter(
                 school=request.tenant, teacher__user=request.user, teacher__employment_status='active'
             ).values_list('class_arm__class_level_id', 'subject_id')
