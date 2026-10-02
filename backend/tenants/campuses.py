@@ -4,16 +4,30 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsSchoolAdmin
-from enrollment.models import ClassArm, StaffProfile
+from enrollment.models import ClassArm, StaffProfile, StudentProfile
 from .models import Campus
 from .security import audit
 
 
 class CampusSerializer(serializers.ModelSerializer):
+    class_count = serializers.SerializerMethodField()
+    staff_count = serializers.SerializerMethodField()
+    student_count = serializers.SerializerMethodField()
     class Meta:
         model = Campus
-        fields = ["id", "name", "code", "address", "phone", "email", "is_primary", "is_active", "created_at"]
-        read_only_fields = ["id", "created_at"]
+        fields = ["id", "name", "code", "address", "phone", "email", "is_primary", "is_active", "class_count", "staff_count", "student_count", "created_at"]
+        read_only_fields = ["id", "class_count", "staff_count", "student_count", "created_at"]
+
+    def get_class_count(self, obj):
+        return obj.class_arms_by_campus.count()
+
+    def get_staff_count(self, obj):
+        return obj.staff_members.filter(employment_status="active").count()
+
+    def get_student_count(self, obj):
+        return StudentProfile.objects.filter(
+            school=obj.school, status="active", current_class__campus=obj
+        ).count()
 
     def validate_code(self, value):
         return value.strip().upper()
