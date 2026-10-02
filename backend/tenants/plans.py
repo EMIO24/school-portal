@@ -60,5 +60,5 @@ class SchoolPlanMiddleware:
         if school and request.method != 'OPTIONS' and feature and feature not in PLAN_FEATURES.get(school.subscription_plan, ['core']):
             return JsonResponse({'code': 'plan_feature_required', 'feature': feature,
                 'detail': FEATURES[feature] + ' is not included in this school plan.',
-                'required_plan': 'basic' if feature in PLAN_FEATURES['basic'] else 'premium'}, status=403)
+                'required_plan': 'enterprise' if feature == 'multi_campus' else ('basic' if feature in PLAN_FEATURES['basic'] else 'premium')}, status=403)
         return self.get_response(request)
