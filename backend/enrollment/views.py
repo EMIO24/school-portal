@@ -387,7 +387,7 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
           first_name, last_name, gender, dob,
           class_level, guardian_name, guardian_phone
           Optional: email, state_of_origin, religion, guardian_email,
-                    guardian_relationship
+                    guardian_relationship, class_arm, campus
 
         Returns:
           {
@@ -446,10 +446,12 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
             cl.name.lower(): cl
             for cl in ClassLevel.objects.filter(school=tenant)
         }
-        # Cache all arms per level
+        # Cache all arms per level. No-arm schools use one hidden default arm
+        # per level (and per campus, when multi-campus is enabled).
         arm_map = {}
-        for arm in ClassArm.objects.filter(school=tenant).select_related("class_level"):
+        for arm in ClassArm.objects.filter(school=tenant).select_related("class_level", "campus"):
             arm_map.setdefault(arm.class_level.name.lower(), []).append(arm)
+        campuses = list(tenant.campuses.filter(is_active=True))
 
         from academics.models import AcademicSession
         current_session = AcademicSession.objects.filter(
@@ -508,14 +510,43 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
                 add_error(f"Class level '{row.get('class_level')}' not found for this school.")
                 continue
 
-            level      = level_map[level_name]
-            level_arms = arm_map.get(level_name, [])
-            arm_name = (row.get('class_arm') or '').strip().casefold()
-            matches = [arm for arm in level_arms if not arm_name or arm.name.casefold() == arm_name or arm.full_name.casefold() == arm_name]
-            if len(matches) > 1 or (arm_name and len(matches) != 1):
-                add_error('Select one existing class arm using the class_arm column; no student was created.')
+            level = level_map[level_name]
+            campus_value = (row.get("campus") or "").strip().casefold()
+            campus = None
+            if campus_value:
+                campus_matches = [
+                    item for item in campuses
+                    if item.code.casefold() == campus_value or item.name.casefold() == campus_value
+                ]
+                if len(campus_matches) != 1:
+                    add_error("Campus was not found or is ambiguous. Use the exact campus code or name.")
+                    continue
+                campus = campus_matches[0]
+            elif len(campuses) == 1:
+                campus = campuses[0]
+            elif len(campuses) > 1 and not tenant.uses_class_arms:
+                add_error("This no-arm school has multiple campuses. Add a campus column with the exact campus code or name.")
                 continue
-            class_arm = matches[0] if matches else None
+
+            level_arms = arm_map.get(level_name, [])
+            if not tenant.uses_class_arms:
+                from .class_structure import ensure_default_arm
+                try:
+                    class_arm = ensure_default_arm(school=tenant, class_level=level, campus=campus)
+                except Exception:
+                    add_error("Could not resolve the class for this no-arm school.")
+                    continue
+            else:
+                arm_name = (row.get('class_arm') or '').strip().casefold()
+                matches = [
+                    arm for arm in level_arms
+                    if (not campus or arm.campus_id in (None, campus.pk))
+                    and (not arm_name or arm.name.casefold() == arm_name or arm.full_name.casefold() == arm_name)
+                ]
+                if len(matches) > 1 or (arm_name and len(matches) != 1):
+                    add_error('Select one existing class arm using the class_arm column; no student was created.')
+                    continue
+                class_arm = matches[0] if matches else None
             if StudentProfile.objects.filter(school=tenant, user__first_name__iexact=first_name,
                     user__last_name__iexact=last_name, dob=dob, current_class=class_arm).exists():
                 add_error('A student with this name, date of birth and class already exists. Review the record before adding individually.')
