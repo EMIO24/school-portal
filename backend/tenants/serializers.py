@@ -76,7 +76,7 @@ class SchoolPublicSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = School
-        fields = ["name", "slug", "subdomain", "logo", "theme", "motto", "entitlements", "arrival_cutoff_time", "student_clockout_enabled"]
+        fields = ["name", "slug", "subdomain", "logo", "theme", "motto", "entitlements"]
 
     def get_entitlements(self, obj):
         from .plans import entitlements
