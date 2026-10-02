@@ -11,7 +11,7 @@ from .parent_links import StudentParents
 from .assignment_views import SubjectAssignmentViewSet, AssignSubjectsMixin, SubjectByClassMixin
 from .migration_import import (MigrationCentre, MigrationConflictList, MigrationJobList,
                                MigrationJobReport, MigrationMappingProfiles)
-from .operations import (AdmissionDecision, AdmissionListCreate, StudentRecordHistory,
+from .operations import (AdmissionDecision, AdmissionDocumentCreate, AdmissionListCreate, StudentRecordHistory,
                          WelfareListCreate, WelfareUpdateView)
 
 # Patch mixins onto existing ViewSets (avoids inheritance conflicts)
@@ -29,6 +29,7 @@ router.register(r"subject-assignments", SubjectAssignmentViewSet, basename="subj
 urlpatterns = [
     path('operations/admissions/', AdmissionListCreate.as_view()),
     path('operations/admissions/<int:pk>/decision/', AdmissionDecision.as_view()),
+    path('operations/admissions/<int:pk>/documents/', AdmissionDocumentCreate.as_view()),
     path('operations/student-records/<int:student_id>/', StudentRecordHistory.as_view()),
     path('operations/welfare/', WelfareListCreate.as_view()),
     path('operations/welfare/<int:pk>/updates/', WelfareUpdateView.as_view()),
