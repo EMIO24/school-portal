@@ -72,7 +72,7 @@ class AdmissionListCreate(APIView):
             return Response({"detail": "Admissions access required."}, status=403)
         qs = AdmissionApplication.objects.filter(school=request.tenant).select_related(
             "applying_class_level", "preferred_campus", "admitted_student__user"
-        )
+        ).prefetch_related("documents")
         status_value = request.query_params.get("status")
         if status_value:
             if status_value not in dict(AdmissionApplication.STATUS_CHOICES):
