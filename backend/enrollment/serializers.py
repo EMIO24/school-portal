@@ -73,12 +73,12 @@ class ClassArmSerializer(TenantRelationsMixin, serializers.ModelSerializer):
         model  = ClassArm
         fields = [
             "id", "class_level", "class_level_name",
-            "name", "full_name", "is_default", "campus",
+            "name", "full_name", "is_default", "campus", "campus_name",
             "class_teacher", "teacher_name",
             "student_count",
         ]
         read_only_fields = ["id", "full_name", "class_level_name", "is_default",
-                            "teacher_name", "student_count"]
+                            "teacher_name", "campus_name", "student_count"]
 
     def get_student_count(self, obj) -> int:
         return obj.students.filter(status="active").count()
