@@ -92,6 +92,7 @@ export default function StaffForm() {
     specialization:   "",
     date_employed:    "",
     employment_status:"active",
+    campus:            "",
     subjects_taught:  [],   // array of IDs
     assigned_classes: [],   // array of IDs
   });
@@ -159,6 +160,7 @@ export default function StaffForm() {
         specialization:   data.specialization || "",
         date_employed:    data.date_employed || "",
         employment_status:data.employment_status || "active",
+        campus:            data.campus || "",
         subjects_taught:  (data.subjects_taught  || []).map(s => s.id || s),
         assigned_classes: (data.assigned_classes || []).map(a => a.id || a),
       });
