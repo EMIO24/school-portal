@@ -21,7 +21,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
-from accounts.permissions import IsSchoolAdmin, IsSchoolAdminOrTeacher, IsAuthenticatedTenantUser
+from accounts.permissions import IsSchoolAdmin, IsSchoolAdminOrTeacher, IsAuthenticatedTenantUser, IsSchoolStaff
 from tenants.mixins import TenantMixin
 from .safety import RetainAcademicHistoryMixin
 
