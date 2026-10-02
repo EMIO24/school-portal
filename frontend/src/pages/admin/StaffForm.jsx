@@ -2,7 +2,7 @@ import {referenceOptions} from '../../services/referenceOptions';
 /**
  * pages/admin/StaffForm.jsx
  *
- * Create or edit a staff member (teacher or school_admin).
+ * Create or edit a school staff member and their institutional role.
  * Includes multi-select pickers for subjects taught and assigned classes.
  * Route: /admin/staff/new | /admin/staff/:id/edit
  */
