@@ -26,6 +26,7 @@ import csv
 from datetime import date, datetime
 from io import StringIO
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Count, Q, Avg
 from django.utils import timezone
@@ -217,12 +218,15 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
                     naive = datetime.combine(session.date, arrival_time)
                     arrival_at = timezone.make_aware(naive, timezone.get_current_timezone())
                     presence, _ = StudentDailyPresence.objects.get_or_create(
-                        school=self.school, student=profile, date=session.date
+                        school=self.school, student=profile, date=session.date,
+                        defaults={'class_arm': session.class_arm},
                     )
+                    if presence.class_arm_id is None:
+                        presence.class_arm = session.class_arm
                     if presence.arrival_at is None:
                         presence.arrival_at = arrival_at
                         presence.arrival_recorded_by = request.user
-                        presence.save(update_fields=['arrival_at', 'arrival_recorded_by', 'updated_at'])
+                        presence.save(update_fields=['class_arm', 'arrival_at', 'arrival_recorded_by', 'updated_at'])
             if was_created:
                 created += 1
             else:
@@ -485,7 +489,9 @@ def _presence_payload(presence, school):
         'id': presence.pk,
         'student_id': presence.student_id,
         'student_name': presence.student.full_name,
-        'class_arm': presence.student.current_class.full_name if presence.student.current_class else '',
+        'class_arm': presence.class_arm.full_name if presence.class_arm else (
+            presence.student.current_class.full_name if presence.student.current_class else ''
+        ),
         'date': presence.date,
         'arrival_at': local_arrival.isoformat() if local_arrival else None,
         'arrival_time': local_arrival.strftime('%H:%M') if local_arrival else None,
@@ -524,7 +530,7 @@ class StudentPresenceView(APIView):
             row.student_id: row
             for row in StudentDailyPresence.objects.filter(
                 school=school, date=on_date, student__in=students
-            ).select_related('student__user', 'student__current_class__class_level')
+            ).select_related('student__user', 'student__current_class__class_level', 'class_arm__class_level')
         }
         rows = []
         for student in students:
@@ -549,12 +555,15 @@ class StudentPresenceView(APIView):
             return Response({'detail': 'Student presence access denied.'}, status=403)
         now = timezone.now()
         presence, _ = StudentDailyPresence.objects.select_for_update().get_or_create(
-            school=school, student=student, date=timezone.localdate(now)
+            school=school, student=student, date=timezone.localdate(now),
+            defaults={'class_arm': student.current_class},
         )
+        if presence.class_arm_id is None:
+            presence.class_arm = student.current_class
         if presence.arrival_at is None:
             presence.arrival_at = now
             presence.arrival_recorded_by = request.user
-            presence.save(update_fields=['arrival_at', 'arrival_recorded_by', 'updated_at'])
+            presence.save(update_fields=['class_arm', 'arrival_at', 'arrival_recorded_by', 'updated_at'])
             from tenants.security import audit
             audit(request, 'attendance.student_arrival_recorded', target=f'presence:{presence.pk}',
                   details={'school_id': school.pk, 'student_id': student.pk})
@@ -575,7 +584,9 @@ class StudentClockOutView(APIView):
         ).first()
         if not student or not _presence_actor_allowed(request, student):
             return Response({'detail': 'Student clock-out access denied.'}, status=403)
-        presence = StudentDailyPresence.objects.select_for_update().filter(
+        presence = StudentDailyPresence.objects.select_for_update().select_related(
+            'student__user', 'student__current_class__class_level', 'class_arm__class_level'
+        ).filter(
             school=school, student=student, date=timezone.localdate()
         ).first()
         if not presence or not presence.arrival_at:
@@ -602,7 +613,7 @@ class StudentPresenceCorrectionView(APIView):
         if not reason:
             return Response({'reason': 'Explain why this presence record is being corrected.'}, status=400)
         presence = StudentDailyPresence.objects.select_for_update().select_related(
-            'student__user', 'student__current_class__class_level'
+            'student__user', 'student__current_class__class_level', 'class_arm__class_level'
         ).filter(pk=pk, school=school).first()
         if not presence:
             return Response(status=404)
@@ -622,7 +633,10 @@ class StudentPresenceCorrectionView(APIView):
                 return Response({field: 'Use an ISO date-time.'}, status=400)
             setattr(presence, field, parsed)
         presence.correction_reason = reason[:300]
-        presence.save()
+        try:
+            presence.save()
+        except DjangoValidationError as exc:
+            return Response(getattr(exc, 'message_dict', {'detail': exc.messages}), status=400)
         from tenants.security import audit
         audit(request, 'attendance.student_presence_corrected', target=f'presence:{presence.pk}',
               details={'school_id': school.pk, 'student_id': presence.student_id,
