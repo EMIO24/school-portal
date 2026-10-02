@@ -308,7 +308,7 @@ class LessonPlan(models.Model):
                 errors['curriculum_topic'] = 'Topic must belong to this school, term and subject plan.'
             elif plan.class_level_id != self.class_arm.class_level_id:
                 errors['curriculum_topic'] = 'Topic class level must match the selected class.'
-        if self.teacher_id and (self.teacher.school_id != self.school_id or self.teacher.role != 'teacher'):
+        if self.teacher_id and (self.teacher.school_id != self.school_id or self.teacher.role not in ('teacher', 'class_teacher')):
             errors['teacher'] = 'Choose a teacher in this school.'
         if errors:
             raise ValidationError(errors)
