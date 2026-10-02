@@ -255,6 +255,9 @@ export default function StudentProfilePage() {
         <Link to={`/admin/students/${id}/edit`} className="btn btn-secondary btn-sm">
           Edit Profile
         </Link>
+        <Link to={`/admin/students/${id}/records`} className="btn btn-secondary btn-sm">
+          Official Record
+        </Link>
       </div>
 
       {/* ── Hero card ── */}
