@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from academics.models import AcademicSession, Term
 from accounts.models import ParentStudentLink
 from attendance.models import AttendanceRecord, AttendanceSession, StudentDailyPresence
-from enrollment.models import ClassArm, ClassLevel, SessionEnrollment, StudentProfile
+from enrollment.models import ClassArm, ClassLevel, SessionEnrollment, StaffProfile, StudentProfile
 from tenants.models import PlatformEvent, School
 
 
@@ -43,6 +43,8 @@ class Batch21PresenceAndRolesTests(TestCase):
             email='otherteacher@batch21.test', password='Password!123', school=cls.school,
             role='class_teacher', first_name='Other', last_name='Teacher', must_change_password=False,
         )
+        StaffProfile.objects.create(user=cls.class_teacher, school=cls.school, employment_status='active')
+        StaffProfile.objects.create(user=cls.other_class_teacher, school=cls.school, employment_status='active')
         cls.parent = User.objects.create_user(
             email='parent@batch21.test', password='Password!123', school=cls.school,
             role='parent', first_name='Parent', last_name='One', must_change_password=False,
