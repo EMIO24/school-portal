@@ -15,15 +15,11 @@ def ensure_default_arm(*, school, class_level, campus=None):
     level = ClassLevel.objects.select_for_update().filter(pk=class_level.pk, school=school).first()
     if not level:
         raise ClassStructureError("Class level must belong to this school.")
+    campus_id = campus.pk if campus else None
     arm = ClassArm.objects.filter(
-        school=school, class_level=level, is_default=True
+        school=school, class_level=level, is_default=True, campus_id=campus_id
     ).first()
     if arm:
-        if campus and arm.campus_id not in (None, campus.pk):
-            raise ClassStructureError("This class level is already attached to another campus.")
-        if campus and arm.campus_id is None:
-            arm.campus = campus
-            arm.save(update_fields=["campus"])
         return arm
     return ClassArm.objects.create(
         school=school,
