@@ -94,7 +94,7 @@ class ClassArm(models.Model):
         null=True,
         blank=True,
         related_name="homeroom_classes",
-        limit_choices_to={"role": "teacher"},
+        limit_choices_to={"role__in": ["teacher", "class_teacher"]},
     )
 
     class Meta:
@@ -566,7 +566,7 @@ class SubjectAssignment(models.Model):
         StaffProfile,
         on_delete=models.CASCADE,
         related_name="subject_assignments",
-        limit_choices_to={"user__role": "teacher"},
+        limit_choices_to={"user__role__in": ["teacher", "class_teacher"]},
     )
     subject   = models.ForeignKey(
         Subject,
