@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 from tenants.security import audit
 from .class_structure import ClassStructureError, resolve_class_for_admission
 from .models import (
-    AdmissionApplication, ClassArm, ClassLevel, StudentProfile,
+    AdmissionApplication, AdmissionDocument, ClassArm, ClassLevel, StudentProfile,
     StudentRecordEntry, WelfareCase, WelfareUpdate,
 )
 from .serializers import StudentProfileSerializer
@@ -54,6 +54,13 @@ def _admission_data(row):
         "admitted_student": row.admitted_student_id,
         "decided_at": row.decided_at,
         "created_at": row.created_at,
+        "documents": [
+            {
+                "id": doc.pk, "kind": doc.kind, "title": doc.title,
+                "document_url": doc.document_url, "created_at": doc.created_at,
+            }
+            for doc in row.documents.all()
+        ],
     }
 
 
@@ -129,6 +136,38 @@ class AdmissionListCreate(APIView):
         audit(request, "admissions.application_created", target=f"admission:{row.pk}",
               details={"school_id": school.pk, "class_level_id": level.pk, "campus_id": campus.pk if campus else None})
         return Response(_admission_data(row), status=201)
+
+
+class AdmissionDocumentCreate(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        if not _school_user(request, ("school_admin", "principal")):
+            return Response({"detail": "Admissions document access required."}, status=403)
+        application = AdmissionApplication.objects.filter(pk=pk, school=request.tenant).first()
+        if not application:
+            return Response(status=404)
+        kind = str(request.data.get("kind") or "")
+        title = str(request.data.get("title") or "").strip()
+        document_url = str(request.data.get("document_url") or "").strip()
+        if kind not in dict(AdmissionDocument.KIND_CHOICES):
+            return Response({"kind": "Choose a valid document type."}, status=400)
+        if not title or not document_url:
+            return Response({"detail": "Document title and URL are required."}, status=400)
+        row = AdmissionDocument(
+            application=application, kind=kind, title=title[:180],
+            document_url=document_url, uploaded_by=request.user,
+        )
+        try:
+            row.full_clean()
+            row.save()
+        except DjangoValidationError as exc:
+            return Response(_error_dict(exc), status=400)
+        audit(request, "admissions.document_added", target=f"admission-document:{row.pk}",
+              details={"school_id": request.tenant.pk, "application_id": application.pk, "kind": kind})
+        application = AdmissionApplication.objects.prefetch_related("documents").get(pk=application.pk)
+        return Response(_admission_data(application), status=201)
 
 
 class AdmissionDecision(APIView):
