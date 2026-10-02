@@ -78,7 +78,7 @@ function RemarkDrawer({ student, termId, onSaved, onClose }) {
               placeholder="Enter principal's remark…"
             />
           </div>
-          <div className="res-remark-actions">{canManagePresentation && (
+          <div className="res-remark-actions">
             <button className="res-btn res-btn--ghost" onClick={onClose}>Cancel</button>
             <button className="res-btn res-btn--navy" onClick={handleSave} disabled={saving}>
               {saving ? 'Saving…' : '💾 Save Remarks'}
@@ -93,6 +93,8 @@ function RemarkDrawer({ student, termId, onSaved, onClose }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ResultManagement() {
+  const { user } = useAuth();
+  const canManagePresentation = user?.role === 'school_admin';
   const [terms,      setTerms]      = useState([]);
   const [classArms,  setClassArms]  = useState([]);
   const query = new URLSearchParams(window.location.search);
@@ -204,7 +206,7 @@ export default function ResultManagement() {
           Result Management
           <small>Compute positions · Add remarks · Generate PDFs</small>
         </h1>
-        <Link className="res-btn res-btn--ghost" to="/admin/report-cards">Report card settings</Link>
+        {canManagePresentation && <Link className="res-btn res-btn--ghost" to="/admin/report-cards">Report card settings</Link>}
       </div>
 
       {/* Controls */}
@@ -228,13 +230,13 @@ export default function ResultManagement() {
         <div className="res-field-group" style={{ justifyContent: 'flex-end' }}>
           <label>&nbsp;</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button
+            {canManagePresentation && <button
               className="res-btn res-btn--amber"
               onClick={handleComputePositions}
               disabled={computing || !selClass || !selTerm}
             >
               {computing ? '⏳ Computing…' : '📊 Compute Positions'}
-            </button>)}
+            </button>}
             <button
               className="res-btn res-btn--ghost"
               onClick={downloadBroadsheet}
@@ -361,7 +363,7 @@ export default function ResultManagement() {
                       {/* Actions */}
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                          <button
+                          {canManagePresentation && <button
                             className="res-btn res-btn--ghost"
                             style={{ padding: '5px 10px', fontSize: '.78rem' }}
                             onClick={() => setExpandedId(
@@ -369,7 +371,7 @@ export default function ResultManagement() {
                             )}
                           >
                             {expandedId === student.student ? '▲ Close' : '✏ Remark'}
-                          </button>
+                          </button>}
                           <button
                             className="res-btn res-btn--ghost"
                             style={{ padding: '5px 10px', fontSize: '.78rem' }}
