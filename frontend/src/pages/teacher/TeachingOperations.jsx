@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
+import { useAuth } from '../../hooks/useAuth';
 import { classifyRequestFailure } from '../../services/requestState';
 import LessonCoverage from './LessonCoverage';
 import './TeachingOperations.css';
@@ -14,6 +15,8 @@ const today = () => {
 const label = outcome => outcome ? outcome[0].toUpperCase() + outcome.slice(1) : 'Outcome not recorded';
 
 export default function TeachingOperations({ admin = false }) {
+  const { user } = useAuth();
+  const canManageSchool = admin && user?.role === 'school_admin';
   const initial = new URLSearchParams(window.location.search);
   const [day, setDay] = useState(() => admin && /^\d{4}-\d{2}-\d{2}$/.test(initial.get('date') || '') ? initial.get('date') : today());
   const [rows, setRows] = useState([]);
@@ -47,12 +50,12 @@ export default function TeachingOperations({ admin = false }) {
   }, [day]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    if (!admin) return;
+    if (!canManageSchool) return;
     api.get('/api/staff/?role=teacher&page_size=300').then(({ data }) => {
       setTeachers((data.results ?? data).filter(t => t.employment_status === 'active')
         .map(t => ({ id: t.user, name: t.full_name || t.name || t.email || `Teacher ${t.user}` })));
     }).catch(() => setTeachers([]));
-  }, [admin]);
+  }, [canManageSchool]);
 
   const open = row => {
     setEditing(row);
@@ -143,7 +146,7 @@ export default function TeachingOperations({ admin = false }) {
         <p>Expected: {row.scheduled_teacher_name || 'Unassigned'}</p>
         {row.outcome === 'substituted' && <p>Substitute: {row.actual_teacher_name}</p>}
         <div className="teaching-card-footer"><span className={'teaching-status ' + (row.outcome || 'unresolved')}>{label(row.outcome)}</span>
-          {(admin || (day === today() && row.scheduled_teacher)) && <button type="button" onClick={() => open(row)}>{row.outcome ? 'Review / correct' : 'Record outcome'}</button>}
+          {(canManageSchool || (!admin && day === today() && row.scheduled_teacher)) && <button type="button" onClick={() => open(row)}>{row.outcome ? 'Review / correct' : 'Record outcome'}</button>}
           <button type="button" onClick={() => setCoverageLesson(coverageLesson === row.slot_id ? null : row.slot_id)}>{row.id && ['delivered', 'substituted'].includes(row.outcome) ? 'Curriculum coverage' : 'View scheme'}</button>
         </div>
         {coverageLesson === row.slot_id && <LessonCoverage lessonId={row.id && ['delivered', 'substituted'].includes(row.outcome) ? row.id : null} slotId={row.slot_id} />}
@@ -153,7 +156,7 @@ export default function TeachingOperations({ admin = false }) {
       <p>{editing.period_name} on {day}</p>
       <label>Outcome <select aria-label="Lesson outcome" value={form.outcome} onChange={e => setForm({ ...form, outcome: e.target.value })}>
         <option value="delivered">Delivered</option><option value="missed">Missed</option>
-        {admin && <><option value="cancelled">Cancelled</option><option value="substituted">Substituted</option></>}
+        {canManageSchool && <><option value="cancelled">Cancelled</option><option value="substituted">Substituted</option></>}
       </select></label>
       {form.outcome === 'substituted' && <label>Substitute teacher <select required value={form.actual_teacher} onChange={e => setForm({ ...form, actual_teacher: e.target.value })}>
         <option value="">Choose teacher</option>{teachers.filter(t => t.id !== editing.scheduled_teacher).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
