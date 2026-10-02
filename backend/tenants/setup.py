@@ -36,7 +36,7 @@ class SchoolSetup(APIView):
         arms = list(ClassArm.objects.filter(school=school).values('id', 'class_level_id'))
         subjects = list(Subject.objects.filter(school=school).prefetch_related('class_levels'))
         assigned = set(SubjectAssignment.objects.filter(school=school, term=term, teacher__user__is_active=True,
-            teacher__user__role='teacher', teacher__employment_status='active').values_list('class_arm_id', 'subject_id')) if term else set()
+            teacher__user__role__in=('teacher', 'class_teacher'), teacher__employment_status='active').values_list('class_arm_id', 'subject_id')) if term else set()
         expected = set()
         for subject in subjects:
             levels = {level.pk for level in subject.class_levels.all()}
@@ -48,10 +48,10 @@ class SchoolSetup(APIView):
             ('identity', 'School identity', bool(school.name and school.address and (school.phone or school.email)), '/admin/setup#identity'),
             ('session', 'Current academic session', bool(session), '/admin/calendar'),
             ('term', 'Current term', bool(term), '/admin/calendar'),
-            ('classes', 'Classes and arms', bool(arms), '/admin/setup#classes'),
+            ('classes', 'Classes and arms' if school.uses_class_arms else 'Classes', bool(arms), '/admin/setup#classes'),
             ('subjects', 'Subjects', bool(subjects), '/admin/subjects'),
             ('students', 'Active students', StudentProfile.objects.filter(school=school, status='active').exists(), '/admin/migration'),
-            ('teachers', 'Active teachers', StaffProfile.objects.filter(school=school, user__role='teacher', user__is_active=True, employment_status='active').exists(), '/admin/staff'),
+            ('teachers', 'Active teachers', StaffProfile.objects.filter(school=school, user__role__in=('teacher', 'class_teacher'), user__is_active=True, employment_status='active').exists(), '/admin/staff'),
             ('assignments', 'Teacher assignments', bool(term and expected) and not missing, '/admin/subject-assignments'),
             ('assessment', 'Assessment structure', valid_scoring, '/admin/setup#assessment'),
             ('grading', 'Grading ranges', valid_scoring, '/admin/setup#assessment'),
