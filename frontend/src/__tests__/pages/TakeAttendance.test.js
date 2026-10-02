@@ -38,3 +38,26 @@ test('uncertain attendance save keeps marks until the register confirms them', a
   expect(await screen.findByText(/register confirms your entries/)).toBeVisible();
   await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(2));
 });
+
+
+test('late attendance sends the recorded arrival time as presence evidence', async () => {
+  api.patch.mockResolvedValue({data: session('late')});
+  renderPage(<TakeAttendance />);
+  await screen.findByRole('option', {name: 'JSS1A'});
+  fireEvent.change(screen.getAllByRole('combobox')[1], {target: {value: '1'}});
+  fireEvent.click(screen.getByRole('button', {name: /Open Register/}));
+  await screen.findByText('Test Student');
+
+  fireEvent.click(screen.getByTitle('Late'));
+  const arrival = screen.getByLabelText('Arrival time for Test Student');
+  fireEvent.change(arrival, {target: {value: '08:17'}});
+  fireEvent.click(screen.getByRole('button', {name: /Save Attendance/}));
+
+  await waitFor(() => expect(api.patch).toHaveBeenCalled());
+  const call = api.patch.mock.calls.find(([url]) => url.includes('/api/attendance/sessions/9/submit/'));
+  expect(call[1].records[0]).toEqual(expect.objectContaining({
+    student_id: 101,
+    status: 'late',
+    arrival_time: '08:17',
+  }));
+});
