@@ -74,7 +74,7 @@ export default function StudentForm() {
           {field("new_first_name", "First name")}{field("new_last_name", "Last name")}{field("new_email", "Email (optional)", "email")}
           {field("dob", "Date of birth", "date")}
           {field("gender", "Gender", "text", [["", "Select gender"], ["male", "Male"], ["female", "Female"]])}
-          {field("current_class", "Class", "text", [["", "No class assigned"], ...classes.map(arm => [arm.id, arm.full_name || arm.name])])}
+          {field("current_class", "Class", "text", [["", "No class assigned"], ...classes.map(arm => [arm.id, `${arm.full_name || arm.name}${arm.campus_name ? ` · ${arm.campus_name}` : ""}`])])}
           {field("state_of_origin", "State of origin")}{field("religion", "Religion")}
         </div>
       </section>
