@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import api from '../../services/api';
 import './AssessmentCentre.css';
 
@@ -10,7 +10,7 @@ export default function Admissions() {
   const [levels,setLevels]=useState([]);
   const [arms,setArms]=useState([]);
   const [campuses,setCampuses]=useState([]);
-  const [form,setForm]=useState({first_name:'',last_name:'',guardian_name:'',guardian_phone:'',guardian_email:'',applying_class_level:'',preferred_campus:'',previous_school:'',notes:''});
+  const [form,setForm]=useState({first_name:'',last_name:'',email:'',dob:'',gender:'',guardian_name:'',guardian_phone:'',guardian_email:'',applying_class_level:'',preferred_campus:'',previous_school:'',notes:''});
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
 
   const load=async()=>{
@@ -32,7 +32,7 @@ export default function Admissions() {
     try{
       const payload={...form,applying_class_level:Number(form.applying_class_level),preferred_campus:form.preferred_campus?Number(form.preferred_campus):null};
       await api.post('/api/operations/admissions/',payload);
-      setForm({first_name:'',last_name:'',guardian_name:'',guardian_phone:'',guardian_email:'',applying_class_level:'',preferred_campus:'',previous_school:'',notes:''});
+      setForm({first_name:'',last_name:'',email:'',dob:'',gender:'',guardian_name:'',guardian_phone:'',guardian_email:'',applying_class_level:'',preferred_campus:'',previous_school:'',notes:''});
       setNotice('Admission application created.');await load();
     }catch(e){setError(errorText(e));}finally{setBusy(false);}
   };
@@ -41,12 +41,18 @@ export default function Admissions() {
     const payload={decision};
     if(decision==='admit'){
       const choices=arms.filter(a=>String(a.class_level)===String(app.applying_class_level));
-      if(!choices.length){setError('Create the destination class before admitting this learner.');return;}
-      if(choices.length===1) payload.class_arm=choices[0].id;
-      else {
-        const entered=window.prompt('Enter destination class ID:\n'+choices.map(a=>`${a.id}: ${a.full_name}`).join('\n'));
-        if(!entered)return;
-        payload.class_arm=Number(entered);
+      const implicitNoArm = choices.length === 0 || choices.every(a=>a.is_default);
+      if(!implicitNoArm){
+        const scoped = app.preferred_campus
+          ? choices.filter(a=>!a.campus || String(a.campus)===String(app.preferred_campus))
+          : choices;
+        if(!scoped.length){setError('Create a destination class for this level/campus before admitting this learner.');return;}
+        if(scoped.length===1) payload.class_arm=scoped[0].id;
+        else {
+          const entered=window.prompt('Enter destination class ID:\n'+scoped.map(a=>`${a.id}: ${a.full_name}`).join('\n'));
+          if(!entered)return;
+          payload.class_arm=Number(entered);
+        }
       }
       if(app.preferred_campus) payload.campus=app.preferred_campus;
     }
@@ -63,6 +69,9 @@ export default function Admissions() {
       <div className="assessment-grid">
         <label>First name<input required value={form.first_name} onChange={e=>setForm({...form,first_name:e.target.value})}/></label>
         <label>Last name<input required value={form.last_name} onChange={e=>setForm({...form,last_name:e.target.value})}/></label>
+        <label>Email<input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label>
+        <label>Date of birth<input type="date" value={form.dob} onChange={e=>setForm({...form,dob:e.target.value})}/></label>
+        <label>Gender<select value={form.gender} onChange={e=>setForm({...form,gender:e.target.value})}><option value="">Not recorded</option><option value="male">Male</option><option value="female">Female</option></select></label>
         <label>Applying class<select required value={form.applying_class_level} onChange={e=>setForm({...form,applying_class_level:e.target.value})}><option value="">Choose class</option>{levels.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
         {campuses.length>0&&<label>Preferred campus<select value={form.preferred_campus} onChange={e=>setForm({...form,preferred_campus:e.target.value})}><option value="">No preference</option>{campuses.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>}
         <label>Guardian name<input required value={form.guardian_name} onChange={e=>setForm({...form,guardian_name:e.target.value})}/></label>
