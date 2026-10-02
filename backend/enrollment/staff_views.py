@@ -182,7 +182,7 @@ class StaffViewSet(TenantMixin, viewsets.ModelViewSet):
         success_count = 0
         errors        = []
 
-        VALID_ROLES = {"school_admin", "teacher"}
+        VALID_ROLES = {"school_admin", "principal", "class_teacher", "teacher"}
 
         for row_num, row in enumerate(reader, start=2):
             def add_error(reason):
@@ -199,7 +199,7 @@ class StaffViewSet(TenantMixin, viewsets.ModelViewSet):
             if not first_name: add_error("first_name is empty."); continue
             if not last_name:  add_error("last_name is empty.");  continue
             if role not in VALID_ROLES:
-                add_error(f"role '{role}' invalid. Use: school_admin or teacher."); continue
+                add_error(f"role '{role}' invalid. Use: school_admin, principal, class_teacher or teacher."); continue
             from django.core.validators import validate_email
             from django.core.exceptions import ValidationError
             try:
