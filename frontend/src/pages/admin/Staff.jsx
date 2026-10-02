@@ -108,6 +108,8 @@ export default function Staff() {
           onChange={e => setRoleFilter(e.target.value)}>
           <option value="">All Roles</option>
           <option value="teacher">Teachers</option>
+          <option value="class_teacher">Class Teachers</option>
+          <option value="principal">Principals</option>
           <option value="school_admin">Admins</option>
         </select>
 
