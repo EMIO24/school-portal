@@ -173,9 +173,6 @@ export default function StaffForm() {
     try {
       if (isEdit && form.employment_status !== originalStatus && ["suspended", "terminated", "resigned"].includes(form.employment_status) && !window.confirm("Deactivate this account? Login will be disabled; historical records will remain.")) return;
       const payload = { ...form, dob: form.dob || null, date_employed: form.date_employed || null };
-      if (isEdit) {
-        delete payload.new_role;
-      }
       let staffId = id;
       if (isEdit) {
         await api.patch(`/api/staff/${id}/`, payload);
@@ -246,6 +243,8 @@ export default function StaffForm() {
               <Field label="Role" error={errors.new_role}>
                 <select disabled={saving} value={form.new_role} onChange={e => set("new_role", e.target.value)}>
                   <option value="teacher">Teacher</option>
+                  <option value="class_teacher">Class Teacher</option>
+                  <option value="principal">Principal</option>
                   <option value="school_admin">School Admin</option>
                 </select>
               </Field>
