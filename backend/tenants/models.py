@@ -158,3 +158,27 @@ class DemoRequest(models.Model):
 
     class Meta:
         ordering = ['-created_at', '-id']
+
+
+class Campus(models.Model):
+    """Enterprise school location. Classes and staff may be scoped to one campus."""
+
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="campuses")
+    name = models.CharField(max_length=180)
+    code = models.CharField(max_length=30)
+    address = models.TextField(blank=True)
+    phone = models.CharField(max_length=30, blank=True)
+    email = models.EmailField(blank=True)
+    is_primary = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(fields=["school", "code"], name="unique_campus_code_per_school"),
+            models.UniqueConstraint(fields=["school"], condition=models.Q(is_primary=True), name="one_primary_campus_per_school"),
+        ]
+
+    def __str__(self):
+        return f"{self.name} — {self.school.name}"
