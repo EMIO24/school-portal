@@ -29,11 +29,11 @@ def _day(raw):
 def _authorized(request):
     user, school = request.user, getattr(request, 'tenant', None)
     return (user.is_authenticated and user.is_active and not user.must_change_password
-            and school and user.school_id == school.pk and user.role in ('teacher', 'school_admin'))
+            and school and user.school_id == school.pk and user.role in ('teacher', 'class_teacher', 'school_admin', 'principal'))
 
 
 def _active_teacher(user, school):
-    return (user and user.is_active and user.role == 'teacher' and user.school_id == school.pk
+    return (user and user.is_active and user.role in ('teacher', 'class_teacher') and user.school_id == school.pk
             and StaffProfile.objects.filter(user=user, school=school, employment_status='active').exists())
 
 
@@ -119,7 +119,7 @@ class LessonDayView(APIView):
         if request.query_params.get('term') and not request.query_params['term'].isdigit():
             return Response({'term': 'Choose a valid term.'}, status=400)
         rows, holiday = lesson_day_rows(request.tenant, day, request.query_params.get('term'),
-                                       request.user.pk if request.user.role == 'teacher' else None)
+                                       request.user.pk if request.user.role in ('teacher', 'class_teacher') else None)
         for field in ('class_arm', 'teacher', 'subject'):
             raw = request.query_params.get(field)
             if raw:
@@ -163,7 +163,7 @@ class LessonOutcomeView(APIView):
                                term=term, start_date__lte=day, end_date__gte=day).exists()):
             return Response({'date': 'No scheduled lesson occurs on this date.'}, status=400)
         scheduled_id = record.scheduled_teacher_id if record else slot.teacher_id
-        if user.role == 'teacher':
+        if user.role in ('teacher', 'class_teacher'):
             if day != timezone.localdate() or scheduled_id != user.pk or not _active_teacher(user, school):
                 return Response({'detail': 'Only your current scheduled lessons can be recorded.'}, status=403)
         outcome = request.data.get('outcome')
@@ -176,10 +176,10 @@ class LessonOutcomeView(APIView):
             return Response({'note': 'Enter at most 500 characters.'}, status=400)
         actual_id = request.data.get('actual_teacher')
         if outcome == 'substituted':
-            if user.role != 'school_admin' or type(actual_id) is not int:
+            if user.role not in ('school_admin', 'principal') or type(actual_id) is not int:
                 return Response({'actual_teacher': 'Select an active substitute teacher.'}, status=400)
             from accounts.models import CustomUser
-            actual = CustomUser.objects.filter(pk=actual_id, school=school, role='teacher', is_active=True).first()
+            actual = CustomUser.objects.filter(pk=actual_id, school=school, role__in=('teacher', 'class_teacher'), is_active=True).first()
             if not _active_teacher(actual, school) or actual_id == scheduled_id:
                 return Response({'actual_teacher': 'Select another active teacher in this school.'}, status=400)
         else:
