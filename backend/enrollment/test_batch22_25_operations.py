@@ -8,7 +8,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from academics.models import AcademicSession
 from enrollment.models import (
-    AdmissionApplication, ClassArm, ClassLevel, SessionEnrollment,
+    AdmissionApplication, AdmissionDocument, ClassArm, ClassLevel, SessionEnrollment,
     StudentProfile, StudentRecordEntry, WelfareCase,
 )
 from tenants.models import Campus, School
@@ -91,6 +91,43 @@ class Batch22To25OperationsTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         return response.data
+
+    def test_admission_documents_are_tenant_bound(self):
+        app = self.create_application()
+        created = self.client_for(self.principal).post(
+            f"/api/operations/admissions/{app['id']}/documents/",
+            {
+                "kind": "birth_certificate",
+                "title": "Birth certificate",
+                "document_url": "https://example.invalid/birth.pdf",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(len(created.data["documents"]), 1)
+        document = AdmissionDocument.objects.get(application_id=app["id"])
+        self.assertEqual(document.uploaded_by, self.principal)
+
+        foreign = AdmissionApplication.objects.create(
+            school=self.other_school,
+            first_name="Foreign",
+            last_name="Applicant",
+            guardian_name="Guardian",
+            guardian_phone="0800",
+            applying_class_level=ClassLevel.objects.create(
+                school=self.other_school, name="JSS2", order_index=2
+            ),
+        )
+        denied = self.client_for(self.admin).post(
+            f"/api/operations/admissions/{foreign.pk}/documents/",
+            {
+                "kind": "other",
+                "title": "Wrong tenant",
+                "document_url": "https://example.invalid/wrong.pdf",
+            },
+            format="json",
+        )
+        self.assertEqual(denied.status_code, 404)
 
     def test_no_arm_admission_needs_no_fake_class_arm(self):
         app = self.create_application()
