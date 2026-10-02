@@ -20,6 +20,8 @@ export default function Campuses(){
       <label>Email<input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label>
       <label><input type="checkbox" checked={form.is_primary} onChange={e=>setForm({...form,is_primary:e.target.checked})}/> Primary campus</label>
     </div><label>Address<textarea value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/></label><button disabled={busy}>Add campus</button></form>
-    <section className="assessment-card"><h2>School campuses</h2>{items.map(row=><article key={row.id} className="assessment-submission"><strong>{row.name} ({row.code})</strong><p>{row.is_primary?'Primary · ':''}{row.is_active?'Active':'Inactive'}</p><p>{row.address}</p><button disabled={busy} onClick={()=>toggle(row)}>{row.is_active?'Mark inactive':'Reactivate'}</button></article>)}</section>
+    <section className="assessment-card"><h2>School campuses</h2>{items.map(row=><article key={row.id} className="assessment-submission"><strong>{row.name} ({row.code})</strong><p>{row.is_primary?'Primary · ':''}{row.is_active?'Active':'Inactive'}</p>
+      <p>{row.class_count ?? 0} classes · {row.student_count ?? 0} students · {row.staff_count ?? 0} staff</p>
+      <p>{row.address}</p><button disabled={busy} onClick={()=>toggle(row)}>{row.is_active?'Mark inactive':'Reactivate'}</button></article>)}</section>
   </main>;
 }
