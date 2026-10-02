@@ -54,7 +54,7 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
             "dob", "gender", "phone", "address",
             "state_of_origin", "religion",
             # Professional
-            "qualification", "specialization", "date_employed",
+            "qualification", "specialization", "date_employed", "campus",
             # Assignments (IDs for write, detail for read)
             "subjects_taught", "assigned_classes",
             "subjects_taught_detail", "assigned_classes_detail",
@@ -216,5 +216,5 @@ class StaffListSerializer(serializers.ModelSerializer):
         fields = [
             "id", "user", "staff_id", "full_name", "email",
             "profile_photo", "role",
-            "specialization", "employment_status",
+            "specialization", "employment_status", "campus",
         ]
