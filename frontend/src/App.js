@@ -48,6 +48,7 @@ import ExamManager     from "./pages/admin/ExamManager";
 import ExamPapers from './pages/admin/ExamPapers';
 import OnlineAssignments from './pages/admin/OnlineAssignments';
 import MyAssignments from './pages/student/MyAssignments';
+import LearningResources from './pages/student/LearningResources';
 import ExamResults     from "./pages/admin/ExamResults";
 
 // ── Role dashboards (stubs) ────────────────────────────────────────────────
@@ -245,6 +246,7 @@ function AppRoutes() {
             <Route path="exam/:examId"        element={<ExamRoom />} />
             <Route path="exam/:examId/review" element={<ExamReview />} />
             <Route path="online-assignments" element={<MyAssignments />} />
+            <Route path="resources" element={<LearningResources />} />
 
             {/* Fees */}
             <Route path="fees" element={<StudentFees />} />
