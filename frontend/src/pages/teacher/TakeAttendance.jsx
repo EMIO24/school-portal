@@ -38,15 +38,17 @@ function recordsReducer(state, action) {
     case 'INIT':
       // Seed from API pre-populated list
       return Object.fromEntries(
-        action.records.map(r => [r.student, { status: r.status, remark: r.remark || '' }])
+        action.records.map(r => [r.student, { status: r.status, remark: r.remark || '', arrival_time: '' }])
       );
     case 'SET_STATUS':
       return { ...state, [action.studentId]: { ...state[action.studentId], status: action.status } };
     case 'SET_REMARK':
       return { ...state, [action.studentId]: { ...state[action.studentId], remark: action.remark } };
+    case 'SET_ARRIVAL_TIME':
+      return { ...state, [action.studentId]: { ...state[action.studentId], arrival_time: action.arrival_time } };
     case 'MARK_ALL_PRESENT':
       return Object.fromEntries(
-        Object.keys(state).map(sid => [sid, { status: 'present', remark: '' }])
+        Object.keys(state).map(sid => [sid, { status: 'present', remark: '', arrival_time: '' }])
       );
     default:
       return state;
@@ -174,6 +176,7 @@ export default function TakeAttendance() {
     const payload = {
       records: Object.entries(records).map(([studentId, rec]) => ({
         student_id: Number(studentId), status: rec.status, remark: rec.remark,
+        ...(rec.status === 'late' && rec.arrival_time ? {arrival_time: rec.arrival_time} : {}),
       })),
     };
     try {
@@ -360,7 +363,7 @@ export default function TakeAttendance() {
           <div className="att-card">
             <ul className="att-student-list">
               {students.map((student, idx) => {
-                const rec      = records[student.student] || { status: 'present', remark: '' };
+                const rec      = records[student.student] || { status: 'present', remark: '', arrival_time: '' };
                 const showRemark = !isFinalized && (rec.status === 'absent' || rec.status === 'late');
 
                 return (
@@ -404,6 +407,18 @@ export default function TakeAttendance() {
                             remark: e.target.value,
                           });}}
                         />
+                        {rec.status === 'late' && <input
+                          type="time"
+                          className="att-remark-input"
+                          aria-label={`Arrival time for ${student.student_name}`}
+                          value={rec.arrival_time || ''}
+                          disabled={submitting || finalizing}
+                          onChange={e => {setSuccess(null);dispatch({
+                            type: 'SET_ARRIVAL_TIME',
+                            studentId: student.student,
+                            arrival_time: e.target.value,
+                          });}}
+                        />}
                       </div>
                     )}
                   </li>
