@@ -66,7 +66,7 @@ class ClassArmSerializer(TenantRelationsMixin, serializers.ModelSerializer):
         return obj.students.filter(status="active").count()
 
     def validate_class_teacher(self, value):
-        if value and (value.role != 'teacher' or not value.is_active):
+        if value and (value.role not in ('teacher', 'class_teacher') or not value.is_active):
             raise serializers.ValidationError('Select an active teacher.')
         return value
 
