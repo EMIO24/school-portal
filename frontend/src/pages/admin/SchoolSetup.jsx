@@ -15,8 +15,8 @@ function message(error) {
 
 export default function SchoolSetup() {
   const [setup,setSetup] = useState(null), [identity,setIdentity] = useState({});
-  const [levels,setLevels] = useState([]), [arms,setArms] = useState([]);
-  const [levelName,setLevelName] = useState(''), [level,setLevel] = useState(''), [armName,setArmName] = useState('');
+  const [levels,setLevels] = useState([]), [arms,setArms] = useState([]), [campuses,setCampuses] = useState([]);
+  const [levelName,setLevelName] = useState(''), [level,setLevel] = useState(''), [armName,setArmName] = useState(''), [armCampus,setArmCampus] = useState('');
   const [error,setError] = useState(''), [notice,setNotice] = useState(''), [loading,setLoading] = useState(true), [busy,setBusy] = useState(false);
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -25,6 +25,7 @@ export default function SchoolSetup() {
       const setupData = s.data && typeof s.data === 'object' ? s.data : {};
       setSetup({ ...setupData, steps: Array.isArray(setupData.steps) ? setupData.steps : [], class_level_choices: Array.isArray(setupData.class_level_choices) ? setupData.class_level_choices : [] });
       setIdentity(setupData.identity || {}); setLevels(l.data.results ?? l.data); setArms(a.data.results ?? a.data);
+      try { const {data}=await api.get('/api/campuses/'); setCampuses(data.results ?? data ?? []); } catch { setCampuses([]); }
     } catch(e) {setError(message(e));} finally {setLoading(false);}
   },[]);
   useEffect(() => {load();},[load]);
@@ -54,7 +55,7 @@ export default function SchoolSetup() {
       <section id="classes"><h2>{identity.uses_class_arms === false ? 'Classes' : 'Classes and arms'}</h2><p>{identity.uses_class_arms === false ? 'Create class levels such as JSS1 and JSS2. Paideia manages the internal placement container automatically.' : 'Create a level such as JSS1, then an arm such as A. Students are enrolled in a class arm.'}</p>
         <p><Link to="/admin/migration?type=classes">↑ Import Classes and Arms</Link></p>
         <div className="setup-columns"><form onSubmit={e => {e.preventDefault();save(() => api.post('/api/class-levels/',{name:levelName}),'Class level added.');}}><fieldset disabled={busy}><label>New class level<select required value={levelName} onChange={e => setLevelName(e.target.value)}><option value="">Choose a level</option>{setup.class_level_choices.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label><button>Add class level</button></fieldset></form>
-        {identity.uses_class_arms !== false && <form onSubmit={e => {e.preventDefault();save(() => api.post('/api/class-arms/',{class_level:Number(level),name:armName}),'Class arm added.');}}><fieldset disabled={busy || !levels.length}><label>Class level<select required value={level} onChange={e => setLevel(e.target.value)}><option value="">Choose a level</option>{levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label><label>Arm name<input required value={armName} onChange={e => setArmName(e.target.value)}/></label><button>Add class arm</button></fieldset></form>}</div>
+        {identity.uses_class_arms !== false && <form onSubmit={e => {e.preventDefault();save(() => api.post('/api/class-arms/',{class_level:Number(level),name:armName,campus:armCampus?Number(armCampus):null}),'Class arm added.');}}><fieldset disabled={busy || !levels.length}><label>Class level<select required value={level} onChange={e => setLevel(e.target.value)}><option value="">Choose a level</option>{levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label><label>Arm name<input required value={armName} onChange={e => setArmName(e.target.value)}/></label>{campuses.length>0&&<label>Campus<select value={armCampus} onChange={e=>setArmCampus(e.target.value)}><option value="">Whole school / not assigned</option>{campuses.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>}<button>Add class arm</button></fieldset></form>}</div>
         {arms.length ? <ul>{arms.map(a => <li key={a.id}>{a.full_name}</li>)}</ul> : <p>{identity.uses_class_arms === false ? 'Add a class level to begin enrolling students.' : 'No class arms yet. Add one before enrolling students.'}</p>}
       </section>
       <ScoringConfiguration onSaved={load}/>
