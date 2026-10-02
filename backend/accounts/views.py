@@ -366,9 +366,16 @@ class ParentStudentDashboardView(APIView):
             .order_by('-sent_at')[:5]
             .values('channel', 'message_body', 'sent_at')
         )
+        today = timezone.localdate()
         today_presence = StudentDailyPresence.objects.filter(
-            school=school, student=student, date=timezone.localdate()
+            school=school, student=student, date=today
         ).first()
+        today_attendance = AttendanceRecord.objects.filter(
+            student=student.user,
+            attendance_session__school=school,
+            attendance_session__date=today,
+        ).values_list('status', flat=True)
+        officially_late_today = 'late' in set(today_attendance)
         presence_today = None
         if today_presence:
             arrival = timezone.localtime(today_presence.arrival_at) if today_presence.arrival_at else None
@@ -376,7 +383,7 @@ class ParentStudentDashboardView(APIView):
             cutoff = school.arrival_cutoff_time
             presence_today = {
                 'arrival_time': arrival.strftime('%H:%M') if arrival else None,
-                'late': bool(arrival and cutoff and arrival.time().replace(tzinfo=None) > cutoff),
+                'late': bool(officially_late_today or (arrival and cutoff and arrival.time().replace(tzinfo=None) > cutoff)),
                 'departure_time': departure.strftime('%H:%M') if departure else None,
                 'clockout_enabled': school.student_clockout_enabled,
                 'clockout_recorded': bool(departure),
