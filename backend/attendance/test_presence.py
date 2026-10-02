@@ -222,6 +222,36 @@ class Batch21PresenceTests(TestCase):
         self.assertTrue(response.data["presence_today"]["clockout_enabled"])
         self.assertFalse(response.data["presence_today"]["clockout_recorded"])
 
+    def test_historical_presence_roster_uses_enrollment_not_current_class(self):
+        old_day = timezone.localdate() - timedelta(days=1)
+        StudentDailyPresence.objects.create(
+            school=self.school,
+            student=self.student,
+            class_arm=self.arm,
+            date=old_day,
+            arrival_at=timezone.make_aware(
+                datetime.combine(old_day, time(7, 50)),
+                timezone.get_current_timezone(),
+            ),
+            arrival_recorded_by=self.admin,
+        )
+        self.student.current_class = self.other_arm
+        self.student.save(update_fields=["current_class"])
+
+        response = self.client_for(self.admin).get(
+            "/api/attendance/presence/",
+            {"class_arm": self.arm.pk, "date": old_day.isoformat()},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [row["student_id"] for row in response.data["students"]],
+            [self.student.pk],
+        )
+        self.assertEqual(
+            response.data["students"][0]["presence"]["class_arm"],
+            self.arm.full_name,
+        )
+
     def test_parent_cannot_open_unlinked_child_dashboard(self):
         response = self.client_for(self.parent).get(f"/api/parent/dashboard/{self.other_student.pk}/")
         self.assertEqual(response.status_code, 403)
