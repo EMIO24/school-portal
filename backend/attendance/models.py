@@ -88,7 +88,7 @@ class AttendanceSession(models.Model):
     teacher   = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name='attendance_sessions',
-        limit_choices_to={'role': 'teacher'},
+        limit_choices_to={'role__in': ['teacher', 'class_teacher']},
     )
     term      = models.ForeignKey(
         'academics.Term', on_delete=models.CASCADE, related_name='attendance_sessions'
@@ -181,3 +181,56 @@ class AttendanceRecord(models.Model):
 
     def __str__(self):
         return f"{self.student} | {self.attendance_session.date} | {self.status}"
+
+class StudentDailyPresence(models.Model):
+    """One physical-presence record per student per school day."""
+
+    school = models.ForeignKey(
+        'tenants.School', on_delete=models.CASCADE, related_name='student_presence_records'
+    )
+    student = models.ForeignKey(
+        'enrollment.StudentProfile', on_delete=models.CASCADE, related_name='daily_presence'
+    )
+    date = models.DateField(db_index=True)
+    arrival_at = models.DateTimeField(null=True, blank=True)
+    arrival_recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='student_arrivals_recorded'
+    )
+    departure_at = models.DateTimeField(null=True, blank=True)
+    departure_recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='student_departures_recorded'
+    )
+    correction_reason = models.CharField(max_length=300, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date', 'student__admission_number']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['school', 'student', 'date'],
+                name='unique_student_daily_presence'
+            )
+        ]
+        indexes = [
+            models.Index(fields=['school', 'date'], name='presence_school_date_idx')
+        ]
+
+    def clean(self):
+        errors = {}
+        if self.student_id and self.school_id and self.student.school_id != self.school_id:
+            errors['student'] = 'Student must belong to this school.'
+        if self.arrival_at and self.arrival_at.date() != self.date:
+            errors['arrival_at'] = 'Arrival timestamp must belong to the presence date.'
+        if self.departure_at and self.departure_at.date() != self.date:
+            errors['departure_at'] = 'Departure timestamp must belong to the presence date.'
+        if self.arrival_at and self.departure_at and self.departure_at < self.arrival_at:
+            errors['departure_at'] = 'Departure cannot be before arrival.'
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
