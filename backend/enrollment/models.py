@@ -866,6 +866,36 @@ class AdmissionApplication(models.Model):
             raise ValidationError(errors)
 
 
+class AdmissionDocument(models.Model):
+    KIND_CHOICES = [
+        ("birth_certificate", "Birth Certificate"),
+        ("previous_result", "Previous Result"),
+        ("passport_photo", "Passport Photo"),
+        ("medical", "Medical Document"),
+        ("other", "Other"),
+    ]
+
+    application = models.ForeignKey(
+        AdmissionApplication, on_delete=models.CASCADE, related_name="documents"
+    )
+    kind = models.CharField(max_length=30, choices=KIND_CHOICES)
+    title = models.CharField(max_length=180)
+    document_url = models.URLField()
+    uploaded_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="admission_documents_uploaded"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["kind", "created_at", "id"]
+
+    def clean(self):
+        if self.application_id and self.uploaded_by_id:
+            if self.uploaded_by.school_id != self.application.school_id:
+                raise ValidationError({"uploaded_by": "Uploader must belong to the application school."})
+
+
 class StudentRecordEntry(models.Model):
     KIND_CHOICES = [
         ("identity", "Identity"),
