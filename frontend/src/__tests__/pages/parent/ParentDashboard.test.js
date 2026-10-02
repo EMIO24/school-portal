@@ -9,7 +9,9 @@ jest.mock("../../../services/api", () => ({ __esModule: true, default: { get: je
 
 const dashboard = {
   result_summary: { average: 81, position: 2 },
-  attendance_summary: { percentage: 92, present: 46, total: 50, last_7_days: [] },
+  attendance_summary: { percentage: 92, present: 46, late: 2, total: 50,
+    last_7_days: [{date: '2026-10-02', status: 'late', arrival_time: '08:17'}] },
+  presence_today: {arrival_time: '08:17', late: true, departure_time: null, clockout_enabled: true},
   fee_status: { state: 'active', outstanding: 5000, paid: 25000 },
   timetable_today: [{ start_time: "08:00", subject: "Mathematics", teacher: "Mr Bello" }],
   recent_notifications: [{ channel: "sms", message_body: "PTA meeting", sent_at: "2026-01-01" }],
@@ -30,6 +32,14 @@ describe("ParentDashboard", () => {
     expect(screen.getByText("92%")).toBeInTheDocument();
     expect(screen.getByText("Mathematics")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "View Fees" })).toBeInTheDocument();
+  });
+
+  it("shows lateness time and cautious clockout wording", async () => {
+    render(<MemoryRouter><ThemeContext.Provider value={{school:null}}><ParentDashboard /></ThemeContext.Provider></MemoryRouter>);
+    expect(await screen.findByText(/2 late/)).toBeInTheDocument();
+    expect(screen.getByText(/Late · 08:17/)).toBeInTheDocument();
+    expect(screen.getByText('No clock-out has been recorded today.')).toBeInTheDocument();
+    expect(screen.getByText(/2026-10-02 · arrived 08:17/)).toBeInTheDocument();
   });
 
   it("opens the notification drawer with recent messages", async () => {
