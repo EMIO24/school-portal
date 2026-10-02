@@ -192,6 +192,11 @@ class StudentDailyPresence(models.Model):
     student = models.ForeignKey(
         'enrollment.StudentProfile', on_delete=models.CASCADE, related_name='daily_presence'
     )
+    class_arm = models.ForeignKey(
+        'enrollment.ClassArm', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='student_presence_records',
+        help_text='Class placement snapshot when this presence record was first created.',
+    )
     date = models.DateField(db_index=True)
     arrival_at = models.DateTimeField(null=True, blank=True)
     arrival_recorded_by = models.ForeignKey(
@@ -223,6 +228,8 @@ class StudentDailyPresence(models.Model):
         errors = {}
         if self.student_id and self.school_id and self.student.school_id != self.school_id:
             errors['student'] = 'Student must belong to this school.'
+        if self.class_arm_id and self.school_id and self.class_arm.school_id != self.school_id:
+            errors['class_arm'] = 'Class must belong to this school.'
         if self.arrival_at and timezone.localtime(self.arrival_at).date() != self.date:
             errors['arrival_at'] = 'Arrival timestamp must belong to the presence date.'
         if self.departure_at and timezone.localtime(self.departure_at).date() != self.date:
