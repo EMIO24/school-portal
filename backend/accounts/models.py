@@ -74,11 +74,13 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     """
 
     ROLE_CHOICES = [
-        ("superadmin",   "Super Admin"),
-        ("school_admin", "School Admin"),
-        ("teacher",      "Teacher"),
-        ("student",      "Student"),
-        ("parent",       "Parent"),
+        ("superadmin",    "Super Admin"),
+        ("school_admin",  "School Admin"),
+        ("principal",     "Principal"),
+        ("class_teacher", "Class Teacher"),
+        ("teacher",       "Teacher"),
+        ("student",       "Student"),
+        ("parent",        "Parent"),
     ]
 
     # ── Identity ──────────────────────────────────────────────────────────────
@@ -176,7 +178,16 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     @property
     def is_teacher(self) -> bool:
-        return self.role == "teacher"
+        return self.role in ("teacher", "class_teacher")
+
+    @property
+    def is_principal(self) -> bool:
+        return self.role == "principal"
+
+    @property
+    def is_class_teacher(self) -> bool:
+        return self.role == "class_teacher"
+
 
     @property
     def is_student(self) -> bool:
