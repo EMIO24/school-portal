@@ -22,10 +22,10 @@ export const ROLE_LINKS = {
   ].map(([path, label]) => [`/admin/${path}`, label]),
   principal: [
     ['/admin/dashboard', 'Dashboard'], ['/admin/attendance', 'Attendance'], ['/admin/presence', 'Student presence'],
-    ['/admin/teaching', 'Teaching records'], ['/admin/results', 'Results'], ['/admin/promotion', 'Promotion'],
+    ['/admin/teaching', 'Teaching records'], ['/admin/results', 'Results'],
     ['/admin/notices', 'Notices']
   ],
-  class_teacher: [['dashboard', 'Dashboard'], ['attendance', 'Take attendance'], ['presence', 'Student presence'], ['scores', 'Scores'],
+  class_teacher: [['dashboard', 'Dashboard'], ['attendance', 'Take attendance'], ['scores', 'Scores'],
     ['timetable', 'My timetable'], ['teaching', "Today's lessons"], ['scheme', 'My scheme'], ['academic-planning', 'Lesson planning & resources'],
     ['notices', 'Notices']].map(([path, label]) => [`/teacher/${path}`, label]),
   teacher: [['dashboard', 'Dashboard'], ['attendance', 'Take attendance'], ['presence', 'Student presence'], ['scores', 'Scores'],
