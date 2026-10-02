@@ -58,6 +58,11 @@ class CampusListCreate(APIView):
         if form.validated_data.get("is_primary"):
             Campus.objects.filter(school=request.tenant, is_primary=True).update(is_primary=False)
         campus = form.save(school=request.tenant)
+        if not request.tenant.uses_class_arms:
+            from enrollment.class_structure import ensure_default_arm
+            from enrollment.models import ClassLevel
+            for level in ClassLevel.objects.filter(school=request.tenant):
+                ensure_default_arm(school=request.tenant, class_level=level, campus=campus)
         audit(request, "campus.created", target=f"campus:{campus.pk}", details={"school_id": request.tenant.pk})
         return Response(CampusSerializer(campus).data, status=201)
 
