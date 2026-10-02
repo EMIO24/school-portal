@@ -1,6 +1,7 @@
 """Explicit access policies for school modules; never trust a selected tenant alone."""
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 from rest_framework.exceptions import PermissionDenied
+from django.db import models
 
 def owns_student(request, student_id, profile=False):
     from enrollment.models import StudentProfile
@@ -15,10 +16,19 @@ def owns_student(request, student_id, profile=False):
     return request.user.role == 'parent' and ParentStudentLink.objects.filter(school=request.tenant, parent=request.user, student=student).exists()
 
 def require_assignment(request, class_arm, term=None, subject=None):
-    if request.user.role != 'teacher':
+    if request.user.role not in ('teacher', 'class_teacher'):
         return
     from enrollment.models import SubjectAssignment
-    qs = SubjectAssignment.objects.filter(school=request.tenant, teacher__user=request.user, teacher__employment_status='active', class_arm_id=class_arm)
+    if request.user.role == 'class_teacher' and subject is None:
+        from enrollment.models import ClassArm
+        if ClassArm.objects.filter(
+            school=request.tenant, pk=class_arm, class_teacher=request.user
+        ).exists():
+            return
+    qs = SubjectAssignment.objects.filter(
+        school=request.tenant, teacher__user=request.user,
+        teacher__employment_status='active', class_arm_id=class_arm
+    )
     if term: qs = qs.filter(term_id=term)
     if subject: qs = qs.filter(subject_id=subject)
     if not qs.exists():
@@ -36,22 +46,28 @@ class SchoolModulePermission(BasePermission):
         action = getattr(view, 'action', '')
         if role == 'school_admin':
             return True
+        if role == 'principal':
+            if module in ('analytics', 'attendance', 'results', 'curriculum', 'gradebook', 'timetable'):
+                if module == 'gradebook' and request.method not in SAFE_METHODS and action not in ('publish',):
+                    return False
+                return True
+            return False
         if module in ('notifications', 'promotion'):
             return False
         if module == 'timetable':
             return request.method in SAFE_METHODS
         if module == 'cbt':
-            if role == 'teacher': return True
+            if role in ('teacher', 'class_teacher'): return True
             return role == 'student' and name == 'CBTExamViewSet' and action in ('available','start','save_answer','status','submit','log_tab_switch','review')
         if module == 'gradebook':
-            return role == 'teacher' and action not in ('publish','destroy')
+            return role in ('teacher','class_teacher') and action not in ('publish','destroy')
         if module == 'attendance':
-            if role == 'teacher': return action != 'destroy'
+            if role in ('teacher', 'class_teacher'): return action != 'destroy'
             if request.method not in SAFE_METHODS: return False
             sid = view.kwargs.get('student_id') or request.query_params.get('student')
             return action in ('report','student_report') and bool(sid) and owns_student(request, sid)
         if module == 'results':
-            if role == 'teacher':
+            if role in ('teacher','class_teacher'):
                 from enrollment.models import StudentProfile
                 profile = StudentProfile.objects.filter(school=tenant, user_id=view.kwargs.get('student_id')).first()
                 if not profile: return False
@@ -68,13 +84,22 @@ class SchoolModulePermission(BasePermission):
 
 
 def assigned_classes(request):
-    from enrollment.models import SubjectAssignment
-    return SubjectAssignment.objects.filter(
+    from enrollment.models import ClassArm, SubjectAssignment
+    subject_ids = SubjectAssignment.objects.filter(
         school=request.tenant,
         teacher__user=request.user,
         teacher__employment_status='active',
         teacher__user__is_active=True,
     ).values_list('class_arm_id', flat=True)
+    if request.user.role == 'class_teacher':
+        homeroom_ids = ClassArm.objects.filter(
+            school=request.tenant, class_teacher=request.user
+        ).values_list('id', flat=True)
+        return ClassArm.objects.filter(
+            school=request.tenant,
+            models.Q(id__in=subject_ids) | models.Q(id__in=homeroom_ids)
+        ).values_list('id', flat=True)
+    return subject_ids
 
 class TenantRelationsMixin:
     def validate(self, attrs):
