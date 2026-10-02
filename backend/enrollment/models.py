@@ -84,9 +84,21 @@ class ClassArm(models.Model):
         on_delete=models.CASCADE,
         related_name="arms",
     )
-    name          = models.CharField(
+    campus = models.ForeignKey(
+        "tenants.Campus",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="class_arms_by_campus",
+    )
+    name = models.CharField(
         max_length=10,
-        help_text="Arm letter(s), e.g. 'A', 'B', 'Gold'",
+        blank=True,
+        help_text="Arm letter(s), e.g. 'A', 'B', 'Gold'. Blank for a no-arm school.",
+    )
+    is_default = models.BooleanField(
+        default=False,
+        help_text="System-managed implicit class container for schools that do not use arms.",
     )
     class_teacher = models.ForeignKey(
         User,
@@ -101,16 +113,24 @@ class ClassArm(models.Model):
         verbose_name        = "Class Arm"
         verbose_name_plural = "Class Arms"
         ordering            = ["class_level__order_index", "name"]
-        constraints         = [
+        constraints = [
             models.UniqueConstraint(
                 fields=["school", "class_level", "name"],
-                name="unique_arm_per_level_per_school",
-            )
+                condition=models.Q(campus__isnull=True),
+                name="unique_arm_per_level_school_no_campus",
+            ),
+            models.UniqueConstraint(
+                fields=["school", "campus", "class_level", "name"],
+                condition=models.Q(campus__isnull=False),
+                name="unique_arm_per_level_campus",
+            ),
         ]
 
     @property
     def full_name(self):
-        """e.g. 'JSS1A'"""
+        """e.g. 'JSS1A', or simply 'JSS1' for a no-arm school."""
+        if self.is_default or not self.name:
+            return self.class_level.name
         return f"{self.class_level.name}{self.name}"
 
     def __str__(self):
@@ -481,6 +501,14 @@ class StaffProfile(models.Model):
     )
     school = models.ForeignKey(
         "tenants.School", on_delete=models.CASCADE, related_name="staff",
+    )
+
+    campus = models.ForeignKey(
+        "tenants.Campus",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="staff_members",
     )
 
     # ── Staff ID ──────────────────────────────────────────────────────────
