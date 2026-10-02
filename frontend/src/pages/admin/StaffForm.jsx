@@ -306,7 +306,7 @@ export default function StaffForm() {
         {(["teacher", "class_teacher"].includes(form.new_role)) && (
           <section className="stf-section">
             <h2 className="stf-section-title">Teaching Assignments</h2>
-            <p className="stf-section-sub">Select the subjects and classes this teacher is responsible for.</p>
+            <p className="stf-section-sub">Select teaching responsibilities. For a Class Teacher, selected classes also define homeroom authority.</p>
             <div className="stf-assignments-grid">
               <div>
                 <h4 className="stf-picker-heading">Subjects</h4>
