@@ -41,6 +41,7 @@ const cases = [
   ['admin/SubjectAssignment', 'Subject Assignments'],
   ['admin/SubjectManager', 'Subjects'],
   ['admin/TimetableBuilder', /Timetable Builder/],
+  ['common/StudentPresence', 'Student Presence'],
   ['parent/ParentDashboard', null, { text: /No children linked/i }],
   ['parent/ParentLogin', 'Parent Portal'],
   ['public/ChangePassword', 'Set New Password'],
