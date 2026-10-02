@@ -786,3 +786,203 @@ class MigrationConflict(models.Model):
 
     def __str__(self):
         return f"{self.job_id}:{self.row_number} {self.conflict_type}"
+
+
+
+# ── Batches 22–23: admissions, official records and welfare ────────────────
+
+def generate_admission_application_number():
+    return "ADM-" + uuid.uuid4().hex[:12].upper()
+
+
+class AdmissionApplication(models.Model):
+    STATUS_CHOICES = [
+        ("new", "New"),
+        ("under_review", "Under Review"),
+        ("offered", "Offered"),
+        ("admitted", "Admitted"),
+        ("rejected", "Rejected"),
+        ("withdrawn", "Withdrawn"),
+    ]
+
+    school = models.ForeignKey(
+        "tenants.School", on_delete=models.PROTECT, related_name="admission_applications"
+    )
+    application_number = models.CharField(
+        max_length=20, unique=True, default=generate_admission_application_number, editable=False
+    )
+    first_name = models.CharField(max_length=150)
+    last_name = models.CharField(max_length=150)
+    email = models.EmailField(blank=True)
+    dob = models.DateField(null=True, blank=True)
+    gender = models.CharField(max_length=10, choices=StudentProfile.GENDER_CHOICES, blank=True)
+    guardian_name = models.CharField(max_length=150)
+    guardian_phone = models.CharField(max_length=20)
+    guardian_email = models.EmailField(blank=True)
+    previous_school = models.CharField(max_length=180, blank=True)
+    applying_class_level = models.ForeignKey(
+        ClassLevel, on_delete=models.PROTECT, related_name="admission_applications"
+    )
+    preferred_campus = models.ForeignKey(
+        "tenants.Campus", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="admission_applications"
+    )
+    notes = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="new", db_index=True)
+    admitted_student = models.OneToOneField(
+        StudentProfile, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="source_admission_application"
+    )
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="admission_applications_created"
+    )
+    decided_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="admission_applications_decided"
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["school", "status"], name="admission_school_status_idx"),
+            models.Index(fields=["school", "applying_class_level"], name="admission_school_level_idx"),
+        ]
+
+    def clean(self):
+        errors = {}
+        if self.applying_class_level_id and self.applying_class_level.school_id != self.school_id:
+            errors["applying_class_level"] = "Class level must belong to this school."
+        if self.preferred_campus_id and self.preferred_campus.school_id != self.school_id:
+            errors["preferred_campus"] = "Campus must belong to this school."
+        if self.admitted_student_id and self.admitted_student.school_id != self.school_id:
+            errors["admitted_student"] = "Student must belong to this school."
+        if errors:
+            raise ValidationError(errors)
+
+
+class StudentRecordEntry(models.Model):
+    KIND_CHOICES = [
+        ("identity", "Identity"),
+        ("guardian", "Guardian"),
+        ("enrollment", "Enrollment"),
+        ("document", "Document"),
+        ("note", "Institutional Note"),
+    ]
+
+    school = models.ForeignKey(
+        "tenants.School", on_delete=models.PROTECT, related_name="student_record_entries"
+    )
+    student = models.ForeignKey(
+        StudentProfile, on_delete=models.PROTECT, related_name="official_record_entries"
+    )
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    title = models.CharField(max_length=180)
+    details = models.TextField(blank=True)
+    document_url = models.URLField(blank=True)
+    effective_date = models.DateField()
+    supersedes = models.ForeignKey(
+        "self", on_delete=models.PROTECT, null=True, blank=True, related_name="corrections"
+    )
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="student_record_entries_created"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-effective_date", "-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["school", "student", "effective_date"], name="student_record_history_idx"),
+        ]
+
+    def clean(self):
+        errors = {}
+        if self.student_id and self.student.school_id != self.school_id:
+            errors["student"] = "Student must belong to this school."
+        if self.supersedes_id:
+            if self.supersedes.school_id != self.school_id or self.supersedes.student_id != self.student_id:
+                errors["supersedes"] = "A correction can only supersede a record for this same student."
+        if errors:
+            raise ValidationError(errors)
+
+
+class WelfareCase(models.Model):
+    CATEGORY_CHOICES = [
+        ("attendance", "Attendance"),
+        ("behaviour", "Behaviour"),
+        ("academic", "Academic"),
+        ("health", "Health"),
+        ("safeguarding", "Safeguarding"),
+        ("other", "Other"),
+    ]
+    SEVERITY_CHOICES = [
+        ("low", "Low"), ("medium", "Medium"), ("high", "High"), ("critical", "Critical"),
+    ]
+    STATUS_CHOICES = [
+        ("open", "Open"), ("monitoring", "Monitoring"), ("resolved", "Resolved"),
+    ]
+
+    school = models.ForeignKey(
+        "tenants.School", on_delete=models.PROTECT, related_name="welfare_cases"
+    )
+    student = models.ForeignKey(
+        StudentProfile, on_delete=models.PROTECT, related_name="welfare_cases"
+    )
+    class_arm_snapshot = models.ForeignKey(
+        ClassArm, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="welfare_cases"
+    )
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    severity = models.CharField(max_length=10, choices=SEVERITY_CHOICES, default="low")
+    title = models.CharField(max_length=180)
+    details = models.TextField()
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="open", db_index=True)
+    reported_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="welfare_cases_reported"
+    )
+    resolved_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="welfare_cases_resolved"
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["school", "status", "severity"], name="welfare_school_status_idx"),
+            models.Index(fields=["school", "student"], name="welfare_school_student_idx"),
+        ]
+
+    @property
+    def is_sensitive(self):
+        return self.category in ("health", "safeguarding")
+
+    def clean(self):
+        errors = {}
+        if self.student_id and self.student.school_id != self.school_id:
+            errors["student"] = "Student must belong to this school."
+        if self.class_arm_snapshot_id and self.class_arm_snapshot.school_id != self.school_id:
+            errors["class_arm_snapshot"] = "Class must belong to this school."
+        if errors:
+            raise ValidationError(errors)
+
+
+class WelfareUpdate(models.Model):
+    welfare_case = models.ForeignKey(
+        WelfareCase, on_delete=models.PROTECT, related_name="updates"
+    )
+    note = models.TextField()
+    status_after = models.CharField(max_length=12, choices=WelfareCase.STATUS_CHOICES)
+    created_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="welfare_updates_created"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
