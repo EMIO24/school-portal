@@ -29,19 +29,37 @@ class ClassLevelSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "order_index"]
         read_only_fields = ["id"]
 
+    @transaction.atomic
+    def create(self, validated_data):
+        level = super().create(validated_data)
+        school = self.context['request'].tenant
+        if not school.uses_class_arms:
+            from .class_structure import ensure_default_arm
+            ensure_default_arm(school=school, class_level=level)
+        return level
+
 
 # ── ClassArm ───────────────────────────────────────────────────────────────
 
 class ClassArmSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        school = self.context['request'].tenant
         level = attrs.get('class_level', getattr(self.instance, 'class_level', None))
         name = attrs.get('name', getattr(self.instance, 'name', None))
-        qs = ClassArm.objects.filter(school=self.context['request'].tenant, class_level=level, name=name)
+        campus = attrs.get('campus', getattr(self.instance, 'campus', None))
+
+        if not school.uses_class_arms and not getattr(self.instance, 'is_default', False):
+            raise serializers.ValidationError({'name': 'This school does not use named class arms.'})
+        if campus and campus.school_id != school.pk:
+            raise serializers.ValidationError({'campus': 'Campus must belong to this school.'})
+
+        qs = ClassArm.objects.filter(school=school, class_level=level, name=name)
+        qs = qs.filter(campus=campus) if campus else qs.filter(campus__isnull=True)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError({'name':'This class arm already exists.'})
+            raise serializers.ValidationError({'name':'This class already exists in this campus.'})
         return attrs
 
     full_name         = serializers.ReadOnlyField()
@@ -55,11 +73,11 @@ class ClassArmSerializer(TenantRelationsMixin, serializers.ModelSerializer):
         model  = ClassArm
         fields = [
             "id", "class_level", "class_level_name",
-            "name", "full_name",
+            "name", "full_name", "is_default", "campus",
             "class_teacher", "teacher_name",
             "student_count",
         ]
-        read_only_fields = ["id", "full_name", "class_level_name",
+        read_only_fields = ["id", "full_name", "class_level_name", "is_default",
                             "teacher_name", "student_count"]
 
     def get_student_count(self, obj) -> int:
