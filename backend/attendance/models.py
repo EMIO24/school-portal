@@ -17,6 +17,7 @@ from django.conf import settings
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
 from django.db.models import Count, Q
 
 
@@ -222,9 +223,9 @@ class StudentDailyPresence(models.Model):
         errors = {}
         if self.student_id and self.school_id and self.student.school_id != self.school_id:
             errors['student'] = 'Student must belong to this school.'
-        if self.arrival_at and self.arrival_at.date() != self.date:
+        if self.arrival_at and timezone.localtime(self.arrival_at).date() != self.date:
             errors['arrival_at'] = 'Arrival timestamp must belong to the presence date.'
-        if self.departure_at and self.departure_at.date() != self.date:
+        if self.departure_at and timezone.localtime(self.departure_at).date() != self.date:
             errors['departure_at'] = 'Departure timestamp must belong to the presence date.'
         if self.arrival_at and self.departure_at and self.departure_at < self.arrival_at:
             errors['departure_at'] = 'Departure cannot be before arrival.'
