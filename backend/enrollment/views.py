@@ -76,7 +76,7 @@ class ClassLevelViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelV
 class ClassArmViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
     serializer_class = ClassArmSerializer
     queryset         = ClassArm.objects.select_related(
-        "class_level", "class_teacher"
+        "class_level", "class_teacher", "campus"
     ).prefetch_related("students")
 
     def get_permissions(self):
