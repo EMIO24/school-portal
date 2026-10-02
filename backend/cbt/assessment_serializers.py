@@ -13,7 +13,7 @@ def validate_scope(request, term, subject, level, arm=None):
         raise serializers.ValidationError('Select academic records from this school.')
     if arm and (arm.school_id != school.pk or arm.class_level_id != level.pk):
         raise serializers.ValidationError({'class_arm': 'Choose a class in this school and level.'})
-    if request.user.role == 'teacher':
+    if request.user.role in ('teacher', 'class_teacher'):
         if arm:
             require_assignment(request, arm.pk, term.pk, subject.pk)
         else:
