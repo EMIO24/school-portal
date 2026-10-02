@@ -56,6 +56,14 @@ class School(models.Model):
         blank=True,
         help_text="Ministry / government registration number",
     )
+    arrival_cutoff_time = models.TimeField(
+        null=True, blank=True,
+        help_text="Optional daily arrival deadline used for lateness evidence.",
+    )
+    student_clockout_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable optional student departure recording.",
+    )
 
     # ── Platform meta ─────────────────────────────────────────────────────────
     is_active = models.BooleanField(
