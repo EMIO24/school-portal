@@ -23,18 +23,22 @@ Tenant scoping is guaranteed by TenantMixin on every ViewSet.
 """
 
 import csv
+from datetime import date, datetime
 from io import StringIO
 
+from django.db import transaction
 from django.db.models import Count, Q, Avg
+from django.utils import timezone
 from django.http import HttpResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
 from rest_framework.response import Response
 
 from tenants.mixins import TenantMixin
 from tenants.document_branding import school_branding_context, secure_document_response
-from .models import AttendanceSession, AttendanceRecord
+from .models import AttendanceSession, AttendanceRecord, StudentDailyPresence
 from .serializers import (
     AttendanceSessionSerializer,
     AttendanceSessionCreateSerializer,
