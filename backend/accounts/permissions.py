@@ -83,9 +83,15 @@ class IsSchoolAdmin(_TenantRolePermission):
     message = "Only school administrators can perform this action."
 
 
+class IsPrincipal(_TenantRolePermission):
+    """Principal for the current tenant."""
+    allowed_roles = ("principal",)
+    message = "Only the school principal can perform this action."
+
+
 class IsTeacher(_TenantRolePermission):
-    """Teacher for the current tenant."""
-    allowed_roles = ("teacher",)
+    """Teacher or class teacher for the current tenant."""
+    allowed_roles = ("teacher", "class_teacher")
     message = "Only teachers can perform this action."
 
 
@@ -104,14 +110,14 @@ class IsParent(_TenantRolePermission):
 # ── Composite helpers (use with | operator in permission_classes) ─────────────
 
 class IsSchoolAdminOrTeacher(_TenantRolePermission):
-    """School admin or teacher — common for content management."""
-    allowed_roles = ("school_admin", "teacher")
+    """School admin or teaching staff — common for content management."""
+    allowed_roles = ("school_admin", "teacher", "class_teacher")
     message = "School admins and teachers can perform this action."
 
 
 class IsSchoolStaff(_TenantRolePermission):
-    """Any staff member of the school (admin or teacher)."""
-    allowed_roles = ("school_admin", "teacher")
+    """Operational staff in the current school."""
+    allowed_roles = ("school_admin", "principal", "teacher", "class_teacher")
     message = "Only school staff can perform this action."
 
 
