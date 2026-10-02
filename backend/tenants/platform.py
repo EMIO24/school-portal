@@ -70,7 +70,7 @@ def school_queryset():
     return School.objects.annotate(
         user_count=Count('users', distinct=True),
         student_count=Count('users', filter=Q(users__role='student'), distinct=True),
-        teacher_count=Count('users', filter=Q(users__role='teacher'), distinct=True),
+        teacher_count=Count('users', filter=Q(users__role__in=('teacher', 'class_teacher')), distinct=True),
         admin_count=Count('users', filter=Q(users__role='school_admin'), distinct=True),
     )
 
