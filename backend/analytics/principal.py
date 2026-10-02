@@ -30,7 +30,7 @@ def snapshot(school):
     return {
         'active_students': active_students(school).count(),
         'active_teachers': StaffProfile.objects.filter(school=school, employment_status='active',
-            user__role='teacher', user__is_active=True).count(),
+            user__role__in=('teacher', 'class_teacher'), user__is_active=True).count(),
         'terms': terms,
     }
 
