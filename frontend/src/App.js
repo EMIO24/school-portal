@@ -93,6 +93,10 @@ import AcademicPlanning from './pages/common/AcademicPlanning';
 import ScoreEntry from './pages/teacher/ScoreEntry';
 import TakeAttendance from './pages/teacher/TakeAttendance';
 import StudentPresence from './pages/common/StudentPresence';
+import Admissions from './pages/admin/Admissions';
+import Welfare from './pages/admin/Welfare';
+import Campuses from './pages/admin/Campuses';
+import StudentRecords from './pages/admin/StudentRecords';
 
 function AppRoutes() {
   return (
@@ -147,6 +151,10 @@ function AppRoutes() {
             } />
             <Route path="students/:id"         element={<StudentProfilePage />} />
             <Route path="students/:id/edit"    element={<StudentForm />} />
+            <Route path="students/:id/records" element={<StudentRecords />} />
+            <Route path="admissions" element={<Admissions />} />
+            <Route path="welfare" element={<Welfare />} />
+            <Route path="campuses" element={<Campuses />} />
 
             {/* Staff */}
             <Route path="staff"                element={<Staff />} />
@@ -196,6 +204,7 @@ function AppRoutes() {
             <Route path="dashboard" element={<TeacherDashboard />} />
             <Route path="attendance" element={<TakeAttendance />} />
             <Route path="presence" element={<ProtectedRoute allowedRoles={["class_teacher"]}><StudentPresence /></ProtectedRoute>} />
+            <Route path="welfare" element={<ProtectedRoute allowedRoles={["class_teacher"]}><Welfare /></ProtectedRoute>} />
             <Route path="scores" element={<ScoreEntry />} />
             <Route path="domains" element={<AffinityDomain />} />
             <Route path="timetable" element={<MyTimetable />} />
