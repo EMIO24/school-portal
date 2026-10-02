@@ -131,7 +131,7 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
         term = self.request.query_params.get('term')
         if term:
             qs = qs.filter(term_id=term)
-        if self.request.user.role == "teacher":
+        if self.request.user.role in ("teacher", "class_teacher"):
             qs = qs.filter(class_arm_id__in=assigned_classes(self.request))
         return qs
 
@@ -205,6 +205,20 @@ class AttendanceSessionViewSet(TenantMixin, viewsets.ModelViewSet):
                 student_id=sid,
                 defaults={'status': item['status'], 'remark': item.get('remark', '')},
             )
+            arrival_time = item.get('arrival_time')
+            if item['status'] == AttendanceRecord.Status.LATE and arrival_time:
+                from enrollment.models import StudentProfile
+                profile = StudentProfile.objects.filter(school=self.school, user_id=sid).first()
+                if profile:
+                    naive = datetime.combine(session.date, arrival_time)
+                    arrival_at = timezone.make_aware(naive, timezone.get_current_timezone())
+                    presence, _ = StudentDailyPresence.objects.get_or_create(
+                        school=self.school, student=profile, date=session.date
+                    )
+                    if presence.arrival_at is None:
+                        presence.arrival_at = arrival_at
+                        presence.arrival_recorded_by = request.user
+                        presence.save(update_fields=['arrival_at', 'arrival_recorded_by', 'updated_at'])
             if was_created:
                 created += 1
             else:
@@ -446,3 +460,186 @@ def _export_class_report_pdf(rows, class_arm_id, school=None):
     response = HttpResponse(text_report_pdf('Class attendance report', lines or ['No attendance records.'], branding=branding), content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="attendance_class_{class_arm_id}.pdf"'
     return secure_document_response(response)
+
+
+def _presence_actor_allowed(request, student, *, correction=False):
+    role = request.user.role
+    if role in ('school_admin', 'principal'):
+        return True
+    if correction:
+        return False
+    if role == 'class_teacher':
+        return bool(student.current_class_id and student.current_class.class_teacher_id == request.user.pk)
+    return False
+
+
+def _presence_payload(presence, school):
+    cutoff = school.arrival_cutoff_time
+    local_arrival = timezone.localtime(presence.arrival_at) if presence.arrival_at else None
+    local_departure = timezone.localtime(presence.departure_at) if presence.departure_at else None
+    return {
+        'id': presence.pk,
+        'student_id': presence.student_id,
+        'student_name': presence.student.full_name,
+        'class_arm': presence.student.current_class.full_name if presence.student.current_class else '',
+        'date': presence.date,
+        'arrival_at': local_arrival.isoformat() if local_arrival else None,
+        'arrival_time': local_arrival.strftime('%H:%M') if local_arrival else None,
+        'late': bool(local_arrival and cutoff and local_arrival.time().replace(tzinfo=None) > cutoff),
+        'departure_at': local_departure.isoformat() if local_departure else None,
+        'departure_time': local_departure.strftime('%H:%M') if local_departure else None,
+        'clockout_enabled': school.student_clockout_enabled,
+    }
+
+
+class StudentPresenceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        school = getattr(request, 'tenant', None)
+        if not school or request.user.school_id != school.pk or request.user.role not in ('school_admin', 'principal', 'class_teacher'):
+            return Response({'detail': 'School presence access required.'}, status=403)
+        raw_date = request.query_params.get('date')
+        try:
+            on_date = date.fromisoformat(raw_date) if raw_date else timezone.localdate()
+        except ValueError:
+            return Response({'date': 'Use YYYY-MM-DD.'}, status=400)
+        qs = StudentDailyPresence.objects.filter(school=school, date=on_date).select_related(
+            'student__user', 'student__current_class__class_level'
+        )
+        class_arm = request.query_params.get('class_arm')
+        if class_arm:
+            if not str(class_arm).isdigit():
+                return Response({'class_arm': 'Choose a valid class.'}, status=400)
+            qs = qs.filter(student__current_class_id=class_arm)
+        if request.user.role == 'class_teacher':
+            qs = qs.filter(student__current_class__class_teacher=request.user)
+        return Response([_presence_payload(row, school) for row in qs[:1000]])
+
+    @transaction.atomic
+    def post(self, request):
+        school = getattr(request, 'tenant', None)
+        from enrollment.models import StudentProfile
+        student = StudentProfile.objects.select_related('current_class__class_level').filter(
+            pk=request.data.get('student'), school=school, status='active'
+        ).first()
+        if not school or not student or not _presence_actor_allowed(request, student):
+            return Response({'detail': 'Student presence access denied.'}, status=403)
+        now = timezone.now()
+        presence, _ = StudentDailyPresence.objects.select_for_update().get_or_create(
+            school=school, student=student, date=timezone.localdate(now)
+        )
+        if presence.arrival_at is None:
+            presence.arrival_at = now
+            presence.arrival_recorded_by = request.user
+            presence.save(update_fields=['arrival_at', 'arrival_recorded_by', 'updated_at'])
+            from tenants.security import audit
+            audit(request, 'attendance.student_arrival_recorded', target=f'presence:{presence.pk}',
+                  details={'school_id': school.pk, 'student_id': student.pk})
+        return Response(_presence_payload(presence, school), status=201)
+
+
+class StudentClockOutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        school = getattr(request, 'tenant', None)
+        if not school or not school.student_clockout_enabled:
+            return Response({'detail': 'Student clock-out is not enabled for this school.'}, status=403)
+        from enrollment.models import StudentProfile
+        student = StudentProfile.objects.select_related('current_class__class_level').filter(
+            pk=request.data.get('student'), school=school, status='active'
+        ).first()
+        if not student or not _presence_actor_allowed(request, student):
+            return Response({'detail': 'Student clock-out access denied.'}, status=403)
+        presence = StudentDailyPresence.objects.select_for_update().filter(
+            school=school, student=student, date=timezone.localdate()
+        ).first()
+        if not presence or not presence.arrival_at:
+            return Response({'detail': 'Record the student arrival before clock-out.'}, status=409)
+        if presence.departure_at is None:
+            presence.departure_at = timezone.now()
+            presence.departure_recorded_by = request.user
+            presence.save(update_fields=['departure_at', 'departure_recorded_by', 'updated_at'])
+            from tenants.security import audit
+            audit(request, 'attendance.student_clocked_out', target=f'presence:{presence.pk}',
+                  details={'school_id': school.pk, 'student_id': student.pk})
+        return Response(_presence_payload(presence, school))
+
+
+class StudentPresenceCorrectionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        school = getattr(request, 'tenant', None)
+        if not school or request.user.role not in ('school_admin', 'principal') or request.user.school_id != school.pk:
+            return Response({'detail': 'Presence correction access denied.'}, status=403)
+        reason = str(request.data.get('reason') or '').strip()
+        if not reason:
+            return Response({'reason': 'Explain why this presence record is being corrected.'}, status=400)
+        presence = StudentDailyPresence.objects.select_for_update().select_related(
+            'student__user', 'student__current_class__class_level'
+        ).filter(pk=pk, school=school).first()
+        if not presence:
+            return Response(status=404)
+        before = _presence_payload(presence, school)
+        for field in ('arrival_at', 'departure_at'):
+            if field not in request.data:
+                continue
+            raw = request.data.get(field)
+            if raw in (None, ''):
+                setattr(presence, field, None)
+                continue
+            try:
+                parsed = datetime.fromisoformat(str(raw))
+                if timezone.is_naive(parsed):
+                    parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+            except (TypeError, ValueError):
+                return Response({field: 'Use an ISO date-time.'}, status=400)
+            setattr(presence, field, parsed)
+        presence.correction_reason = reason[:300]
+        presence.save()
+        from tenants.security import audit
+        audit(request, 'attendance.student_presence_corrected', target=f'presence:{presence.pk}',
+              details={'school_id': school.pk, 'student_id': presence.student_id,
+                       'before': before, 'reason': presence.correction_reason})
+        return Response(_presence_payload(presence, school))
+
+
+class StudentPresenceSettingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        school = getattr(request, 'tenant', None)
+        if not school or request.user.school_id != school.pk or request.user.role not in ('school_admin', 'principal', 'class_teacher'):
+            return Response({'detail': 'School presence access required.'}, status=403)
+        return Response({
+            'arrival_cutoff_time': str(school.arrival_cutoff_time)[:5] if school.arrival_cutoff_time else None,
+            'student_clockout_enabled': school.student_clockout_enabled,
+        })
+
+    def patch(self, request):
+        school = getattr(request, 'tenant', None)
+        if not school or request.user.school_id != school.pk or request.user.role != 'school_admin':
+            return Response({'detail': 'Only the school administrator can change presence settings.'}, status=403)
+        enabled = request.data.get('student_clockout_enabled', school.student_clockout_enabled)
+        if type(enabled) is not bool:
+            return Response({'student_clockout_enabled': 'Use true or false.'}, status=400)
+        raw_cutoff = request.data.get('arrival_cutoff_time')
+        if raw_cutoff in (None, ''):
+            cutoff = None
+        else:
+            try:
+                cutoff = datetime.strptime(str(raw_cutoff), '%H:%M').time()
+            except ValueError:
+                return Response({'arrival_cutoff_time': 'Use HH:MM in 24-hour time.'}, status=400)
+        school.student_clockout_enabled = enabled
+        school.arrival_cutoff_time = cutoff
+        school.save(update_fields=['student_clockout_enabled', 'arrival_cutoff_time'])
+        from tenants.security import audit
+        audit(request, 'attendance.presence_settings_changed', target=f'school:{school.pk}',
+              details={'school_id': school.pk, 'clockout_enabled': enabled,
+                       'arrival_cutoff_time': str(cutoff) if cutoff else None})
+        return self.get(request)
