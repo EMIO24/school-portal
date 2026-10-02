@@ -407,7 +407,7 @@ export default function TakeAttendance() {
                             remark: e.target.value,
                           });}}
                         />
-                        {rec.status === 'late' && <input
+                        {rec.status === 'late' && session?.mode === 'daily' && <input
                           type="time"
                           className="att-remark-input"
                           aria-label={`Arrival time for ${student.student_name}`}
