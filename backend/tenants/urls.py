@@ -62,3 +62,9 @@ urlpatterns += [path('platform/invoices/<int:pk>/invoice.pdf', OwnerInvoiceDocum
                 path('platform/invoices/<int:pk>/receipt.pdf', OwnerInvoiceDocument.as_view(), {'document': 'receipt'})]
 urlpatterns += [path('platform/payment-exceptions/', PlatformPaymentExceptions.as_view()),
                 path('platform/payment-exceptions/<int:pk>/', PlatformPaymentExceptions.as_view())]
+
+from .campuses import CampusListCreate, CampusDetail
+urlpatterns += [
+    path("campuses/", CampusListCreate.as_view()),
+    path("campuses/<int:pk>/", CampusDetail.as_view()),
+]
