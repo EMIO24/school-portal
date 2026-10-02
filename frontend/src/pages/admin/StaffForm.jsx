@@ -120,10 +120,23 @@ export default function StaffForm() {
     Promise.all([
       referenceOptions("/api/subjects/"),
       referenceOptions("/api/class-arms/"),
-    ]).then(([sub, arms]) => {
-      setSubjects(sub.data.results   || sub.data);
-      setClassArms((arms.data.results || arms.data).map(a => ({...a, display_name: a.campus_name ? `${a.full_name} · ${a.campus_name}` : a.full_name})));setOptionsReady(true);
-    }).catch(() => {setLoadFailed(true);setApiError("Could not load assignment options. Reload to retry.");});
+    ]).then(async ([sub, arms]) => {
+      setSubjects(sub.data.results || sub.data);
+      setClassArms((arms.data.results || arms.data).map(a => ({
+        ...a,
+        display_name: a.campus_name ? `${a.full_name} · ${a.campus_name}` : a.full_name,
+      })));
+      try {
+        const { data } = await api.get("/api/campuses/");
+        setCampuses(data.results || data || []);
+      } catch {
+        setCampuses([]);
+      }
+      setOptionsReady(true);
+    }).catch(() => {
+      setLoadFailed(true);
+      setApiError("Could not load assignment options. Reload to retry.");
+    });
   }, []);
 
   // Load staff for edit
