@@ -67,6 +67,7 @@ class ClassArmSerializer(TenantRelationsMixin, serializers.ModelSerializer):
     teacher_name      = serializers.CharField(
         source="class_teacher.full_name", read_only=True, default=None
     )
+    campus_name       = serializers.CharField(source="campus.name", read_only=True, default=None)
     student_count     = serializers.SerializerMethodField()
 
     class Meta:
