@@ -92,6 +92,7 @@ import AcademicStandards from './pages/admin/AcademicStandards';
 import AcademicPlanning from './pages/common/AcademicPlanning';
 import ScoreEntry from './pages/teacher/ScoreEntry';
 import TakeAttendance from './pages/teacher/TakeAttendance';
+import StudentPresence from './pages/common/StudentPresence';
 
 function AppRoutes() {
   return (
@@ -118,10 +119,11 @@ function AppRoutes() {
 
       {/* ── School Admin ─────────────────────────────────────────────────── */}
       <Route path="/admin/*" element={
-        <ProtectedRoute allowedRoles={["school_admin"]}>
+        <ProtectedRoute allowedRoles={["school_admin", "principal"]}>
           <Routes>
             <Route path="dashboard"            element={<AdminDashboard />} />
             <Route path="attendance" element={<AttendanceOverview />} />
+            <Route path="presence" element={<StudentPresence />} />
             <Route path="subjects" element={<SubjectManager />} />
             <Route path="subject-assignments" element={<SubjectAssignment />} />
             <Route path="timetable" element={<TimetableBuilder />} />
@@ -189,10 +191,11 @@ function AppRoutes() {
 
       {/* ── Teacher ──────────────────────────────────────────────────────── */}
       <Route path="/teacher/*" element={
-        <ProtectedRoute allowedRoles={["teacher"]}>
+        <ProtectedRoute allowedRoles={["teacher", "class_teacher"]}>
           <Routes>
             <Route path="dashboard" element={<TeacherDashboard />} />
             <Route path="attendance" element={<TakeAttendance />} />
+            <Route path="presence" element={<StudentPresence />} />
             <Route path="scores" element={<ScoreEntry />} />
             <Route path="domains" element={<AffinityDomain />} />
             <Route path="timetable" element={<MyTimetable />} />
