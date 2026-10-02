@@ -70,6 +70,7 @@ export default function StaffForm() {
   const [originalStatus,setOriginalStatus] = useState("active");
   const [subjects,    setSubjects]    = useState([]);
   const [classArms,   setClassArms]   = useState([]);
+  const [campuses,    setCampuses]    = useState([]);
   const [loading,     setLoading]     = useState(isEdit);
   const [saving,      setSaving]      = useState(false);
   const [errors,      setErrors]      = useState({});
@@ -121,7 +122,7 @@ export default function StaffForm() {
       referenceOptions("/api/class-arms/"),
     ]).then(([sub, arms]) => {
       setSubjects(sub.data.results   || sub.data);
-      setClassArms(arms.data.results || arms.data);setOptionsReady(true);
+      setClassArms((arms.data.results || arms.data).map(a => ({...a, display_name: a.campus_name ? `${a.full_name} · ${a.campus_name}` : a.full_name})));setOptionsReady(true);
     }).catch(() => {setLoadFailed(true);setApiError("Could not load assignment options. Reload to retry.");});
   }, []);
 
@@ -287,6 +288,12 @@ export default function StaffForm() {
               <input type="text" value={form.specialization} onChange={e => set("specialization", e.target.value)} placeholder="e.g. Mathematics" />
             </Field>
             <Field label="Date Employed"><input type="date" value={form.date_employed} onChange={e => set("date_employed", e.target.value)} /></Field>
+            {campuses.length > 0 && <Field label="Campus">
+              <select value={form.campus || ""} onChange={e => set("campus", e.target.value)}>
+                <option value="">Whole school / not assigned</option>
+                {campuses.map(campus => <option key={campus.id} value={campus.id}>{campus.name}</option>)}
+              </select>
+            </Field>}
             {isEdit && (
               <Field label="Employment Status">
                 <select value={form.employment_status} onChange={e => set("employment_status", e.target.value)}>
@@ -323,7 +330,7 @@ export default function StaffForm() {
                   items={classArms}
                   selected={form.assigned_classes}
                   onToggle={id => toggleSelection("assigned_classes", id)}
-                  labelKey="full_name"
+                  labelKey="display_name"
                 />
               </div>
             </div>
