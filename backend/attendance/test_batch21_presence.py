@@ -211,3 +211,46 @@ class Batch21PresenceAndRolesTests(TestCase):
         self.assertTrue(PlatformEvent.objects.filter(
             action='attendance.student_presence_corrected', target=f'presence:{presence.pk}'
         ).exists())
+
+
+    def test_school_admin_can_promote_existing_staff_and_scope_class_teacher(self):
+        teacher_user = User.objects.create_user(
+            email='promote@batch21.test', password='Password!123', school=self.school,
+            role='teacher', first_name='Promote', last_name='Me', must_change_password=False,
+        )
+        staff = StaffProfile.objects.create(
+            user=teacher_user, school=self.school, employment_status='active'
+        )
+        arm_c = ClassArm.objects.create(
+            school=self.school, class_level=self.level, name='C'
+        )
+        client = self.client_for(self.admin)
+
+        promoted = client.patch(
+            f'/api/staff/{staff.pk}/',
+            {'new_role': 'class_teacher', 'assigned_classes': [arm_c.pk]},
+            format='json',
+        )
+        self.assertEqual(promoted.status_code, 200, promoted.data)
+        teacher_user.refresh_from_db()
+        arm_c.refresh_from_db()
+        self.assertEqual(teacher_user.role, 'class_teacher')
+        self.assertEqual(arm_c.class_teacher_id, teacher_user.pk)
+
+        principal = client.patch(
+            f'/api/staff/{staff.pk}/',
+            {'new_role': 'principal'},
+            format='json',
+        )
+        self.assertEqual(principal.status_code, 200, principal.data)
+        teacher_user.refresh_from_db()
+        staff.refresh_from_db()
+        arm_c.refresh_from_db()
+        self.assertEqual(teacher_user.role, 'principal')
+        self.assertIsNone(arm_c.class_teacher_id)
+        self.assertEqual(staff.assigned_classes.count(), 0)
+        self.assertTrue(PlatformEvent.objects.filter(
+            action='school.staff_role_changed',
+            target=str(staff.pk),
+            details__after='principal',
+        ).exists())
