@@ -151,7 +151,7 @@ export default function ParentDashboard() {
                     <div className="attend-warning">⚠ Below 75% attendance</div>
                   )}
                   <div className="attend-pct">{d.attendance_summary.percentage}%</div>
-                  <div className="attend-sub">{d.attendance_summary.present} / {d.attendance_summary.total} days present</div>
+                  <div className="attend-sub">{d.attendance_summary.present} / {d.attendance_summary.total} days present · {d.attendance_summary.late || 0} late</div>
                   <div className="dot-row">
                     {d.attendance_summary.last_7_days.map((day, i) => (
                       <span
@@ -162,6 +162,18 @@ export default function ParentDashboard() {
                       />
                     ))}
                   </div>
+                  {d.presence_today && <div className="parent-presence-today">
+                    <strong>Today</strong>
+                    <span>{d.presence_today.late ? 'Late' : 'Arrival recorded'}{d.presence_today.arrival_time ? ` · ${d.presence_today.arrival_time}` : ''}</span>
+                    {d.presence_today.clockout_enabled && <span>{d.presence_today.departure_time
+                      ? `Clocked out · ${d.presence_today.departure_time}`
+                      : 'No clock-out has been recorded today.'}</span>}
+                  </div>}
+                  {d.attendance_summary.last_7_days.some(day => day.status === 'late') && <div className="recent-lateness">
+                    <strong>Recent lateness</strong>
+                    {d.attendance_summary.last_7_days.filter(day => day.status === 'late').map(day =>
+                      <span key={day.date}>{day.date}{day.arrival_time ? ` · arrived ${day.arrival_time}` : ' · arrival time not recorded'}</span>)}
+                  </div>}
                 </>
               ) : <p className="no-data">No attendance data.</p>}
             </div>
