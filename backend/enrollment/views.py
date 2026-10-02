@@ -154,6 +154,8 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if self.request.user.role == 'class_teacher':
+            qs = qs.filter(current_class__class_teacher=self.request.user)
 
         # Status filter: ?status=active
         status_filter = self.request.query_params.get("status")
