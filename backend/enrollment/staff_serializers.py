@@ -120,9 +120,30 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
             raise serializers.ValidationError('Ask another administrator to deactivate your account.')
         from .account_editing import account_changes, edit_account
         edit_account(self.context['request'], instance.user, account_changes(validated_data))
-        validated_data.pop('new_role', None)
+        new_role = validated_data.pop('new_role', None)
+        old_role = instance.user.role
+        if new_role and new_role != old_role:
+            if self.context['request'].user.role != 'school_admin':
+                raise serializers.ValidationError({'new_role': 'Only a school administrator can change staff roles.'})
+            if instance.user_id == self.context['request'].user.pk:
+                raise serializers.ValidationError({'new_role': 'Ask another administrator to change your own role.'})
+            instance.user.role = new_role
+            instance.user.save(update_fields=['role'])
+            if old_role == 'class_teacher' and new_role != 'class_teacher':
+                ClassArm.objects.filter(school=instance.school, class_teacher=instance.user).update(class_teacher=None)
         instance = super().update(instance, validated_data)
+        if instance.user.role == 'principal':
+            instance.subjects_taught.clear()
+            instance.assigned_classes.clear()
         self._sync_class_teacher_scope(instance)
+        if new_role and new_role != old_role:
+            from tenants.models import PlatformEvent
+            actor = self.context['request'].user
+            PlatformEvent.objects.create(
+                actor=actor, actor_email=actor.email, action='school.staff_role_changed',
+                target=str(instance.pk),
+                details={'school_id': instance.school_id, 'before': old_role, 'after': new_role},
+            )
         if state in ('active', 'suspended', 'terminated', 'resigned'):
             instance.user.is_active = state == 'active'
             instance.user.save(update_fields=['is_active'])
