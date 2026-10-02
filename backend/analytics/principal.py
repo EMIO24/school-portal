@@ -402,7 +402,7 @@ class PrincipalOperationsView(APIView):
 
     def get(self, request):
         school, user = getattr(request, 'tenant', None), request.user
-        if not school or not user.is_active or user.must_change_password or user.school_id != school.pk or user.role != 'school_admin':
+        if not school or not user.is_active or user.must_change_password or user.school_id != school.pk or user.role not in ('school_admin', 'principal'):
             return Response({'detail': 'School management access required.'}, status=403)
         section = request.query_params.get('section', 'snapshot')
         if section not in SECTIONS:
