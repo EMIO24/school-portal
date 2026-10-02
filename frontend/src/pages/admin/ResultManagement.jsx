@@ -12,6 +12,7 @@ import {referenceOptions} from '../../services/referenceOptions';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
+import { useAuth } from '../../hooks/useAuth';
 import ResultReview from './ResultReview';
 import { Link } from 'react-router-dom';
 import { downloadFile } from '../../services/download';
@@ -77,7 +78,7 @@ function RemarkDrawer({ student, termId, onSaved, onClose }) {
               placeholder="Enter principal's remark…"
             />
           </div>
-          <div className="res-remark-actions">
+          <div className="res-remark-actions">{canManagePresentation && (
             <button className="res-btn res-btn--ghost" onClick={onClose}>Cancel</button>
             <button className="res-btn res-btn--navy" onClick={handleSave} disabled={saving}>
               {saving ? 'Saving…' : '💾 Save Remarks'}
@@ -141,6 +142,7 @@ export default function ResultManagement() {
 
   // ── Compute positions ────────────────────────────────────────────────────────
   const handleComputePositions = async () => {
+    if (!canManagePresentation) return;
     if (!selClass || !selTerm) return;
     setComputing(true);
     setAlert(null);
@@ -232,7 +234,7 @@ export default function ResultManagement() {
               disabled={computing || !selClass || !selTerm}
             >
               {computing ? '⏳ Computing…' : '📊 Compute Positions'}
-            </button>
+            </button>)}
             <button
               className="res-btn res-btn--ghost"
               onClick={downloadBroadsheet}
@@ -380,7 +382,7 @@ export default function ResultManagement() {
                     </tr>
 
                     {/* Inline remark drawer */}
-                    {expandedId === student.student && (
+                    {canManagePresentation && expandedId === student.student && (
                       <RemarkDrawer
                         student={student}
                         termId={selTerm}
