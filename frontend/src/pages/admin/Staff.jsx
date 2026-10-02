@@ -19,8 +19,8 @@ const STATUS_COLORS = {
   resigned:   "badge",
 };
 
-const ROLE_LABELS = { teacher: "Teacher", school_admin: "Admin" };
-const ROLE_COLORS = { teacher: "badge-info", school_admin: "badge-primary" };
+const ROLE_LABELS = { teacher: "Teacher", class_teacher: "Class Teacher", principal: "Principal", school_admin: "Admin" };
+const ROLE_COLORS = { teacher: "badge-info", class_teacher: "badge-info", principal: "badge-primary", school_admin: "badge-primary" };
 
 function Avatar({ photo, name }) {
   const initials = name
