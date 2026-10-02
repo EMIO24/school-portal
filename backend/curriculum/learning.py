@@ -19,12 +19,12 @@ def _base_access(request):
     school, user = getattr(request, 'tenant', None), request.user
     return bool(
         school and user.is_authenticated and user.is_active and not user.must_change_password
-        and user.school_id == school.pk and user.role in ('school_admin', 'teacher')
+        and user.school_id == school.pk and user.role in ('school_admin', 'principal', 'teacher', 'class_teacher')
     )
 
 
 def _manager(request):
-    return _base_access(request) and request.user.role == 'school_admin'
+    return _base_access(request) and request.user.role in ('school_admin', 'principal')
 
 
 def _positive(value):
@@ -36,7 +36,7 @@ def _positive(value):
 
 
 def _assigned(request, term, arm, subject):
-    if request.user.role == 'school_admin':
+    if request.user.role in ('school_admin', 'principal'):
         return True
     return SubjectAssignment.objects.filter(
         school=request.tenant, teacher__user=request.user, teacher__employment_status='active',
@@ -85,7 +85,7 @@ class LessonPlanListView(APIView):
         rows = LessonPlan.objects.filter(school=request.tenant).select_related(
             'term__session', 'class_arm__class_level', 'subject', 'curriculum_topic', 'teacher'
         ).order_by('-updated_at')
-        if request.user.role == 'teacher':
+        if request.user.role in ('teacher', 'class_teacher'):
             rows = rows.filter(teacher=request.user)
         for key, field in (('term', 'term_id'), ('class_arm', 'class_arm_id'), ('subject', 'subject_id'), ('status', 'status')):
             value = request.query_params.get(key)
@@ -110,11 +110,13 @@ class LessonPlanListView(APIView):
             return Response({'detail': 'Choose a valid term, class, subject and curriculum topic.'}, status=400)
         if not _assigned(request, term, arm, subject):
             return Response({'detail': 'This class/subject is not assigned to you.'}, status=403)
-        teacher = request.user if request.user.role == 'teacher' else None
+        teacher = request.user if request.user.role in ('teacher', 'class_teacher') else None
+        if request.user.role == 'principal':
+            return Response({'detail': 'Principal reviews learning delivery but does not author teacher lesson plans.'}, status=403)
         if request.user.role == 'school_admin':
             teacher_id = _positive(request.data.get('teacher'))
             from accounts.models import CustomUser
-            teacher = CustomUser.objects.filter(pk=teacher_id, school=school, role='teacher', is_active=True).first()
+            teacher = CustomUser.objects.filter(pk=teacher_id, school=school, role__in=('teacher', 'class_teacher'), is_active=True).first()
             if not teacher or not _assigned(type('R', (), {'user': teacher, 'tenant': school})(), term, arm, subject):
                 return Response({'teacher': 'Choose the assigned active teacher.'}, status=400)
         title = request.data.get('title', '')
@@ -152,7 +154,7 @@ class LessonPlanTransitionView(APIView):
             return Response({'detail': 'Lesson plan not found.'}, status=404)
         action = request.data.get('action')
         if plan.status == LessonPlan.Status.DRAFT:
-            if action != 'submit' or (request.user.role == 'teacher' and plan.teacher_id != request.user.pk):
+            if action != 'submit' or (request.user.role in ('teacher', 'class_teacher') and plan.teacher_id != request.user.pk):
                 return Response({'detail': 'Only the owning teacher can submit this draft.'}, status=409)
             plan.status = LessonPlan.Status.SUBMITTED
         elif plan.status == LessonPlan.Status.SUBMITTED:
@@ -183,7 +185,7 @@ class AcademicResourceListView(APIView):
         rows = AcademicResource.objects.filter(school=request.tenant).select_related(
             'class_level', 'subject', 'standard_topic__standard'
         ).order_by('-updated_at')
-        if request.user.role == 'teacher':
+        if request.user.role in ('teacher', 'class_teacher'):
             scopes = set(SubjectAssignment.objects.filter(
                 school=request.tenant, teacher__user=request.user, teacher__employment_status='active'
             ).values_list('class_arm__class_level_id', 'subject_id'))
@@ -195,6 +197,8 @@ class AcademicResourceListView(APIView):
     def post(self, request):
         if not _base_access(request):
             return Response({'detail': 'Academic resource access required.'}, status=403)
+        if request.user.role == 'principal':
+            return Response({'detail': 'Principal reviews learning resources but does not author teacher resources.'}, status=403)
         school = request.tenant
         level = ClassLevel.objects.filter(pk=_positive(request.data.get('class_level')), school=school).first()
         subject = Subject.objects.filter(pk=_positive(request.data.get('subject')), school=school).first()
@@ -205,7 +209,7 @@ class AcademicResourceListView(APIView):
             ).select_related('standard').first()
         if not level or not subject:
             return Response({'detail': 'Choose a class level and subject in this school.'}, status=400)
-        if request.user.role == 'teacher' and not SubjectAssignment.objects.filter(
+        if request.user.role in ('teacher', 'class_teacher') and not SubjectAssignment.objects.filter(
             school=school, teacher__user=request.user, teacher__employment_status='active',
             class_arm__class_level=level, subject=subject
         ).exists():
@@ -245,7 +249,7 @@ class AcademicResourceTransitionView(APIView):
             return Response({'detail': 'Academic resource not found.'}, status=404)
         action = request.data.get('action')
         if resource.status == AcademicResource.Status.DRAFT:
-            if action != 'submit' or (request.user.role == 'teacher' and resource.created_by_id != request.user.pk):
+            if action != 'submit' or (request.user.role in ('teacher', 'class_teacher') and resource.created_by_id != request.user.pk):
                 return Response({'detail': 'Only the author can submit this draft.'}, status=409)
             resource.status = AcademicResource.Status.SUBMITTED
         elif resource.status == AcademicResource.Status.SUBMITTED:
@@ -279,7 +283,7 @@ class AcademicResourceReviseView(APIView):
         ).select_related('class_level', 'subject').first()
         if not previous:
             return Response({'detail': 'Only an approved resource can start a new revision.'}, status=409)
-        if request.user.role == 'teacher' and not SubjectAssignment.objects.filter(
+        if request.user.role in ('teacher', 'class_teacher') and not SubjectAssignment.objects.filter(
             school=request.tenant, teacher__user=request.user, teacher__employment_status='active',
             class_arm__class_level=previous.class_level, subject=previous.subject
         ).exists():
@@ -299,3 +303,24 @@ class AcademicResourceReviseView(APIView):
         audit(request, 'curriculum.resource_revised', target=f'academic-resource:{revised.pk}',
               details={'school_id': request.tenant.pk, 'supersedes': previous.pk})
         return Response({'resource': _resource_data(revised)}, status=201)
+
+
+class StudentLearningResourcesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        school = getattr(request, 'tenant', None)
+        if not school or request.user.role != 'student' or request.user.school_id != school.pk:
+            return Response({'detail': 'Student learning-resource access required.'}, status=403)
+        profile = getattr(request.user, 'student_profile', None)
+        if not profile or not profile.current_class_id:
+            return Response({'resources': []})
+        level_id = profile.current_class.class_level_id
+        rows = AcademicResource.objects.filter(
+            school=school,
+            class_level_id=level_id,
+            status=AcademicResource.Status.APPROVED,
+        ).select_related('class_level', 'subject', 'standard_topic__standard').order_by(
+            'subject__name', 'title', '-revision'
+        )
+        return Response({'resources': [_resource_data(row) for row in rows]})
