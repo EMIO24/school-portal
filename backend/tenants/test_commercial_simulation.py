@@ -92,7 +92,8 @@ class CommercialSimulationTests(TestCase):
             attendance_session_id=attendance_id, student__student_profile__status='withdrawn'
         ).exists())
         payload = {'records': [
-            {'student_id': row['student'], 'status': 'late' if i == 0 else 'present'}
+            {'student_id': row['student'], 'status': 'late' if i == 0 else 'present',
+             **({'arrival_time': '08:15'} if i == 0 else {})}
             for i, row in enumerate(start.data['records'])
         ]}
         for _ in range(2):

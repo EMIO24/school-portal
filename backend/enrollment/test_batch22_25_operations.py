@@ -129,6 +129,41 @@ class Batch22To25OperationsTests(TestCase):
         )
         self.assertEqual(denied.status_code, 404)
 
+    def test_long_slug_admission_preserves_identifiers_and_retry_history(self):
+        self.school.slug = "s" * 100
+        self.school.subdomain = self.school.slug
+        self.school.save(update_fields=["slug", "subdomain"])
+        numbers = []
+        for index in range(2):
+            app = self.create_application(first_name=f"Long{index}")
+            client = self.client_for(self.admin)
+            url = f"/api/operations/admissions/{app['id']}/decision/"
+            admitted = client.post(url, {"decision": "admit"}, format="json")
+            self.assertEqual(admitted.status_code, 201, admitted.data)
+            student = StudentProfile.objects.get(pk=admitted.data["admitted_student"])
+            number = student.admission_number
+            self.assertEqual(len(number), 110)
+            self.assertTrue(number.startswith(self.school.slug.upper() + "-"))
+            self.assertTrue(number.endswith(f"-{index + 1:04d}"))
+            self.assertLessEqual(len(number), StudentProfile._meta.get_field("admission_number").max_length)
+            numbers.append(number)
+            record = StudentRecordEntry.objects.get(student=student)
+            original_details = record.details
+            repeated = client.post(url, {"decision": "admit"}, format="json")
+            self.assertEqual(repeated.status_code, 200, repeated.data)
+            self.assertEqual(repeated.data["admitted_student"], student.pk)
+            self.assertEqual(repeated.data["application_number"], app["application_number"])
+            self.assertEqual(SessionEnrollment.objects.filter(student=student).count(), 1)
+            self.assertEqual(StudentRecordEntry.objects.filter(student=student).count(), 1)
+            student.guardian_name = "Corrected guardian"
+            student.save()
+            student.refresh_from_db()
+            record.refresh_from_db()
+            self.assertEqual(student.admission_number, number)
+            self.assertEqual(record.details, original_details)
+        self.assertEqual(len(set(numbers)), 2)
+        self.assertEqual(StudentProfile.objects.filter(school=self.school).count(), 2)
+
     def test_no_arm_admission_needs_no_fake_class_arm(self):
         app = self.create_application()
         decision = self.client_for(self.admin).post(

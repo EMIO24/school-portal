@@ -178,7 +178,7 @@ class AdmissionDecision(APIView):
         if not _school_user(request, ("school_admin", "principal")):
             return Response({"detail": "Admissions decision access required."}, status=403)
         school = request.tenant
-        row = AdmissionApplication.objects.select_for_update().select_related(
+        row = AdmissionApplication.objects.select_for_update(of=("self",)).select_related(
             "applying_class_level", "preferred_campus", "admitted_student__user"
         ).filter(pk=pk, school=school).first()
         if not row:

@@ -68,6 +68,7 @@ export default function StaffForm() {
 
   const [loadFailed,setLoadFailed] = useState(false), [optionsReady,setOptionsReady] = useState(false);
   const [originalStatus,setOriginalStatus] = useState("active");
+  const [originalRole,setOriginalRole] = useState("teacher");
   const [subjects,    setSubjects]    = useState([]);
   const [classArms,   setClassArms]   = useState([]);
   const [campuses,    setCampuses]    = useState([]);
@@ -145,6 +146,7 @@ export default function StaffForm() {
     if (!isEdit) return;
     api.get(`/api/staff/${id}/`).then(({ data }) => {
       setOriginalStatus(data.employment_status);
+      setOriginalRole(data.role || "teacher");
       setForm({
         new_email:        data.email         || "",
         new_first_name:   data.first_name    || "",
@@ -191,6 +193,7 @@ export default function StaffForm() {
       const payload = { ...form, campus: form.campus ? Number(form.campus) : null, dob: form.dob || null, date_employed: form.date_employed || null };
       let staffId = id;
       if (isEdit) {
+        if (payload.new_role === originalRole) delete payload.new_role;
         await api.patch(`/api/staff/${id}/`, payload);
         showToast("Staff member updated.");
         setTimeout(() => navigate(`/admin/staff/${id}`), 1200);
@@ -257,7 +260,7 @@ export default function StaffForm() {
                   placeholder="ngozi@school.edu.ng" />
               </Field>
               <Field label="Role" error={errors.new_role}>
-                <select disabled={saving} value={form.new_role} onChange={e => set("new_role", e.target.value)}>
+                <select aria-label="Role" disabled={saving} value={form.new_role} onChange={e => set("new_role", e.target.value)}>
                   <option value="teacher">Teacher</option>
                   <option value="class_teacher">Class Teacher</option>
                   <option value="principal">Principal</option>

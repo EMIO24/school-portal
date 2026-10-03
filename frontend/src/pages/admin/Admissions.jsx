@@ -98,7 +98,7 @@ export default function Admissions() {
         <p>{app.applying_class_level_name} · {app.status}{app.preferred_campus_name?` · ${app.preferred_campus_name}`:''}</p>
         <p>Guardian: {app.guardian_name} · {app.guardian_phone}</p>
         {(app.documents||[]).map(doc=><p key={doc.id}><small>{doc.kind}</small> · <a href={doc.document_url} target="_blank" rel="noreferrer">{doc.title}</a></p>)}
-        {!['admitted','rejected','withdrawn'].includes(app.status)&&<button disabled={busy} onClick={()=>addDocument(app)}>Add document</button>
+        {!['admitted','rejected','withdrawn'].includes(app.status)&&<button disabled={busy} onClick={()=>addDocument(app)}>Add document</button>}
         {!['admitted','rejected','withdrawn'].includes(app.status)&&<div className="assessment-actions">
           <button disabled={busy} onClick={()=>decide(app,'under_review')}>Under review</button>
           <button disabled={busy} onClick={()=>decide(app,'offered')}>Offer</button>

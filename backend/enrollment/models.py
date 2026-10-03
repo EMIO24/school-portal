@@ -252,7 +252,7 @@ class StudentProfile(models.Model):
 
     # ── Admission ─────────────────────────────────────────────────────────
     admission_number = models.CharField(
-        max_length=30,
+        max_length=128,
         unique=True,
         blank=True,          # generated in save()
         help_text="Auto-generated: SLUG-YYYY-XXXX",

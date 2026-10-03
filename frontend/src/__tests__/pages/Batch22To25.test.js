@@ -88,7 +88,7 @@ test('official student record creates an append-only correction reference', asyn
   api.post.mockResolvedValue({data: {id: 5}});
 
   renderPage(<StudentRecords />, {path: '/test/71', route: '/test/:id'});
-  expect(await screen.findByText(/Original identity/)).toBeVisible();
+  expect(await screen.findByText(/Original identity/, {selector: 'strong'})).toBeVisible();
 
   fireEvent.change(screen.getByLabelText('Type'), {target: {value: 'identity'}});
   fireEvent.change(screen.getByLabelText('Corrects earlier entry'), {target: {value: '4'}});

@@ -96,8 +96,8 @@ def assigned_classes(request):
             school=request.tenant, class_teacher=request.user
         ).values_list('id', flat=True)
         return ClassArm.objects.filter(
+            models.Q(id__in=subject_ids) | models.Q(id__in=homeroom_ids),
             school=request.tenant,
-            models.Q(id__in=subject_ids) | models.Q(id__in=homeroom_ids)
         ).values_list('id', flat=True)
     return subject_ids
 

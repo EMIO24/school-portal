@@ -37,7 +37,8 @@ class Batch24LearningDeliveryTests(TestCase):
             school=cls.school, must_change_password=False,
         )
         cls.student = StudentProfile.objects.create(
-            user=cls.student_user, school=cls.school, current_class=cls.arm, status="active"
+            user=cls.student_user, school=cls.school, current_class=cls.arm, status="active",
+            admission_number="LDS-2026-0001",
         )
         cls.approved = AcademicResource.objects.create(
             school=cls.school, class_level=cls.level, subject=cls.subject,

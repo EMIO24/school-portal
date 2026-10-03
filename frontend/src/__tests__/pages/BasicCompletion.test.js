@@ -26,6 +26,15 @@ test('staff edits send corrected identity while keeping role fixed',async()=>{
   expect(api.patch.mock.calls[0][1]).not.toHaveProperty('new_role');
 });
 
+test('staff edits send an explicitly selected role change',async()=>{
+  api.get.mockImplementation(async url=>({data:url.includes('/staff/')?{id:9,first_name:'Ada',last_name:'Teacher',email:'ada@example.test',role:'teacher',employment_status:'active'}:[]}));
+  api.patch.mockResolvedValue({data:{id:9}});
+  renderPage(<StaffForm/>,{path:'/staff/9/edit',route:'/staff/:id/edit'});
+  fireEvent.change(await screen.findByLabelText('Role'),{target:{value:'principal'}});
+  fireEvent.click(screen.getByRole('button',{name:/Save Changes/i}));
+  await waitFor(()=>expect(api.patch).toHaveBeenCalledWith('/api/staff/9/',expect.objectContaining({new_role:'principal'})));
+});
+
 test('administrator can find an existing parent and reuse verified details',async()=>{
   api.get.mockImplementation(async (url,options)=>({data:options?.params?.search?[{first_name:'Parent',last_name:'One',email:'parent@example.test',phone:'08012345678'}]:[]}));
   api.post.mockResolvedValue({data:{id:1}});

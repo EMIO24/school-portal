@@ -30,8 +30,8 @@ test('school admin can configure optional clockout and arrival cutoff', async ()
   }});
 
   renderPage(<StudentPresence />);
-  expect(await screen.findByText('Student Presence')).toBeVisible();
-  expect(screen.getByLabelText('Late after')).toHaveValue('07:45');
+  expect(await screen.findByLabelText('Late after')).toHaveValue('07:45');
+  expect(screen.getByRole('heading', {name: 'Student Presence'})).toBeVisible();
   fireEvent.click(screen.getByLabelText(/Enable student clock-out/));
   fireEvent.click(screen.getByRole('button', {name: 'Save presence settings'}));
   await waitFor(() => expect(api.patch).toHaveBeenCalledWith(

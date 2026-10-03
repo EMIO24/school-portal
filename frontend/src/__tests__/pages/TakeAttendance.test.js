@@ -8,7 +8,7 @@ import {referenceOptions} from '../../services/referenceOptions';
 jest.mock('../../services/api', () => ({__esModule: true, default: {get: jest.fn(), post: jest.fn(), patch: jest.fn()}}));
 jest.mock('../../services/referenceOptions', () => ({referenceOptions: jest.fn()}));
 
-const session = status => ({id: 9, class_name: 'JSS1A', date: '2026-09-26', is_finalized: false,
+const session = status => ({id: 9, class_name: 'JSS1A', date: '2026-09-26', mode: 'daily', is_finalized: false,
   records: [{student: 101, student_name: 'Test Student', student_admission: 'ADM1', status, remark: ''}]});
 
 beforeEach(() => {

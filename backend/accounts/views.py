@@ -276,12 +276,13 @@ class ParentStudentDashboardView(APIView):
         result_summary = None
         if term:
             scores = ScoreEntry.objects.filter(student=student.user, term=term, school=school, is_published=True)
-            avg    = scores.aggregate(a=Avg('total_score'))['a']
+            score_summary = scores.aggregate(avg=Avg('total_score'), subjects=Count('pk'))
+            avg = score_summary['avg']
             remark = ResultRemark.objects.filter(student=student.user, term=term, school=school).first()
             result_summary = {
                 'average':  round(float(avg), 1) if avg else None,
                 'position': remark.computed_position if remark else None,
-                'subjects': scores.count(),
+                'subjects': score_summary['subjects'],
             }
 
         # ── Attendance summary ─────────────────────────────────────────────
@@ -331,10 +332,12 @@ class ParentStudentDashboardView(APIView):
                       'outstanding': str(position['outstanding']) if position['outstanding'] is not None else None,
                       'credit': str(position['credit']) if position['credit'] is not None else None}
         if position['state'] == 'active':
-            fee_status['total'] = str(StudentLedgerEntry.objects.filter(school=school, student=student,
-                signed_amount__gt=0).aggregate(t=Sum('signed_amount'))['t'] or Decimal('0'))
-            fee_status['paid'] = str(-(StudentLedgerEntry.objects.filter(school=school, student=student,
-                kind='payment').aggregate(t=Sum('signed_amount'))['t'] or Decimal('0')))
+            ledger_summary = StudentLedgerEntry.objects.filter(school=school, student=student).aggregate(
+                total=Sum('signed_amount', filter=Q(signed_amount__gt=0)),
+                paid=Sum('signed_amount', filter=Q(kind='payment')),
+            )
+            fee_status['total'] = str(ledger_summary['total'] or Decimal('0'))
+            fee_status['paid'] = str(-(ledger_summary['paid'] or Decimal('0')))
 
         # ── Today's timetable ──────────────────────────────────────────────
         today_schedule = []

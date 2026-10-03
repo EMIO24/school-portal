@@ -264,7 +264,7 @@ class BasicOperationsTests(TestCase):
         created_profile = StudentProfile.objects.get(pk=student['id'])
         attendance_date = str(created_profile.admission_date)
         attendance = post('/api/attendance/sessions/start/',{'class_arm':arm['id'],'term':term['id'],'date':attendance_date,'mode':'daily'})
-        self.assertEqual(self.client.patch(f"/api/attendance/sessions/{attendance['id']}/submit/",{'records':[{'student_id':student['user'],'status':'late'}]},format='json').status_code,200)
+        self.assertEqual(self.client.patch(f"/api/attendance/sessions/{attendance['id']}/submit/",{'records':[{'student_id':student['user'],'status':'late','arrival_time':'08:15'}]},format='json').status_code,200)
         score_payload = {'class_arm':arm['id'],'subject':subject['id'],'term':term['id'],'session':session['id'],'scores':[{'student_id':student['user'],'first_test':10,'second_test':8,'assignment':8,'project':4,'practical':5,'exam_score':50}]}
         post('/api/gradebook/entries/bulk-update/',score_payload,200)
         self.assertEqual(ScoreEntry.objects.get(school=school).total_score,85)

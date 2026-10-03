@@ -10,7 +10,7 @@ from enrollment.models import ClassArm, ClassLevel, SessionEnrollment, StudentPr
 from enrollment.transfers import transfer_student
 from tenants.models import School
 
-from .models import AttendanceRecord
+from .models import AttendanceRecord, StudentDailyPresence
 from .serializers import AttendanceSessionCreateSerializer
 from .views import AttendanceSessionViewSet
 
@@ -136,6 +136,7 @@ class TransferAwareAttendanceTests(TestCase):
                     "student_id": self.user.pk,
                     "status": "late",
                     "remark": "Backdated correction",
+                    "arrival_time": "08:15",
                 }]
             },
             format="json",
@@ -153,6 +154,11 @@ class TransferAwareAttendanceTests(TestCase):
             student=self.user,
         )
         self.assertEqual(record.status, "late")
+        presence = StudentDailyPresence.objects.get(
+            school=self.school, student=self.student, date=register.date,
+        )
+        self.assertEqual(presence.class_arm_id, self.old_arm.pk)
+        self.assertEqual(presence.arrival_at.date(), register.date)
 
     def test_old_class_register_after_transfer_rejects_student_submission(self):
         register = self.create_register(self.old_arm, date(2026, 9, 16))

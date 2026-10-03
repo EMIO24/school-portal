@@ -47,6 +47,18 @@ class StudentNameLoginTests(TestCase):
         self.assertEqual(response.status_code, 401, response.data)
         self.assertEqual(response.json(), {"errors": {"non_field_errors": ["Invalid login details."]}})
 
+    def test_long_generated_admission_number_disambiguates_name_login(self):
+        self.school.slug = "s" * 100
+        self.school.subdomain = self.school.slug
+        self.school.save(update_fields=["slug", "subdomain"])
+        duplicate = self.make_student(self.school)
+        number = duplicate.student_profile.admission_number
+        self.assertEqual(len(number), 110)
+        response = self.login("Emmanuel Osarodion", admission=number)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["user"]["id"], duplicate.pk)
+        self.assert_invalid(self.login("Wrong Name", admission=number))
+
     def test_name_case_and_whitespace_preserve_display_name(self):
         for name in ("Emmanuel Osarodion", "emmanuel osarodion", "EMMANUEL OSARODION",
                      "eMmAnUeL oSaRoDiOn", "  Emmanuel   Osarodion  ", "Emmanuel\tOsarodion"):

@@ -619,7 +619,7 @@ class StudentClockOutView(APIView):
         ).first()
         if not student or not _presence_actor_allowed(request, student):
             return Response({'detail': 'Student clock-out access denied.'}, status=403)
-        presence = StudentDailyPresence.objects.select_for_update().select_related(
+        presence = StudentDailyPresence.objects.select_for_update(of=('self',)).select_related(
             'student__user', 'student__current_class__class_level', 'class_arm__class_level'
         ).filter(
             school=school, student=student, date=timezone.localdate()
@@ -647,12 +647,13 @@ class StudentPresenceCorrectionView(APIView):
         reason = str(request.data.get('reason') or '').strip()
         if not reason:
             return Response({'reason': 'Explain why this presence record is being corrected.'}, status=400)
-        presence = StudentDailyPresence.objects.select_for_update().select_related(
+        presence = StudentDailyPresence.objects.select_for_update(of=('self',)).select_related(
             'student__user', 'student__current_class__class_level', 'class_arm__class_level'
         ).filter(pk=pk, school=school).first()
         if not presence:
             return Response(status=404)
         before = _presence_payload(presence, school)
+        before['date'] = presence.date.isoformat()
         for field in ('arrival_at', 'departure_at'):
             if field not in request.data:
                 continue

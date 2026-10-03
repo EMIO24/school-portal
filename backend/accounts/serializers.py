@@ -23,7 +23,7 @@ class LoginSerializer(serializers.Serializer):
     """
 
     email    = serializers.CharField(max_length=320)
-    admission_number = serializers.CharField(required=False, allow_blank=True, max_length=50, write_only=True)
+    admission_number = serializers.CharField(required=False, allow_blank=True, max_length=128, write_only=True)
     password = serializers.CharField(write_only=True, style={"input_type": "password"})
 
     def validate(self, attrs):

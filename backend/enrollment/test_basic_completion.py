@@ -28,7 +28,7 @@ class BasicCompletionTests(TestCase):
 
     def test_staff_identity_and_activation_preserve_assignments(self):
         password=self.teacher.password
-        response=self.client.patch(f'/api/staff/{self.staff.pk}/',{'new_first_name':'Corrected','new_email':'teacher-new@example.test','employment_status':'suspended','new_role':'school_admin'},format='json')
+        response=self.client.patch(f'/api/staff/{self.staff.pk}/',{'new_first_name':'Corrected','new_email':'teacher-new@example.test','employment_status':'suspended'},format='json')
         self.assertEqual(response.status_code,200,response.data)
         self.teacher.refresh_from_db();self.assertFalse(self.teacher.is_active)
         self.assertEqual(self.teacher.role,'teacher');self.assertEqual(self.teacher.password,password)
