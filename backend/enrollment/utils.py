@@ -1,90 +1,65 @@
-"""
-enrollment/utils.py
+"""Reserve stable institutional IDs using a database-backed prefix counter.
 
-Utilities for generating unique, human-readable IDs.
-
-Admission number format:  SLUG-YYYY-XXXX   e.g.  GHS-2024-0042
-Staff ID format:          SLUG-STAFF-XXXX  e.g.  GHS-STAFF-0007
-
-Both use SELECT FOR UPDATE on the latest record to avoid race conditions
-when two enrollments are submitted simultaneously (common during bulk import).
+Formats remain SLUG-YYYY-XXXX and SLUG-STAFF-XXXX (minimum four digits).
+Reservations are durable even when a caller inserts the profile later. Gaps are
+allowed; issued numbers and committed reservations must never be recycled.
 """
 
 from datetime import date
-from django.db import transaction
+import re
+
+from django.core.exceptions import ValidationError
+from django.db import DEFAULT_DB_ALIAS, transaction
+from django.db.models import DecimalField, Max
+from django.db.models.functions import Cast, Substr
 
 
-@transaction.atomic
+MAX_IDENTIFIER_SEQUENCE = 2**63 - 1
+
+
+def _reserve_identifier(school, model, field_name, prefix):
+    from .models import InstitutionalIdentifierSequence
+
+    if not school.pk:
+        raise ValidationError("Save the school before reserving an identifier.")
+    using = school._state.db or DEFAULT_DB_ALIAS
+    field_length = model._meta.get_field(field_name).max_length
+    with transaction.atomic(using=using):
+        # A unique namespace also serializes two simultaneous first allocations.
+        # Case-normalized slug collisions intentionally share this global counter,
+        # matching the existing global uniqueness of the issued identifier.
+        counters = InstitutionalIdentifierSequence.objects.using(using)
+        counter, _ = counters.get_or_create(namespace=prefix)
+        counter = counters.select_for_update().get(pk=counter.pk)
+
+        # Read only numeric suffixes of this exact prefix, across all schools.
+        # This bootstraps legacy IDs and accounts for later historical imports
+        # without rewriting them or trusting lexicographic ordering.
+        issued = model.objects.using(using).filter(**{
+            field_name + "__startswith": prefix,
+            field_name + "__regex": rf"^{re.escape(prefix)}[0-9]+$",
+        }).aggregate(highest=Max(Cast(
+            Substr(field_name, len(prefix) + 1),
+            output_field=DecimalField(max_digits=128, decimal_places=0),
+        )))['highest']
+        next_sequence = max(counter.last_value, int(issued or 0)) + 1
+        identifier = f"{prefix}{next_sequence:04d}"
+        if next_sequence > MAX_IDENTIFIER_SEQUENCE or len(identifier) > field_length:
+            raise ValidationError("Institutional identifier capacity is exhausted.")
+        counter.last_value = next_sequence
+        counter.save(using=using, update_fields=["last_value"])
+        return identifier
+
+
 def generate_admission_number(school) -> str:
-    """
-    Generate the next sequential admission number for a school in the
-    current calendar year.
-
-    Format: {SLUG}-{YEAR}-{SEQUENCE:04d}
-    Example: GHS-2024-0042
-
-    Uses SELECT FOR UPDATE to lock the latest record and prevent
-    duplicate numbers under concurrent requests.
-    """
     from .models import StudentProfile
 
-    year = date.today().year
-    prefix = f"{school.slug.upper()}-{year}-"
-
-    # Lock and fetch the highest existing number for this school + year
-    latest = (
-        StudentProfile.objects
-        .select_for_update()
-        .filter(
-            school=school,
-            admission_number__startswith=prefix,
-        )
-        .order_by("-admission_number")
-        .first()
-    )
-
-    if latest:
-        try:
-            last_seq = int(latest.admission_number.split("-")[-1])
-        except (ValueError, IndexError):
-            last_seq = 0
-        next_seq = last_seq + 1
-    else:
-        next_seq = 1
-
-    return f"{prefix}{next_seq:04d}"
+    prefix = f"{school.slug.upper()}-{date.today().year}-"
+    return _reserve_identifier(school, StudentProfile, "admission_number", prefix)
 
 
-@transaction.atomic
 def generate_staff_id(school) -> str:
-    """
-    Generate the next sequential staff ID for a school.
-
-    Format: {SLUG}-STAFF-{SEQUENCE:04d}
-    Example: GHS-STAFF-0007
-    """
     from .models import StaffProfile
 
     prefix = f"{school.slug.upper()}-STAFF-"
-
-    latest = (
-        StaffProfile.objects
-        .select_for_update()
-        .filter(
-            school=school,
-            staff_id__startswith=prefix,
-        )
-        .order_by("-staff_id")
-        .first()
-    )
-
-    if latest:
-        try:
-            last_seq = int(latest.staff_id.split("-")[-1])
-        except (ValueError, IndexError):
-            last_seq = 0
-        next_seq = last_seq + 1
-    else:
-        next_seq = 1
-
-    return f"{prefix}{next_seq:04d}"
+    return _reserve_identifier(school, StaffProfile, "staff_id", prefix)

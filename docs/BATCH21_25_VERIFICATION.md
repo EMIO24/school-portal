@@ -1,5 +1,9 @@
 # Batch 21–25 verification and Batch 26 entry
 
+Identifier/concurrency follow-up: [Batch 26A identifier hardening](BATCH26A_IDENTIFIER_HARDENING.md).
+The baseline results below remain historical evidence for checkpoint `f01f468`;
+the follow-up report records the subsequent architecture, migration and rerun results.
+
 Verified on 3 October 2026 in `C:\Users\user\school-portal-complete`.
 Branch: `complete-version`. Base commit: `d933406615f1b1f558d5624926f8600a858b905b`.
 The original results apply to this base commit plus the reviewed verification fixes. The checkpoint audit and subsequent admission fix are recorded below.

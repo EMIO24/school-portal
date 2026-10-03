@@ -21,6 +21,17 @@ from django.core.exceptions import ValidationError
 User = get_user_model()
 
 
+class InstitutionalIdentifierSequence(models.Model):
+    """Durable global high-water mark for an exact issued identifier prefix.
+
+    No school FK: normalized slugs may share a prefix, and deleting or renaming
+    a school must not recycle its reservations.
+    """
+
+    namespace = models.CharField(max_length=128, unique=True)
+    last_value = models.PositiveBigIntegerField(default=0)
+
+
 # ── ClassLevel ─────────────────────────────────────────────────────────────
 
 class ClassLevel(models.Model):
@@ -515,7 +526,7 @@ class StaffProfile(models.Model):
 
     # ── Staff ID ──────────────────────────────────────────────────────────
     staff_id = models.CharField(
-        max_length=30, unique=True, blank=True,
+        max_length=128, unique=True, blank=True,
         help_text="Auto-generated: SLUG-STAFF-XXXX",
     )
 
