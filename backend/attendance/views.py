@@ -654,6 +654,7 @@ class StudentPresenceCorrectionView(APIView):
             return Response(status=404)
         before = _presence_payload(presence, school)
         before['date'] = presence.date.isoformat()
+        original_times = (presence.arrival_at, presence.departure_at)
         for field in ('arrival_at', 'departure_at'):
             if field not in request.data:
                 continue
@@ -668,6 +669,8 @@ class StudentPresenceCorrectionView(APIView):
             except (TypeError, ValueError):
                 return Response({field: 'Use an ISO date-time.'}, status=400)
             setattr(presence, field, parsed)
+        if original_times == (presence.arrival_at, presence.departure_at):
+            return Response(_presence_payload(presence, school))
         presence.correction_reason = reason[:300]
         try:
             presence.save()

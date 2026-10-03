@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from accounts.permissions import IsSchoolAdmin, IsSchoolAdminOrTeacher, IsAuthenticatedTenantUser, IsSchoolStaff
 from tenants.mixins import TenantMixin
 from .safety import RetainAcademicHistoryMixin
+from .placement_lock import PlacementWriteMixin, lock_school
 
 from .models import ClassArm, ClassLevel, StudentProfile, Subject
 from .session_enrollment import EnrollmentPlacementError, ensure_current_enrollment
@@ -61,7 +62,7 @@ def _parse_date(val: str):
 
 # ── ClassLevel ViewSet ─────────────────────────────────────────────────────
 
-class ClassLevelViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
+class ClassLevelViewSet(PlacementWriteMixin, RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
     serializer_class = ClassLevelSerializer
     queryset         = ClassLevel.objects.all()
 
@@ -73,7 +74,7 @@ class ClassLevelViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelV
 
 # ── ClassArm ViewSet ───────────────────────────────────────────────────────
 
-class ClassArmViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
+class ClassArmViewSet(PlacementWriteMixin, RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelViewSet):
     serializer_class = ClassArmSerializer
     queryset         = ClassArm.objects.select_related(
         "class_level", "class_teacher", "campus"
@@ -106,7 +107,7 @@ class SubjectViewSet(RetainAcademicHistoryMixin, TenantMixin, viewsets.ModelView
 
 # ── Student ViewSet ────────────────────────────────────────────────────────
 
-class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
+class StudentViewSet(PlacementWriteMixin, TenantMixin, viewsets.ModelViewSet):
     """
     GET    /api/students/              list (with search + status filter)
     POST   /api/students/              create single student
@@ -530,12 +531,7 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
 
             level_arms = arm_map.get(level_name, [])
             if not tenant.uses_class_arms:
-                from .class_structure import ensure_default_arm
-                try:
-                    class_arm = ensure_default_arm(school=tenant, class_level=level, campus=campus)
-                except Exception:
-                    add_error("Could not resolve the class for this no-arm school.")
-                    continue
+                class_arm = None  # Resolve inside the row's rollback boundary.
             else:
                 arm_name = (row.get('class_arm') or '').strip().casefold()
                 matches = [
@@ -547,14 +543,22 @@ class StudentViewSet(TenantMixin, viewsets.ModelViewSet):
                     add_error('Select one existing class arm using the class_arm column; no student was created.')
                     continue
                 class_arm = matches[0] if matches else None
-            if StudentProfile.objects.filter(school=tenant, user__first_name__iexact=first_name,
-                    user__last_name__iexact=last_name, dob=dob, current_class=class_arm).exists():
-                add_error('A student with this name, date of birth and class already exists. Review the record before adding individually.')
-                continue
 
             # ── Create user + profile in a savepoint ──────────────────────
             try:
                 with transaction.atomic():
+                    locked_school = lock_school(tenant)
+                    # Legacy CSV has no source reference. Never infer a second identity
+                    # merely because the original student has since changed classes.
+                    if StudentProfile.objects.filter(school=tenant, user__first_name__iexact=first_name,
+                            user__last_name__iexact=last_name, dob=dob).exists():
+                        raise EnrollmentPlacementError('A matching student already exists. Review the record or use Migration Centre source references.')
+                    if not locked_school.uses_class_arms:
+                        from .class_structure import ensure_default_arm, ClassStructureError
+                        try:
+                            class_arm = ensure_default_arm(school=locked_school, class_level=level, campus=campus)
+                        except ClassStructureError as exc:
+                            raise EnrollmentPlacementError(str(exc)) from exc
                     user = User.objects.create_user(
                         email=email,
                         password="changeme",

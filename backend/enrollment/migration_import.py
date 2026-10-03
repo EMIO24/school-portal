@@ -540,6 +540,9 @@ def create(domain, row, school, data):
         ParentStudentLink.objects.create(school=school, parent=data['parent'],
             student=data['student'], relationship=row['relationship'].casefold())
     else:
+        from .placement_lock import campus_is_active
+        if not campus_is_active(school, data['arm'].campus_id):
+            raise ValueError('class_arm', 'Choose a class in an active campus for a new assignment.')
         SubjectAssignment.objects.create(school=school, teacher=data['teacher'],
             subject=data['subject'], class_arm=data['arm'], term=data['term'], session=data['term'].session)
 

@@ -88,6 +88,10 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
         attrs = super().validate(attrs)
         role = attrs.get('new_role') or (self.instance.user.role if self.instance else 'teacher')
         assigned = attrs.get('assigned_classes')
+        if assigned is not None:
+            existing_ids = set(self.instance.assigned_classes.values_list('pk', flat=True)) if self.instance else set()
+            if ClassArm.objects.filter(pk__in=[arm.pk for arm in assigned if arm.pk not in existing_ids], campus__is_active=False).exists():
+                raise serializers.ValidationError({'assigned_classes': 'Choose classes in active campuses for new assignments.'})
         campus = attrs.get('campus', getattr(self.instance, 'campus', None))
         if campus and campus.school_id != self.context['request'].tenant.pk:
             raise serializers.ValidationError({'campus': 'Campus must belong to this school.'})
@@ -100,6 +104,9 @@ class StaffProfileSerializer(TenantRelationsMixin, serializers.ModelSerializer):
             })
         if role == 'class_teacher':
             selected = list(assigned) if assigned is not None else list(self.instance.assigned_classes.all()) if self.instance else []
+            if self.instance and self.instance.user.role != 'class_teacher' and ClassArm.objects.filter(
+                    pk__in=[arm.pk for arm in selected], campus__is_active=False).exists():
+                raise serializers.ValidationError({'assigned_classes': 'Choose active campuses before making new class teacher assignments.'})
             for arm in selected:
                 if arm.class_teacher_id and (not self.instance or arm.class_teacher_id != self.instance.user_id):
                     raise serializers.ValidationError({

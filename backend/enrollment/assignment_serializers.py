@@ -55,6 +55,13 @@ class SubjectAssignmentSerializer(TenantRelationsMixin, serializers.ModelSeriali
         session = attrs.get("session")
         subject = attrs.get("subject")
         arm     = attrs.get("class_arm")
+        if arm:
+            from .placement_lock import campus_is_active
+            school = self.context['request'].tenant
+            replay = SubjectAssignment.objects.filter(school=school, teacher=teacher, subject=subject,
+                class_arm=arm, session=session, term=term).exists()
+            if not replay and not campus_is_active(school, arm.campus_id):
+                raise serializers.ValidationError({'class_arm': 'Choose a class in an active campus for a new assignment.'})
 
         if term and session and term.session_id != session.pk:
             raise serializers.ValidationError(

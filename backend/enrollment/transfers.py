@@ -8,6 +8,7 @@ from tenants.models import PlatformEvent
 
 from .enrollment_periods import active_enrollment
 from .models import ClassArm, SessionEnrollment, StudentProfile
+from .placement_lock import lock_school, campus_is_active
 
 
 class StudentTransferError(ValueError):
@@ -24,6 +25,7 @@ def transfer_student(
     actor,
     reason="",
 ):
+    school = lock_school(school)
     locked = (
         StudentProfile.objects.select_for_update()
         .filter(pk=student.pk, school=school)
@@ -41,6 +43,8 @@ def transfer_student(
     )
     if not destination:
         raise StudentTransferError("Destination class must belong to this school.")
+    if not campus_is_active(school, destination.campus_id):
+        raise StudentTransferError("Choose a destination in an active campus in this school.")
 
     sessions = list(
         AcademicSession.objects.filter(

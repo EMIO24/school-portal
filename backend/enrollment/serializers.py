@@ -56,6 +56,10 @@ class ClassArmSerializer(TenantRelationsMixin, serializers.ModelSerializer):
         if campus and not campus.is_active and (
                 not self.instance or self.instance.campus_id != campus.pk):
             raise serializers.ValidationError({'campus': 'Choose an active campus for new placement.'})
+        teacher = attrs.get('class_teacher')
+        if campus and not campus.is_active and teacher and (
+                not self.instance or self.instance.class_teacher_id != teacher.pk):
+            raise serializers.ValidationError({'class_teacher': 'Choose an active campus for a new class teacher assignment.'})
 
         qs = ClassArm.objects.filter(school=school, class_level=level, name=name)
         qs = qs.filter(campus=campus) if campus else qs.filter(campus__isnull=True)

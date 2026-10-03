@@ -16,6 +16,7 @@ from .models import (
     StudentRecordEntry, WelfareCase, WelfareUpdate,
 )
 from .serializers import StudentProfileSerializer
+from .placement_lock import lock_school
 
 
 def _school_user(request, roles):
@@ -178,7 +179,7 @@ class AdmissionDecision(APIView):
     def post(self, request, pk):
         if not _school_user(request, ("school_admin", "principal")):
             return Response({"detail": "Admissions decision access required."}, status=403)
-        school = request.tenant
+        school = lock_school(request.tenant)
         row = AdmissionApplication.objects.select_for_update(of=("self",)).select_related(
             "applying_class_level", "preferred_campus", "admitted_student__user"
         ).filter(pk=pk, school=school).first()
@@ -189,6 +190,13 @@ class AdmissionDecision(APIView):
             return Response({"decision": "Choose under_review, offered, admit, reject or withdraw."}, status=400)
         if row.status in ("admitted", "rejected", "withdrawn"):
             if row.status == "admitted" and decision == "admit":
+                student = row.admitted_student
+                if (not student or student.school_id != school.pk
+                        or student.user.school_id != school.pk
+                        or not student.session_enrollments.filter(school=school, entry_reason="admission").exists()
+                        or not StudentRecordEntry.objects.filter(school=school, student=student, kind="enrollment",
+                            details=f"Created from admission application {row.application_number}.").exists()):
+                    return Response({"detail": "Admission history is incomplete; review explicitly before retrying."}, status=409)
                 return Response(_admission_data(row))
             return Response({"detail": "This application already has a terminal decision."}, status=409)
 

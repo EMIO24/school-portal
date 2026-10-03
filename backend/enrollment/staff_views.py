@@ -27,6 +27,7 @@ from tenants.mixins import TenantMixin
 
 from .models import ClassArm, StaffProfile, Subject
 from .staff_serializers import StaffListSerializer, StaffProfileSerializer
+from .placement_lock import PlacementWriteMixin, lock_school
 
 User = get_user_model()
 
@@ -35,7 +36,7 @@ REQUIRED_STAFF_CSV_COLS = {
 }
 
 
-class StaffViewSet(TenantMixin, viewsets.ModelViewSet):
+class StaffViewSet(PlacementWriteMixin, TenantMixin, viewsets.ModelViewSet):
     """
     Full CRUD for StaffProfile (teachers + school admins).
     """
@@ -94,11 +95,13 @@ class StaffViewSet(TenantMixin, viewsets.ModelViewSet):
     # ── Assign subjects ───────────────────────────────────────────────────
 
     @action(detail=True, methods=["post"], url_path="assign-subjects")
+    @transaction.atomic
     def assign_subjects(self, request, pk=None):
         """
         POST /api/staff/{id}/assign-subjects/
         Body: { "subjects": [1, 2, 3] }
         """
+        request.tenant = lock_school(request.tenant)
         if 'session_id' in request.data or 'term_id' in request.data:
             from .assignment_views import AssignSubjectsMixin
             return AssignSubjectsMixin.assign_subjects(self, request, pk)
@@ -119,16 +122,20 @@ class StaffViewSet(TenantMixin, viewsets.ModelViewSet):
     # ── Assign classes ────────────────────────────────────────────────────
 
     @action(detail=True, methods=["post"], url_path="assign-classes")
+    @transaction.atomic
     def assign_classes(self, request, pk=None):
         """
         POST /api/staff/{id}/assign-classes/
         Body: { "classes": [1, 2] }
         """
+        request.tenant = lock_school(request.tenant)
         staff  = self.get_object()
         tenant = self._get_tenant()
         ids    = request.data.get("classes", [])
 
         arms = ClassArm.objects.filter(pk__in=ids, school=tenant)
+        if arms.exclude(pk__in=staff.assigned_classes.values("pk")).filter(campus__is_active=False).exists():
+            return Response({"error": "Choose classes in active campuses for new assignments."}, status=400)
         if len(arms) != len(ids):
             return Response(
                 {"error": "One or more class arm IDs are invalid for this school."},

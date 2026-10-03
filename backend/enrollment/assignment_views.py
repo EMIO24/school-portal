@@ -24,6 +24,7 @@ from accounts.permissions import IsSchoolAdmin, IsAuthenticatedTenantUser, IsSch
 from tenants.mixins import TenantMixin
 
 from .models import ClassArm, StaffProfile, Subject, SubjectAssignment
+from .placement_lock import PlacementWriteMixin
 
 
 from .history import assignment_has_history
@@ -34,7 +35,7 @@ from .assignment_serializers import (
 )
 
 
-class SubjectAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
+class SubjectAssignmentViewSet(PlacementWriteMixin, TenantMixin, viewsets.ModelViewSet):
     """
     CRUD for SubjectAssignment.
 
@@ -213,11 +214,18 @@ class AssignSubjectsMixin:
             row.is_valid(raise_exception=True)
             rows.append(row.validated_data)
         with transaction.atomic():
+            from .placement_lock import lock_school, campus_is_active
+            lock_school(tenant)
             StaffProfile.objects.select_for_update().get(pk=teacher.pk, school=tenant)
             existing = list(SubjectAssignment.objects.select_for_update().filter(
                 school=tenant, teacher=teacher, term=term
             ))
             desired = {(row['subject'].pk, row['class_arm'].pk) for row in rows}
+            existing_pairs = {(row.subject_id, row.class_arm_id) for row in existing}
+            for values in rows:
+                pair = (values['subject'].pk, values['class_arm'].pk)
+                if pair not in existing_pairs and not campus_is_active(tenant, values['class_arm'].campus_id):
+                    return Response({'detail': 'Choose classes in active campuses for new assignments.'}, status=400)
             removals = [row for row in existing if (row.subject_id, row.class_arm_id) not in desired]
             protected = [row for row in removals if assignment_has_history(row)]
             if protected:

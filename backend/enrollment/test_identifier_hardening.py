@@ -254,16 +254,10 @@ class IdentifierPostgresConcurrencyTests(IdentifierFixtures, TransactionTestCase
 
     def test_simultaneous_first_admissions_keep_distinct_ids_and_history(self):
         apps = [self.application(f"First{i}") for i in range(2)]
-        allocation_barrier = Barrier(2)
-        original = generate_admission_number
-
-        def allocate(school):
-            allocation_barrier.wait(timeout=15)
-            return original(school)
-
-        # Force both requests to reach allocation before either has a student.
-        with patch("enrollment.utils.generate_admission_number", side_effect=allocate):
-            results = self.concurrent([lambda app=app: self.decide(app) for app in apps])
+        # Start both independent requests together. Placement now serializes on
+        # the school before allocation; an allocator barrier would deadlock that
+        # valid ordering. Direct allocator races remain covered below.
+        results = self.concurrent([lambda app=app: self.decide(app) for app in apps])
         self.assertEqual([status for status, _ in results], [201, 201])
         self.assert_admission_history(2)
         suffixes = [int(n.rsplit("-", 1)[1]) for n in StudentProfile.objects.values_list("admission_number", flat=True)]
@@ -291,13 +285,6 @@ class IdentifierPostgresConcurrencyTests(IdentifierFixtures, TransactionTestCase
         self.assert_admission_history(1)
 
     def test_concurrent_staff_creation_preserves_ids_and_owner(self):
-        allocation_barrier = Barrier(3)
-        original = generate_staff_id
-
-        def allocate(school):
-            allocation_barrier.wait(timeout=15)
-            return original(school)
-
         def create(index):
             client = APIClient(HTTP_X_SCHOOL_SLUG=self.school.subdomain)
             client.force_authenticate(self.admin)
@@ -308,8 +295,8 @@ class IdentifierPostgresConcurrencyTests(IdentifierFixtures, TransactionTestCase
             self.assertEqual(response.status_code, 201, response.data)
             return response.data["id"]
 
-        with patch("enrollment.utils.generate_staff_id", side_effect=allocate):
-            self.concurrent([lambda i=i: create(i) for i in range(3)])
+        # Request-start synchronization permits the operational school lock.
+        self.concurrent([lambda i=i: create(i) for i in range(3)])
         self.assertEqual(StaffProfile.objects.count(), 3)
         numbers = list(StaffProfile.objects.values_list("staff_id", flat=True))
         self.assertEqual(len(set(numbers)), 3)

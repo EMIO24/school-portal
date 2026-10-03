@@ -4,6 +4,7 @@ from academics.models import AcademicSession
 
 from .enrollment_periods import active_enrollment
 from .models import ClassArm, SessionEnrollment, StudentProfile
+from .placement_lock import lock_school, campus_is_active
 
 
 class EnrollmentPlacementError(ValueError):
@@ -21,6 +22,7 @@ def ensure_current_enrollment(
     current_session=None,
 ):
     """Create or confirm a student's authoritative placement for the current session."""
+    school = lock_school(school)
     if not class_arm:
         raise EnrollmentPlacementError("Choose a class before creating an enrollment.")
 
@@ -41,10 +43,10 @@ def ensure_current_enrollment(
     if not arm:
         raise EnrollmentPlacementError("Class must belong to this school.")
 
-    session = current_session
-    if session is not None and (
-        session.school_id != school.pk or not session.is_current
-    ):
+    session = None
+    if current_session is not None:
+        session = AcademicSession.objects.filter(pk=current_session.pk, school=school, is_current=True).first()
+    if current_session is not None and session is None:
         raise EnrollmentPlacementError(
             "The supplied academic session is not the school's current session."
         )
@@ -79,6 +81,9 @@ def ensure_current_enrollment(
             locked_student.save(update_fields=["current_class"])
         student.current_class_id = arm.pk
         return enrollment, False
+
+    if not campus_is_active(school, arm.campus_id):
+        raise EnrollmentPlacementError("Choose a class in an active campus in this school.")
 
     enrolled_on = min(
         max(locked_student.admission_date, session.start_date),

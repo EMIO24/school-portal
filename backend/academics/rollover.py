@@ -631,6 +631,31 @@ def execute_rollover(*, school, source_session, destination_session, actor, idem
         status="completed",
     ).order_by("-id").first()
     if completed:
+        snapshot = completed.preview_snapshot
+        history = snapshot.get("students") if isinstance(snapshot, dict) else None
+        if (not isinstance(history, list) or len(history) != completed.student_count
+                or any(not isinstance(row, dict) for row in history)
+                or len({row.get("student_id") for row in history}) != len(history)):
+            raise RolloverSafetyError("Completed rollover history is incomplete; review explicitly.")
+        for row in history:
+            source_history = SessionEnrollment.objects.filter(
+                pk=row.get("source_enrollment_id"), school=locked_school,
+                student_id=row.get("student_id"), session=source,
+                class_arm_id=row.get("source_class_id"),
+            ).exclude(status="active")
+            if not source_history.exists():
+                raise RolloverSafetyError("Completed rollover source history is missing or inconsistent; review explicitly.")
+            if not row.get("lifecycle_exempt") and not PromotionRecord.objects.filter(
+                pk=row.get("decision_id"), school=locked_school, student_id=row.get("student_id"),
+                from_session=source, from_class_id=row.get("source_class_id"), decision=row.get("decision"),
+                to_session_id=row.get("destination_session_id"), to_class_id=row.get("destination_class_id"),
+            ).exists():
+                raise RolloverSafetyError("Completed rollover decision history is missing or inconsistent; review explicitly.")
+            if row.get("decision") in ("promoted", "repeated") and not SessionEnrollment.objects.filter(
+                school=locked_school, student_id=row["student_id"], session=destination,
+                class_arm_id=row["destination_class_id"],
+            ).exists():
+                raise RolloverSafetyError("Completed rollover destination history is missing; review explicitly.")
         return {
             "rollover_id": completed.pk,
             "status": completed.status,
@@ -785,6 +810,9 @@ def execute_rollover(*, school, source_session, destination_session, actor, idem
                 raise RolloverSafetyError(
                     "A promoted or repeated student has an invalid destination placement."
                 )
+            from enrollment.placement_lock import campus_is_active
+            if not campus_is_active(locked_school, record.to_class.campus_id):
+                raise RolloverSafetyError("Choose a rollover destination in an active campus.")
 
             if source_enrollment.status == "active":
                 source_enrollment.status = "completed"

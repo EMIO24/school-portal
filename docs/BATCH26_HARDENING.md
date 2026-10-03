@@ -345,3 +345,122 @@ with a normal push to that branch only. Local/remote checkpoint equality, clean
 worktree and unchanged protected branch references are verified after push and
 reported with the checkpoint SHA. Batch 26 is not declared complete and no
 recovery, native PDF, browser or pilot acceptance work follows this checkpoint.
+
+## Batch 26D - recovery, retry and campus retirement races
+
+Starting checkpoint: `fc28f96b97c97c4f7f79587f3d1621779678b7e4` on
+`complete-version`. Only that branch is eligible for the checkpoint push.
+The protected local and remote `production-readiness-check` references must
+remain unchanged. This phase adds no models, migrations or frontend changes.
+
+### Recovery findings and changes
+
+- Admission decisions already lock the application and reuse its admitted
+  student. They now acquire the school lock first, preventing retirement from
+  racing a destination lookup. Completed admission replay checks its own-school
+  student, admission enrollment and application-specific institutional record.
+  Missing companion history returns 409 without reconstructing records.
+- Migration Centre already has source references, account identities, chunk
+  school locks and row savepoints. Tests interrupt the second row after its
+  writes, then retry the same student, staff, teaching-assignment, parent-link
+  and fee-schedule files. Successful rows are reused; interrupted rows roll back
+  and can be created once. Parent account replay does not duplicate the parent.
+  Existing terminal job row provenance remains the original attempt's evidence;
+  retry responses report the current attempt's CREATE/REUSE/REJECT outcomes.
+- Legacy student CSV has no durable source reference. Its old name/DOB/class
+  check could miss a previously imported student after a class change, and it
+  ran outside the write transaction. The locked row transaction now rejects a
+  matching name/DOB independently of current class, requiring explicit review
+  or Migration Centre references. It does not guess that two people are equal.
+  Implicit no-arm classes are created inside that same rollback boundary.
+- Promotion retries reuse one staged decision and preserve the source placement.
+  Concurrent requests serialize on the existing school lock. Placement is still
+  applied only by rollover. Repeated decision saves retain the existing
+  intentional decision audit events rather than creating more promotion rows.
+- Rollover retains its atomic cutover and school lock. Completed replay now
+  validates the saved student snapshot, closed source enrollment, recorded
+  decision and original destination placement. Missing history fails closed
+  with `RolloverSafetyError`; no history is invented. Retired destinations are
+  rejected before creating a new placement. A failure at the final audit write
+  rolls back enrollment changes and current session flags together.
+- Result publish and reopen retries preserve one audit per actual transition.
+  Concurrent publish/reopen requests leave scores unchanged and finish in draft
+  after reopening; publication either replays before reopening or rejects its
+  invalid state afterward. Existing permissions and reason requirements remain.
+- Presence arrival replay preserves its first arrival. An identical timestamp
+  correction now returns the existing record without another audit or rewriting
+  the first correction reason. Real corrections retain the existing audit path.
+
+### Campus retirement ordering
+
+Campus retirement already locks the school. Operational class/student/staff
+writes now use the same lock before related-object validation. Default-class
+resolution, admission, current enrollment and transfer services lock the school
+before student/class rows and recheck database state rather than cached campus
+or current-session flags. Staff campus assignments, class scopes and teaching
+assignments reject new destinations on inactive campuses. Teaching assignment
+replay and unrelated edits to existing retired-campus records remain possible.
+
+PostgreSQL tests hold the retirement school lock with the inactive update still
+uncommitted, start an independent worker connection, observe its database
+boundary via `pg_stat_activity`, and commit retirement before allowing placement
+to proceed. The worker must reject the retired destination and leave no new
+placement. Covered paths are staff campus assignment, staff class assignment,
+single teaching assignment, class creation, admission, cached no-arm default
+creation, transfer and initial current-session placement. Existing Batch 26C
+tests also preserve references and allow unrelated edits after retirement.
+
+### Validation
+
+Executed with Windows PowerShell, Django and PostgreSQL; no simulated results.
+New modules: `enrollment.test_batch26d_recovery` and
+`tenants.test_batch26d_campus_races`. The initial run reproduced the retirement
+races and unsafe missing-history/stale-session replay behavior before fixes.
+No existing tests were weakened; no skips or expected failures were added.
+
+- Dedicated targeted gate: 32 PASS. Expanded recovery/identifier rerun:
+  47 PASS (186.888 seconds; the 32 dedicated tests plus all 15 identifier tests).
+- Concentrated gate: 193 PASS (1017.499 seconds).
+- Full backend gate: 632 PASS (1569.379 seconds); no skips or expected failures.
+- Schema: PASS (`makemigrations --check`, `migrate --check`). No migration needed.
+- Frontend: NOT RERUN; no frontend production code changed.
+
+Concentrated labels include both dedicated modules, enrollment operations,
+migration, current enrollment and transfer tests, promotion tests, rollover
+execution/preview/safety, Batch 26C campus history, presence/attendance reports,
+academic result workflow and Batch 26C finance idempotency tests. Test logs stay
+ignored and are not included in the commit.
+
+The first full run exposed two identifier test harness barriers inside ID
+allocation. With the new school lock, the first request waits at that barrier
+while the second correctly waits for the school lock, making the barrier
+impossible to satisfy. Those two API tests now use their existing independent
+connection/request-start barrier. All ID suffix, count, ownership, password and
+institutional-history assertions are retained. Direct concurrent allocator
+reservation tests are unchanged. The broad run was interrupted, the identifier
+module added to the targeted gate, and the full suite restarted after that gate.
+The concentrated gate preceded this test-harness adjustment; production code
+was unchanged, and the final full run includes both the concentrated cases and
+the adjusted identifier cases. Optional WeasyPrint native-library warnings remain
+non-blocking; this checkpoint does not claim native PDF validation.
+
+Final review includes the placement lock helper, enrollment/class/assignment
+services and API serializers/views, admission replay checks, rollover replay
+checks, presence correction replay, the two dedicated test modules, the two
+identifier harness adjustments and this report. No model, migration, frontend,
+environment, log or database dump is staged. Commit intent:
+`fix(batch26): harden recovery retries and campus retirement races`.
+
+### Limits and remaining work
+
+Legacy CSV name/DOB collisions deliberately require review; they are not a
+durable identity or automatic reconciliation mechanism. Migration Centre
+terminal job metadata remains a record of the original attempt, not a new
+persisted per-attempt retry timeline. Completed admission/rollover corruption
+requires explicit review and is not silently repaired. Arbitrary manual database
+writes are outside the operational API locking contract.
+
+Traffic protection, native PDF validation, browser acceptance and pilot-school
+acceptance remain separate checkpoints. Batch 26 is not declared complete.
+Stop after the reviewed commit, normal complete-version push and post-push
+verification; do not start those remaining phases automatically.
