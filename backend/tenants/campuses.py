@@ -2,10 +2,12 @@ from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db import transaction
+from django.db.models.deletion import ProtectedError
 
 from accounts.permissions import IsSchoolAdmin
 from enrollment.models import ClassArm, StaffProfile, StudentProfile
-from .models import Campus
+from .models import Campus, School
 from .security import audit
 
 
@@ -50,7 +52,9 @@ class CampusListCreate(APIView):
     def get(self, request):
         return Response(CampusSerializer(Campus.objects.filter(school=request.tenant), many=True).data)
 
+    @transaction.atomic
     def post(self, request):
+        School.objects.select_for_update().get(pk=request.tenant.pk)
         if request.tenant.subscription_plan != "enterprise":
             return Response({"detail": "Multi-campus management requires Enterprise."}, status=403)
         form = CampusSerializer(data=request.data, context={"request": request})
@@ -70,7 +74,9 @@ class CampusListCreate(APIView):
 class CampusDetail(APIView):
     permission_classes = [IsSchoolAdmin]
 
+    @transaction.atomic
     def patch(self, request, pk):
+        School.objects.select_for_update().get(pk=request.tenant.pk)
         campus = Campus.objects.filter(pk=pk, school=request.tenant).first()
         if not campus:
             return Response(status=404)
@@ -82,11 +88,16 @@ class CampusDetail(APIView):
         audit(request, "campus.updated", target=f"campus:{campus.pk}", details={"school_id": request.tenant.pk})
         return Response(CampusSerializer(campus).data)
 
+    @transaction.atomic
     def delete(self, request, pk):
+        School.objects.select_for_update().get(pk=request.tenant.pk)
         campus = Campus.objects.filter(pk=pk, school=request.tenant).first()
         if not campus:
             return Response(status=404)
         if ClassArm.objects.filter(campus=campus).exists() or StaffProfile.objects.filter(campus=campus).exists():
             return Response({"detail": "Campus has institutional history. Mark it inactive instead of deleting it."}, status=409)
-        campus.delete()
+        try:
+            campus.delete()
+        except ProtectedError:
+            return Response({"detail": "Campus has institutional history. Mark it inactive instead of deleting it."}, status=409)
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -346,7 +346,19 @@ class ManualPaymentView(APIView):
                 )
                 if not same_payment:
                     return Response({'error': 'This payment retry key was already used for different details.'}, status=409)
+                from .ledger import payment_entry_matches
+                if not payment_entry_matches(existing):
+                    return Response({'error': 'Recorded payment and ledger disagree. Reconcile this receipt before retrying.'}, status=409)
                 return Response(FeePaymentSerializer(existing).data, status=200)
+        from .models import StudentFinanceAccount
+        missing_credits = FeePayment.objects.filter(school=school, student=student, ledger_entry__isnull=True)
+        reconciled = StudentFinanceAccount.objects.filter(school=school, student=student, state='active', opened_at__isnull=False).first()
+        if reconciled:
+            # Verified opening balances deliberately subsume pre-cutover receipts.
+            # They must remain historical receipts, not be credited a second time.
+            missing_credits = missing_credits.filter(created_at__gte=reconciled.cutover_at)
+        if missing_credits.exists():
+            return Response({'error': 'Recorded payment is missing its ledger credit. Reconcile this account before another payment.'}, status=409)
         charge = StudentLedgerEntry.objects.filter(school=school, student=student,
             fee_schedule=schedule, kind='charge').first()
         opening = StudentLedgerEntry.objects.filter(school=school, student=student, kind='opening').first()

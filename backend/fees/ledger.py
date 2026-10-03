@@ -68,6 +68,15 @@ def entry_total(school, student, *, term=None):
     return qs.aggregate(total=Sum('signed_amount'))['total'] or ZERO
 
 
+def payment_entry_matches(payment):
+    """A receipt is settled only while its authoritative ledger credit agrees."""
+    return StudentLedgerEntry.objects.filter(
+        fee_payment=payment, school_id=payment.school_id, student_id=payment.student_id,
+        fee_schedule_id=payment.fee_schedule_id, term_id=payment.fee_schedule.term_id,
+        kind='payment', signed_amount=-payment.amount_paid, reference=payment.receipt_number,
+    ).exists()
+
+
 def account_balance(school, student):
     account = StudentFinanceAccount.objects.filter(school=school, student=student).first()
     if not account:

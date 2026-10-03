@@ -2,6 +2,7 @@
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -25,6 +26,22 @@ def _base_access(request):
 
 def _manager(request):
     return _base_access(request) and request.user.role in ('school_admin', 'principal')
+
+
+def _resource_queryset(school):
+    return AcademicResource.objects.filter(
+        school=school, class_level__school=school, subject__school=school,
+    ).filter(Q(standard_topic__isnull=True) | Q(standard_topic__standard__school=school))
+
+
+def _resource_assigned(request, level, subject):
+    return SubjectAssignment.objects.filter(
+        school=request.tenant, teacher__school=request.tenant,
+        teacher__user=request.user, teacher__employment_status='active',
+        class_arm__school=request.tenant, class_arm__class_level=level,
+        subject=subject, subject__school=request.tenant,
+        session__school=request.tenant, term__session__school=request.tenant,
+    ).exists()
 
 
 def _positive(value):
@@ -182,12 +199,15 @@ class AcademicResourceListView(APIView):
     def get(self, request):
         if not _base_access(request):
             return Response({'detail': 'Academic resource access required.'}, status=403)
-        rows = AcademicResource.objects.filter(school=request.tenant).select_related(
+        rows = _resource_queryset(request.tenant).select_related(
             'class_level', 'subject', 'standard_topic__standard'
         ).order_by('-updated_at')
         if request.user.role in ('teacher', 'class_teacher'):
             scopes = set(SubjectAssignment.objects.filter(
-                school=request.tenant, teacher__user=request.user, teacher__employment_status='active'
+                school=request.tenant, teacher__school=request.tenant,
+                teacher__user=request.user, teacher__employment_status='active',
+                class_arm__school=request.tenant, subject__school=request.tenant,
+                session__school=request.tenant, term__session__school=request.tenant,
             ).values_list('class_arm__class_level_id', 'subject_id'))
             rows = [row for row in rows if (row.class_level_id, row.subject_id) in scopes and
                     (row.created_by_id == request.user.pk or row.status == AcademicResource.Status.APPROVED)]
@@ -209,10 +229,7 @@ class AcademicResourceListView(APIView):
             ).select_related('standard').first()
         if not level or not subject:
             return Response({'detail': 'Choose a class level and subject in this school.'}, status=400)
-        if request.user.role in ('teacher', 'class_teacher') and not SubjectAssignment.objects.filter(
-            school=school, teacher__user=request.user, teacher__employment_status='active',
-            class_arm__class_level=level, subject=subject
-        ).exists():
+        if request.user.role in ('teacher', 'class_teacher') and not _resource_assigned(request, level, subject):
             return Response({'detail': 'This class/subject is not assigned to you.'}, status=403)
         title = request.data.get('title', '')
         kind = request.data.get('kind')
@@ -242,11 +259,13 @@ class AcademicResourceTransitionView(APIView):
     def post(self, request, resource_id):
         if not _base_access(request):
             return Response({'detail': 'Academic resource access required.'}, status=403)
-        resource = AcademicResource.objects.select_for_update().filter(
-            pk=resource_id, school=request.tenant
+        resource = _resource_queryset(request.tenant).select_for_update(of=('self',)).filter(
+            pk=resource_id
         ).select_related('class_level', 'subject').first()
         if not resource:
             return Response({'detail': 'Academic resource not found.'}, status=404)
+        if request.user.role in ('teacher', 'class_teacher') and not _resource_assigned(request, resource.class_level, resource.subject):
+            return Response({'detail': 'This class/subject is not assigned to you.'}, status=403)
         action = request.data.get('action')
         if resource.status == AcademicResource.Status.DRAFT:
             if action != 'submit' or (request.user.role in ('teacher', 'class_teacher') and resource.created_by_id != request.user.pk):
@@ -278,15 +297,14 @@ class AcademicResourceReviseView(APIView):
     def post(self, request, resource_id):
         if not _base_access(request):
             return Response({'detail': 'Academic resource access required.'}, status=403)
-        previous = AcademicResource.objects.select_for_update().filter(
-            pk=resource_id, school=request.tenant, status=AcademicResource.Status.APPROVED
+        previous = _resource_queryset(request.tenant).select_for_update(of=('self',)).filter(
+            pk=resource_id, status=AcademicResource.Status.APPROVED
         ).select_related('class_level', 'subject').first()
         if not previous:
             return Response({'detail': 'Only an approved resource can start a new revision.'}, status=409)
-        if request.user.role in ('teacher', 'class_teacher') and not SubjectAssignment.objects.filter(
-            school=request.tenant, teacher__user=request.user, teacher__employment_status='active',
-            class_arm__class_level=previous.class_level, subject=previous.subject
-        ).exists():
+        if request.user.role == 'principal':
+            return Response({'detail': 'Principal reviews learning resources but does not author teacher resources.'}, status=403)
+        if request.user.role in ('teacher', 'class_teacher') and not _resource_assigned(request, previous.class_level, previous.subject):
             return Response({'detail': 'This class/subject is not assigned to you.'}, status=403)
         if AcademicResource.objects.filter(supersedes=previous).exists():
             return Response({'detail': 'A newer revision already exists.'}, status=409)
@@ -310,17 +328,22 @@ class StudentLearningResourcesView(APIView):
 
     def get(self, request):
         school = getattr(request, 'tenant', None)
-        if not school or request.user.role != 'student' or request.user.school_id != school.pk:
+        if (not school or not request.user.is_active or request.user.must_change_password
+                or request.user.role != 'student' or request.user.school_id != school.pk):
             return Response({'detail': 'Student learning-resource access required.'}, status=403)
         profile = getattr(request.user, 'student_profile', None)
+        if profile and (profile.school_id != school.pk or (profile.current_class_id and
+                (profile.current_class.school_id != school.pk or profile.current_class.class_level.school_id != school.pk))):
+            return Response({'detail': 'Student learning-resource access required.'}, status=403)
         if not profile or not profile.current_class_id:
             return Response({'resources': []})
         level_id = profile.current_class.class_level_id
-        rows = AcademicResource.objects.filter(
-            school=school,
+        rows = _resource_queryset(school).filter(
             class_level_id=level_id,
             status=AcademicResource.Status.APPROVED,
-        ).select_related('class_level', 'subject', 'standard_topic__standard').order_by(
+        ).filter(
+            Q(subject__class_levels=level_id) | Q(subject__class_levels__isnull=True)
+        ).distinct().select_related('class_level', 'subject', 'standard_topic__standard').order_by(
             'subject__name', 'title', '-revision'
         )
         return Response({'resources': [_resource_data(row) for row in rows]})

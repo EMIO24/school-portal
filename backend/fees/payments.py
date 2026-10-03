@@ -169,6 +169,31 @@ def settle(reference, data):
     School.objects.select_for_update().get(pk=school_id)
     order = PaymentOrder.objects.select_for_update().get(reference=reference)
     if order.status == 'success':
+        if order.kind == 'fees':
+            from .ledger import payment_entry_matches
+            allocations = valid_fee_allocations(order)
+            payments = list(FeePayment.objects.filter(paystack_reference=reference))
+            intact = allocations is not None and len(payments) == len(allocations)
+            intact = intact and len({p.fee_schedule_id for p in payments}) == len(payments)
+            for payment in payments:
+                expected = next((item for item in allocations or [] if item['schedule_id'] == payment.fee_schedule_id), None)
+                intact = intact and bool(
+                    expected and payment.school_id == order.school_id and payment.student_id == order.student_id
+                    and payment.amount_paid * 100 == expected['amount_kobo'] and payment_entry_matches(payment)
+                )
+                if intact:
+                    from .models import StudentPaymentAllocation
+                    applied = StudentPaymentAllocation.objects.filter(
+                        school_id=order.school_id, credit__fee_payment=payment,
+                        charge__school_id=order.school_id, charge__student_id=order.student_id,
+                        charge__fee_schedule_id=payment.fee_schedule_id, charge__kind='charge',
+                    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+                    intact = applied == payment.amount_paid
+            if not intact:
+                order.status, order.note = 'review', 'Recorded payment and ledger disagree. Owner reconciliation is required.'
+                order.save(update_fields=['status', 'note'])
+                event(None, 'payment.ledger_drift', reference, {'school_id': order.school_id})
+                return order
         logger.info("payment_settlement_idempotent order_id=%s reference=%s", order.pk, order.reference)
         return order
     if not isinstance(data, dict):
@@ -221,6 +246,12 @@ def settle(reference, data):
         logger.warning("payment_review_required order_id=%s reference=%s reason=order_kind_mismatch", order.pk, order.reference)
         return order
     if order.kind == 'fees':
+        # A pre-existing receipt is evidence to reconcile, never another credit.
+        if FeePayment.objects.filter(paystack_reference=reference).exists():
+            order.status, order.note = 'review', 'This reference already has recorded receipts. Owner reconciliation is required.'
+            order.save(update_fields=['status', 'note'])
+            event(None, 'payment.ledger_drift', reference, {'school_id': order.school_id})
+            return order
         if (order.student_id is None or order.student.school_id != school.pk or
                 order.payer.school_id != school.pk):
             order.status, order.note = 'review', 'Checkout ownership details are inconsistent. Contact the platform owner.'
@@ -455,7 +486,10 @@ class PaystackVerifyView(APIView):
         order = get_object_or_404(PaymentOrder, reference=request.query_params.get('reference', ''), school=request.tenant)
         if request.user.school_id != order.school_id or (order.payer_id != request.user.pk and request.user.role != 'school_admin'):
             raise PermissionDenied()
-        if order.status != 'success':
+        if order.status == 'success':
+            # Recheck local ledger integrity without making a provider request.
+            order = settle(order.reference, None)
+        else:
             try:
                 order = settle(order.reference, PaystackService().verify(order.reference))
             except (RequestException, ValueError) as exc:

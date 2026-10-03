@@ -53,6 +53,9 @@ class ClassArmSerializer(TenantRelationsMixin, serializers.ModelSerializer):
             raise serializers.ValidationError({'name': 'This school does not use named class arms.'})
         if campus and campus.school_id != school.pk:
             raise serializers.ValidationError({'campus': 'Campus must belong to this school.'})
+        if campus and not campus.is_active and (
+                not self.instance or self.instance.campus_id != campus.pk):
+            raise serializers.ValidationError({'campus': 'Choose an active campus for new placement.'})
 
         qs = ClassArm.objects.filter(school=school, class_level=level, name=name)
         qs = qs.filter(campus=campus) if campus else qs.filter(campus__isnull=True)

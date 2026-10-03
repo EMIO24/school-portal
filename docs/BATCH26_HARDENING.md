@@ -168,3 +168,180 @@ All validation gates passed. Only the three reviewed files are to be staged for
 origin/complete-version without force. Post-push HEAD/remote equality, protected
 branch references and a clean worktree are required and reported with the final
 checkpoint SHA. No subsequent Batch 26 work is started at this checkpoint.
+
+## Batch 26C: finance, campus history and learning-resource security
+
+Starts from clean, fetched `aefd23b1028239d75cc863ffa89d64e4365594fe` on
+complete-version, 3 October 2026. Batch 26 remains incomplete.
+
+### Inventory and contracts
+
+Student fee settlement is atomic: payments.settle locks School, then PaymentOrder;
+ledger.record_payment_entry also locks School and the finance account. Manual
+payments and charge/adjustment generation use that same school lock. PaymentOrder
+references are unique; StudentLedgerEntry has a one-to-one FeePayment relation,
+frozen charge uniqueness and retry-key constraints. Allocations link each credit
+to a frozen charge. Online amounts come from prepare_online_charge and stored
+allocations, with provider reference/amount/currency/mode/email validation.
+Paystack is an external payment provider, never the balance source of truth.
+
+Signed webhooks re-verify with the provider and call the same settlement path as
+browser verification. External calls are mocked in tests; PostgreSQL writes,
+transactions, independent thread connections and API authorization are real.
+
+FeePayment already stores receipt_snapshot at creation, including school identity,
+theme, student/class, category, term/session, amount, date, method and issuer.
+Current FeeSchedule values or current balance must not rewrite these facts.
+Verified opening balances deliberately encompass historical pre-cutover receipts;
+those receipts must not be converted into new credits during a retry.
+
+Campus has an existing conditional unique constraint allowing at most one primary
+campus per school. ClassArm, StaffProfile and AdmissionApplication campus FKs use
+PROTECT. Deactivation is an operational flag, not deletion or reassignment.
+Nullable legacy campuses and separate no-arm defaults per campus remain supported.
+Create remains Enterprise-only; campus writes remain school-admin-only.
+
+AcademicResource is explicitly reusable institutional content scoped to school,
+class level and subject, without a class-arm or session field. Its workflow is
+draft -> submitted -> reviewed -> approved; revision is a new draft linked through
+supersedes, preserving the approved original. Teachers use SubjectAssignment scope;
+school admins can author institutional content; principals review and approve but
+cannot become revision authors. Parents have no resource endpoint authority.
+Students see approved materials for their current level, including older approved
+revisions, subject to subject/class relevance. These are not session-specific
+lesson plans. This checkpoint preserves that existing learner policy and does not
+add a historical student browsing endpoint or grant arbitrary past-class access.
+
+### Reproduced failures and fixes
+
+Dedicated tests ran before broader regressions. Initial fixture mistakes were
+corrected without weakening invariants: Python dates rather than date strings for
+SessionEnrollment.clean, an explicitly backdated auto_now_add admission_date before
+transfer, and valid class-arm lengths/qualification choices. The red run after
+initial date corrections had 9 failures and 3 errors across 30 tests, including
+remaining fixture issues; production defects reproduced included:
+
+- Successful-order verification and manual retry reported success despite a
+  missing ledger credit. Completed fee orders now validate receipt count, unique
+  schedules, amounts, matching ledger credits and allocation totals. Drift moves
+  the order to review without new receipts or credits. A reference with existing
+  receipts cannot create another posting even if its saved status is pending.
+- Successful browser verification rechecks local integrity under the settlement
+  lock without another provider call. Manual retry returns 409 on inconsistent
+  credit; another payment is blocked while unreconciled receipts exist. Verified
+  opening balances retain the deliberate pre-cutover exception, with old receipt
+  facts left intact.
+- Concurrent primary-campus PATCH raised PostgreSQL UniqueViolation. Campus
+  create/PATCH/delete are now atomic and serialize on the School row; the existing
+  primary constraint remains unchanged as a database backstop.
+- Deleting an admission-only referenced campus raised ProtectedError. It now
+  returns 409, retaining all references, as class/staff-reference deletion already
+  did. No protected history is detached or deleted.
+- New class and admission placement accepted an inactive campus. Class/staff
+  serializers reject new inactive assignments while allowing unrelated edits to
+  existing historical assignments. Admission class resolution checks implicit
+  preferences, class-campus links and no-arm default campuses for active local
+  ownership. No nullable-campus requirement is added.
+- Principal revision could create principal-authored teacher work. Revision now
+  denies that role while retaining principal review/approval and admin authorship.
+- An owning teacher could submit a draft after assignment revocation. Resource
+  transitions now check assignment before acting, alongside create/revise checks.
+- Corrupt resource/student relations exposed inappropriate content. Resource
+  querysets constrain level/subject/standard school relations, assignment checks
+  constrain their tenant relations, and student access validates profile/class
+  ownership. Explicit subject-to-level mappings are respected; legacy subjects
+  without mappings remain compatible.
+
+No models/migrations or frontend production files change. No existing assertions,
+skips or expected failures are edited.
+
+### Validation matrix
+
+| Area | Required outcome |
+| --- | --- |
+| Same-reference settlement race | One receipt, credit, allocation and verified audit |
+| Signed webhook retry / webhook plus verify race | One financial effect |
+| Manual plus online full payment race | One accepted payment; competing operation denied/reviewed |
+| Distinct partial manual/online race | Both valid payments retained, no excess credit |
+| Client amount manipulation | Frozen obligation retained; excess payment rejected |
+| Missing ledger / allocation / prior-reference receipt | Review or 409, no automatic credit recreation |
+| Receipt after schedule/class/branding/balance changes | Original snapshot unchanged |
+| Foreign tenant reference/receipt | Denied before provider invocation or financial writes |
+| Referenced campus deletion / deactivation | Conflict on deletion; references still resolve |
+| Inactive/new or foreign placements | Rejected; historical assignment edits still permitted |
+| Concurrent primary changes | Both requests complete; exactly one primary remains |
+| Enterprise and no-arm/null campuses | Gate retained; campus defaults distinct and retry-safe |
+| Teacher resource authorship | Assigned level/subject only; revoked scope denied |
+| Principal | Review/approve, no author/revision-author escalation |
+| Student/parent | Approved relevant materials only / parent denied |
+| Approved resource mutation/revision | Original content/link/scope/approval preserved; new draft only |
+| Class transfer and session change | Source enrollment and approved original preserved; current-level learner scope |
+
+Dedicated modules: fees.test_batch26c_finance, tenants.test_batch26c_campus_history,
+curriculum.test_batch26c_resource_security. Added tests also check loss of allocations
+and a pre-existing receipt under a pending reference, beyond missing-credit drift.
+
+Targeted: **32 PASS in 47.601 seconds**; test-logs/batch26c-targeted.txt.
+Concentrated: **97 PASS in 198.043 seconds**; test-logs/batch26c-concentrated.txt.
+The gate includes all three dedicated modules, fees.test_ledger, fees.test_batch17h,
+fees.test_invoice_payments, enrollment.test_batch22_25_operations,
+curriculum.test_batch24_learning_delivery, curriculum.test_batch17, plus eight
+existing Paystack tests for retry/receipts, frozen charges, provider mismatch,
+webhook retries, malformed allocations, order kinds, changed balances and foreign
+student/payer relations. No skips or expected failures.
+
+Full backend: **600 PASS in 1430.920 seconds**, no skips or expected failures;
+test-logs/batch26c-full-backend.txt. Mandatory due to shared finance and resource
+workflow fixes. Known local WeasyPrint native-library diagnostics remain visible
+without failing tests; no separate native PDF validation was started.
+Schema: **PASS**; makemigrations --check reports no changes, migrate --check exits
+successfully; test-logs/batch26c-schema.txt. No migrations are required.
+Frontend: NOT RERUN, because no frontend production code changes.
+
+### Limits and remaining work
+
+This is not an automatic financial-recovery tool. Drift leaves money/history
+untouched for explicit review; legacy cutover remains a separate accounting
+contract. Primary-campus concurrency is exercised; retirement racing every
+placement/import path is not claimed. Resources remain reusable level/subject
+content, not session snapshots; session-specific execution history remains in
+lesson plans and SessionEnrollment. Current configuration must not rewrite those
+existing rows. No broader learning feature is added.
+
+Recovery drills, native PDF validation, browser acceptance and pilot-school
+acceptance remain outside this checkpoint. Do not start them automatically.
+
+### Batch 26C final audit and checkpoint boundary
+
+Reviewed production changes:
+
+- backend/fees/ledger.py: receipt-to-credit integrity predicate only.
+- backend/fees/payments.py: validate completed postings, reject existing-reference
+  reposting, and verify local completed orders without an external request.
+- backend/fees/views.py: manual retry and missing-credit guards, preserving the
+  explicit verified-opening treatment of pre-cutover receipts.
+- backend/tenants/campuses.py: atomic school lock for writes and protected-delete
+  conflict handling; Enterprise gating, tenant permissions and DB constraints stay.
+- backend/enrollment/serializers.py and staff_serializers.py: inactive-campus
+  denial for new assignment, preserving unrelated historical-assignment edits.
+- backend/enrollment/class_structure.py: active, own-school campus validation for
+  admissions and implicit defaults.
+- backend/curriculum/learning.py: tenant-consistent resource/assignment queries,
+  transition scope checks, principal revision-author denial and learner filtering.
+
+Three new dedicated test modules and this appended report are the other reviewed
+files. No existing test file, model, migration, frontend file, environment file,
+database, log or unrelated file is staged. Fixtures use unusable passwords and an
+explicitly fake test-only Paystack key. No real secrets are added.
+
+Financial amounts still follow frozen obligations and the ledger; no provider or
+browser balance authority is introduced. Campus deletion remains protected,
+Enterprise creation stays gated, teacher scope is narrowed, and unapproved
+resources stay hidden. Approved resource and payment/receipt facts are preserved.
+
+All gates passed before staging. Commit intent:
+`fix(batch26): harden finance campus and learning history` on complete-version,
+with a normal push to that branch only. Local/remote checkpoint equality, clean
+worktree and unchanged protected branch references are verified after push and
+reported with the checkpoint SHA. Batch 26 is not declared complete and no
+recovery, native PDF, browser or pilot acceptance work follows this checkpoint.
