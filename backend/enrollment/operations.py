@@ -2,6 +2,7 @@
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.permissions import IsAuthenticated
@@ -352,8 +353,26 @@ def _class_teacher_student(request, student):
     return bool(
         request.user.role == "class_teacher"
         and student.current_class_id
+        and student.current_class.school_id == request.tenant.pk
         and student.current_class.class_teacher_id == request.user.pk
     )
+
+
+def _welfare_queryset(request):
+    """Scope cases before loading private history, including historical class."""
+    qs = WelfareCase.objects.filter(
+        school=request.tenant, student__school=request.tenant,
+        student__user__school=request.tenant,
+    ).filter(
+        Q(class_arm_snapshot__isnull=True) | Q(class_arm_snapshot__school=request.tenant)
+    )
+    if request.user.role == "class_teacher":
+        qs = qs.filter(
+            class_arm_snapshot__school=request.tenant,
+            class_arm_snapshot_id=F("student__current_class_id"),
+            class_arm_snapshot__class_teacher=request.user,
+        ).exclude(category__in=("health", "safeguarding"))
+    return qs
 
 
 class WelfareListCreate(APIView):
@@ -362,14 +381,10 @@ class WelfareListCreate(APIView):
     def get(self, request):
         if not _school_user(request, ("school_admin", "principal", "class_teacher")):
             return Response({"detail": "Student welfare access required."}, status=403)
-        qs = WelfareCase.objects.filter(school=request.tenant).select_related(
+        qs = _welfare_queryset(request).select_related(
             "student__user", "student__current_class__class_level",
             "class_arm_snapshot__class_level", "reported_by", "resolved_by",
         ).prefetch_related("updates__created_by")
-        if request.user.role == "class_teacher":
-            qs = qs.filter(
-                student__current_class__class_teacher=request.user
-            ).exclude(category__in=("health", "safeguarding"))
         raw_status = request.query_params.get("status")
         if raw_status:
             if raw_status not in dict(WelfareCase.STATUS_CHOICES):
@@ -385,8 +400,8 @@ class WelfareListCreate(APIView):
         if not str(student_id or "").isdigit():
             return Response({"student": "Choose a valid student."}, status=400)
         student = StudentProfile.objects.select_related("current_class__class_level", "user").filter(
-            pk=student_id, school=request.tenant, status="active"
-        ).first()
+            pk=student_id, school=request.tenant, user__school=request.tenant, status="active"
+        ).filter(Q(current_class__isnull=True) | Q(current_class__school=request.tenant)).first()
         if not student:
             return Response({"student": "Choose an active student in this school."}, status=400)
         category = request.data.get("category")
@@ -427,21 +442,20 @@ class WelfareUpdateView(APIView):
     def post(self, request, pk):
         if not _school_user(request, ("school_admin", "principal", "class_teacher")):
             return Response({"detail": "Student welfare access required."}, status=403)
-        row = WelfareCase.objects.select_for_update().select_related(
+        # Lock only the case; nullable class joins cannot be locked on PostgreSQL.
+        row = _welfare_queryset(request).select_for_update(of=("self",)).select_related(
             "student__user", "student__current_class__class_level", "class_arm_snapshot__class_level"
-        ).prefetch_related("updates__created_by").filter(pk=pk, school=request.tenant).first()
+        ).prefetch_related("updates__created_by").filter(pk=pk).first()
         if not row:
             return Response(status=404)
-        if request.user.role == "class_teacher":
-            if row.is_sensitive or not _class_teacher_student(request, row.student):
-                return Response({"detail": "This welfare case is outside your scope."}, status=403)
         note = str(request.data.get("note") or "").strip()
         status_after = request.data.get("status", row.status)
         if not note:
             return Response({"note": "Provide an update note."}, status=400)
         if status_after not in dict(WelfareCase.STATUS_CHOICES):
             return Response({"status": "Choose open, monitoring or resolved."}, status=400)
-        WelfareUpdate.objects.create(
+        status_before = row.status
+        update = WelfareUpdate.objects.create(
             welfare_case=row, note=note, status_after=status_after, created_by=request.user
         )
         if row.status != status_after:
@@ -455,6 +469,7 @@ class WelfareUpdateView(APIView):
             row.save(update_fields=["status", "resolved_by", "resolved_at", "updated_at"])
         audit(request, "welfare.case_updated", target=f"welfare:{row.pk}",
               details={"school_id": request.tenant.pk, "student_id": row.student_id,
-                       "status": status_after})
+                       "status": status_after, "status_before": status_before,
+                       "update_id": update.pk})
         row.refresh_from_db()
         return Response(_welfare_data(row))
